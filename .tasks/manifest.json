@@ -1,0 +1,672 @@
+{
+  "project": {
+    "name": "Interdimensional Cable Network (ICN)",
+    "description": "Decentralized AI-powered video streaming platform with BFT consensus on Moonbeam parachain",
+    "version": "0.1.0-alpha",
+    "languages": ["Rust", "Python", "TypeScript"],
+    "frameworks": ["Substrate FRAME", "PyTorch", "Tauri", "React"],
+    "repository": "interdim-cable"
+  },
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Moonbeam Repository Fork and Development Environment Setup",
+      "file": "tasks/T001-moonbeam-fork-setup.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [],
+      "tags": ["foundation", "infrastructure", "substrate", "moonbeam"],
+      "estimated_tokens": 8000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T002",
+      "title": "Implement pallet-icn-stake (Staking & Role Eligibility)",
+      "file": "tasks/T002-pallet-icn-stake.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001"],
+      "tags": ["pallets", "substrate", "staking", "on-chain", "phase1"],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T003",
+      "title": "Implement pallet-icn-reputation (Reputation Scoring & Merkle Proofs)",
+      "file": "tasks/T003-pallet-icn-reputation.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001", "T002"],
+      "tags": ["pallets", "substrate", "reputation", "on-chain", "phase1", "merkle-tree"],
+      "estimated_tokens": 14000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T004",
+      "title": "Implement pallet-icn-director (Director Election & BFT Coordination)",
+      "file": "tasks/T004-pallet-icn-director.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001", "T002", "T003"],
+      "tags": ["pallets", "substrate", "director", "bft", "vrf", "on-chain", "phase1", "consensus"],
+      "estimated_tokens": 16000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T005",
+      "title": "Implement pallet-icn-pinning (Erasure Coding & Audits)",
+      "file": "tasks/T005-pallet-icn-pinning.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001", "T002"],
+      "tags": ["pallets", "substrate", "pinning", "storage", "audits", "on-chain", "phase1"],
+      "estimated_tokens": 13000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T006",
+      "title": "Implement pallet-icn-treasury (Reward Distribution & Emissions)",
+      "file": "tasks/T006-pallet-icn-treasury.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T001", "T002"],
+      "tags": ["pallets", "substrate", "treasury", "tokenomics", "on-chain", "phase1"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T007",
+      "title": "Implement pallet-icn-bft (BFT Consensus Storage & Finalization)",
+      "file": "tasks/T007-pallet-icn-bft.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T001", "T002", "T004"],
+      "tags": ["pallets", "substrate", "bft", "consensus", "on-chain", "phase1"],
+      "estimated_tokens": 8000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T008",
+      "title": "EVM Integration (ICN Token ERC-20 & Substrate Precompiles)",
+      "file": "tasks/T008-evm-integration.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T001", "T002", "T003"],
+      "tags": ["evm", "solidity", "precompiles", "token", "on-chain", "phase1", "integration"],
+      "estimated_tokens": 15000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T009",
+      "title": "Director Node Core Runtime Implementation",
+      "file": "tasks/T009-director-node-core-runtime.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001", "T002", "T003", "T004", "T005"],
+      "tags": ["off-chain", "director", "rust", "tokio", "bft", "phase1", "critical-path"],
+      "estimated_tokens": 15000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T010",
+      "title": "Validator Node Implementation",
+      "file": "tasks/T010-validator-node.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T001", "T002", "T003", "T004", "T009"],
+      "tags": ["off-chain", "validator", "rust", "clip", "verification", "phase1"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T011",
+      "title": "Super-Node Implementation (Tier 1 Storage and Relay)",
+      "file": "tasks/T011-super-node.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T001", "T002", "T003", "T006", "T009"],
+      "tags": ["off-chain", "super-node", "rust", "storage", "erasure-coding", "phase1"],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T012",
+      "title": "Regional Relay Node Implementation (Tier 2 Distribution)",
+      "file": "tasks/T012-regional-relay-node.md",
+      "status": "pending",
+      "priority": 3,
+      "depends_on": ["T001", "T002", "T011"],
+      "tags": ["off-chain", "relay", "rust", "distribution", "phase1"],
+      "estimated_tokens": 8000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T013",
+      "title": "Viewer Client Application (Tauri Desktop App)",
+      "file": "tasks/T013-viewer-client.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T009", "T011", "T012"],
+      "tags": ["off-chain", "viewer", "tauri", "react", "ui", "phase2"],
+      "estimated_tokens": 14000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T014",
+      "title": "Vortex Core Pipeline - Static VRAM Manager & Generation Orchestration",
+      "file": "tasks/T014-vortex-core-pipeline.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [],
+      "tags": ["vortex", "ai-ml", "python", "gpu", "phase1", "critical-path"],
+      "estimated_tokens": 15000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T015",
+      "title": "Flux-Schnell Integration - NF4 Quantized Image Generation",
+      "file": "tasks/T015-flux-schnell-integration.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T014"],
+      "tags": ["vortex", "ai-ml", "python", "gpu", "flux", "image-generation", "phase1"],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T016",
+      "title": "LivePortrait Integration - Audio-Driven Video Warping",
+      "file": "tasks/T016-liveportrait-integration.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T014", "T015", "T017"],
+      "tags": ["vortex", "ai-ml", "python", "gpu", "video", "animation", "phase1"],
+      "estimated_tokens": 13000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T017",
+      "title": "Kokoro-82M TTS Integration - High-Quality Voice Synthesis",
+      "file": "tasks/T017-kokoro-tts-integration.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T014"],
+      "tags": ["vortex", "ai-ml", "python", "gpu", "tts", "audio", "phase1"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T018",
+      "title": "Dual CLIP Ensemble - Semantic Verification with Self-Check",
+      "file": "tasks/T018-dual-clip-ensemble.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T014", "T015", "T016"],
+      "tags": ["vortex", "ai-ml", "python", "gpu", "clip", "verification", "phase1"],
+      "estimated_tokens": 14000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T019",
+      "title": "VRAM Manager - Memory Pressure Monitoring & OOM Prevention",
+      "file": "tasks/T019-vram-manager.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T014"],
+      "tags": ["vortex", "ai-ml", "python", "gpu", "monitoring", "infrastructure", "phase1"],
+      "estimated_tokens": 11000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T020",
+      "title": "Slot Timing Orchestration - 45-Second Pipeline Scheduler",
+      "file": "tasks/T020-slot-timing-orchestration.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T014", "T015", "T016", "T017", "T018"],
+      "tags": ["vortex", "ai-ml", "python", "scheduling", "orchestration", "phase1"],
+      "estimated_tokens": 13000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T021",
+      "title": "libp2p Core Setup and Transport Layer",
+      "file": "tasks/T021-libp2p-core-setup.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001"],
+      "tags": ["p2p", "libp2p", "networking", "off-chain", "phase1", "critical-path"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T022",
+      "title": "GossipSub Configuration with Reputation Integration",
+      "file": "tasks/T022-gossipsub-configuration.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T021", "T003"],
+      "tags": ["p2p", "gossipsub", "reputation", "off-chain", "phase1", "critical-path"],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T023",
+      "title": "NAT Traversal Stack (STUN, UPnP, Circuit Relay, TURN)",
+      "file": "tasks/T023-nat-traversal-stack.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T021"],
+      "tags": ["p2p", "nat-traversal", "networking", "off-chain", "phase1"],
+      "estimated_tokens": 11000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T024",
+      "title": "Kademlia DHT for Peer Discovery and Content Addressing",
+      "file": "tasks/T024-kademlia-dht.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T021"],
+      "tags": ["p2p", "dht", "kademlia", "off-chain", "phase1"],
+      "estimated_tokens": 9500,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T025",
+      "title": "Multi-Layer Bootstrap Protocol with Signed Manifests",
+      "file": "tasks/T025-bootstrap-protocol.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T021", "T024"],
+      "tags": ["p2p", "bootstrap", "networking", "off-chain", "phase1"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T026",
+      "title": "Reputation Oracle (On-Chain Sync for P2P Scoring)",
+      "file": "tasks/T026-reputation-oracle.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T003", "T021"],
+      "tags": ["p2p", "reputation", "on-chain-sync", "off-chain", "phase1"],
+      "estimated_tokens": 9000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T027",
+      "title": "Secure P2P Configuration (Rate Limiting, DoS Protection)",
+      "file": "tasks/T027-secure-p2p-config.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T021", "T022"],
+      "tags": ["p2p", "security", "rate-limiting", "off-chain", "phase1"],
+      "estimated_tokens": 9500,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T028",
+      "title": "Local Development Environment with Docker Compose",
+      "file": "tasks/T028-local-dev-environment.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [],
+      "tags": ["devops", "infrastructure", "docker", "testing", "phase1"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T029",
+      "title": "Production Director Node Docker Image",
+      "file": "tasks/T029-director-node-docker-image.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T009", "T028"],
+      "tags": ["devops", "docker", "infrastructure", "director", "production", "phase1"],
+      "estimated_tokens": 11000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T030",
+      "title": "Super-Node Kubernetes Deployment (7 Regions)",
+      "file": "tasks/T030-super-node-kubernetes.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T011", "T029"],
+      "tags": ["devops", "kubernetes", "infrastructure", "super-node", "production", "phase2"],
+      "estimated_tokens": 13000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T031",
+      "title": "CI/CD Pipeline for Substrate Pallets",
+      "file": "tasks/T031-cicd-pallets.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001", "T002"],
+      "tags": ["devops", "cicd", "pallets", "testing", "phase1"],
+      "estimated_tokens": 9000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T032",
+      "title": "CI/CD Pipeline for Vortex AI Engine",
+      "file": "tasks/T032-cicd-vortex.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T010"],
+      "tags": ["devops", "cicd", "vortex", "ai", "testing", "phase1"],
+      "estimated_tokens": 7000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T033",
+      "title": "Production Observability Stack (Prometheus, Grafana, Jaeger, AlertManager)",
+      "file": "tasks/T033-observability-stack.md",
+      "status": "pending",
+      "priority": 2,
+      "depends_on": ["T028", "T029"],
+      "tags": ["devops", "observability", "monitoring", "prometheus", "grafana", "phase1"],
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T034",
+      "title": "Comprehensive Pallet Unit Tests (85%+ Coverage)",
+      "file": "tasks/T034-pallet-unit-tests.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T002", "T003", "T004", "T005", "T006", "T007"],
+      "tags": ["testing", "pallets", "unit-tests", "quality", "phase1"],
+      "estimated_tokens": 9500,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T035",
+      "title": "Integration Tests (Staking → Election → Reputation → BFT Flow)",
+      "file": "tasks/T035-integration-tests.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T002", "T003", "T004", "T005", "T028", "T034"],
+      "tags": ["testing", "integration", "e2e", "quality", "phase1"],
+      "estimated_tokens": 8000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T036",
+      "title": "Security Audit Preparation (Oak Security / SRLabs Engagement)",
+      "file": "tasks/T036-security-audit-prep.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T002", "T003", "T004", "T005", "T006", "T007", "T034", "T035"],
+      "tags": ["security", "audit", "documentation", "phase2"],
+      "estimated_tokens": 7500,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    },
+    {
+      "id": "T037",
+      "title": "End-to-End Testing on Moonriver Testnet (50+ Nodes, Full Slot Generation)",
+      "file": "tasks/T037-e2e-moonriver-testing.md",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": ["T001", "T002", "T003", "T004", "T005", "T006", "T007", "T009", "T010", "T011", "T028", "T029", "T035"],
+      "tags": ["testing", "e2e", "moonriver", "integration", "phase1"],
+      "estimated_tokens": 9000,
+      "actual_tokens": 0,
+      "created_at": "2025-12-24T00:00:00Z",
+      "updated_at": "2025-12-24T00:00:00Z"
+    }
+  ],
+  "stats": {
+    "total_tasks": 37,
+    "completed": 0,
+    "in_progress": 0,
+    "pending": 37,
+    "blocked": 0
+  },
+  "dependency_graph": {
+    "T001": {
+      "depends_on": [],
+      "blocks": ["T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010", "T011", "T012", "T021", "T031", "T037"]
+    },
+    "T002": {
+      "depends_on": ["T001"],
+      "blocks": ["T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010", "T011", "T012", "T031", "T034", "T035", "T036", "T037"]
+    },
+    "T003": {
+      "depends_on": ["T001", "T002"],
+      "blocks": ["T004", "T008", "T009", "T010", "T011", "T022", "T026", "T034", "T035", "T036", "T037"]
+    },
+    "T004": {
+      "depends_on": ["T001", "T002", "T003"],
+      "blocks": ["T007", "T009", "T010", "T034", "T035", "T036", "T037"]
+    },
+    "T005": {
+      "depends_on": ["T001", "T002"],
+      "blocks": ["T009", "T034", "T035", "T036", "T037"]
+    },
+    "T006": {
+      "depends_on": ["T001", "T002"],
+      "blocks": ["T011", "T034", "T036", "T037"]
+    },
+    "T007": {
+      "depends_on": ["T001", "T002", "T004"],
+      "blocks": ["T034", "T036", "T037"]
+    },
+    "T008": {
+      "depends_on": ["T001", "T002", "T003"],
+      "blocks": []
+    },
+    "T009": {
+      "depends_on": ["T001", "T002", "T003", "T004", "T005"],
+      "blocks": ["T010", "T011", "T013", "T029", "T037"]
+    },
+    "T010": {
+      "depends_on": ["T001", "T002", "T003", "T004", "T009"],
+      "blocks": ["T032", "T037"]
+    },
+    "T011": {
+      "depends_on": ["T001", "T002", "T003", "T006", "T009"],
+      "blocks": ["T012", "T013", "T030", "T037"]
+    },
+    "T012": {
+      "depends_on": ["T001", "T002", "T011"],
+      "blocks": ["T013"]
+    },
+    "T013": {
+      "depends_on": ["T009", "T011", "T012"],
+      "blocks": []
+    },
+    "T014": {
+      "depends_on": [],
+      "blocks": ["T015", "T016", "T017", "T018", "T019", "T020"]
+    },
+    "T015": {
+      "depends_on": ["T014"],
+      "blocks": ["T016", "T018", "T020"]
+    },
+    "T016": {
+      "depends_on": ["T014", "T015", "T017"],
+      "blocks": ["T018", "T020"]
+    },
+    "T017": {
+      "depends_on": ["T014"],
+      "blocks": ["T016", "T020"]
+    },
+    "T018": {
+      "depends_on": ["T014", "T015", "T016"],
+      "blocks": ["T020"]
+    },
+    "T019": {
+      "depends_on": ["T014"],
+      "blocks": []
+    },
+    "T020": {
+      "depends_on": ["T014", "T015", "T016", "T017", "T018"],
+      "blocks": []
+    },
+    "T021": {
+      "depends_on": ["T001"],
+      "blocks": ["T022", "T023", "T024", "T025", "T026", "T027"]
+    },
+    "T022": {
+      "depends_on": ["T021", "T003"],
+      "blocks": ["T027"]
+    },
+    "T023": {
+      "depends_on": ["T021"],
+      "blocks": []
+    },
+    "T024": {
+      "depends_on": ["T021"],
+      "blocks": ["T025"]
+    },
+    "T025": {
+      "depends_on": ["T021", "T024"],
+      "blocks": []
+    },
+    "T026": {
+      "depends_on": ["T003", "T021"],
+      "blocks": []
+    },
+    "T027": {
+      "depends_on": ["T021", "T022"],
+      "blocks": []
+    },
+    "T028": {
+      "depends_on": [],
+      "blocks": ["T029", "T033", "T035", "T037"]
+    },
+    "T029": {
+      "depends_on": ["T009", "T028"],
+      "blocks": ["T030", "T033", "T037"]
+    },
+    "T030": {
+      "depends_on": ["T011", "T029"],
+      "blocks": []
+    },
+    "T031": {
+      "depends_on": ["T001", "T002"],
+      "blocks": []
+    },
+    "T032": {
+      "depends_on": ["T010"],
+      "blocks": []
+    },
+    "T033": {
+      "depends_on": ["T028", "T029"],
+      "blocks": []
+    },
+    "T034": {
+      "depends_on": ["T002", "T003", "T004", "T005", "T006", "T007"],
+      "blocks": ["T035", "T036"]
+    },
+    "T035": {
+      "depends_on": ["T002", "T003", "T004", "T005", "T028", "T034"],
+      "blocks": ["T036", "T037"]
+    },
+    "T036": {
+      "depends_on": ["T002", "T003", "T004", "T005", "T006", "T007", "T034", "T035"],
+      "blocks": []
+    },
+    "T037": {
+      "depends_on": ["T001", "T002", "T003", "T004", "T005", "T006", "T007", "T009", "T010", "T011", "T028", "T029", "T035"],
+      "blocks": []
+    }
+  },
+  "critical_path": ["T001", "T002", "T003", "T004", "T005", "T009", "T014", "T015", "T016", "T017", "T018", "T020", "T021", "T022", "T028", "T034", "T035", "T037"],
+  "total_estimated_tokens": 398000,
+  "phases": {
+    "phase1_moonriver": {
+      "name": "Moonriver Testnet (Weeks 1-8)",
+      "tasks": ["T001", "T002", "T003", "T004", "T005", "T006", "T007", "T008", "T009", "T010", "T011", "T014", "T015", "T016", "T017", "T018", "T019", "T020", "T021", "T022", "T023", "T024", "T025", "T026", "T027", "T028", "T029", "T031", "T032", "T033", "T034", "T035", "T037"],
+      "status": "not_started",
+      "estimated_tokens": 366000
+    },
+    "phase2_moonbeam": {
+      "name": "Moonbeam Mainnet (Weeks 9-16)",
+      "tasks": ["T012", "T013", "T030", "T036"],
+      "status": "not_started",
+      "estimated_tokens": 32000
+    },
+    "phase3_scale": {
+      "name": "Scale & Iterate (Ongoing)",
+      "tasks": [],
+      "status": "not_started",
+      "estimated_tokens": 0
+    }
+  }
+}

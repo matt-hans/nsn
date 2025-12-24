@@ -1,0 +1,59 @@
+{
+  "timestamp": "2025-12-24T00:00:00Z",
+  "agent": "task-creator",
+  "action": "add_tasks",
+  "tasks_added": ["T009", "T010", "T011", "T012", "T013"],
+  "manifest_updated": true,
+  "summary": "Added comprehensive off-chain node implementation tasks for ICN project: Director Node Core Runtime (T009), Validator Node (T010), Super-Node (T011), Regional Relay Node (T012), and Viewer Client Application (T013). All tasks include detailed acceptance criteria, test scenarios, technical implementation guidance, and integration points with on-chain pallets.",
+  "details": {
+    "T009": {
+      "title": "Director Node Core Runtime Implementation",
+      "priority": "P1",
+      "estimated_tokens": 15000,
+      "rationale": "Core orchestration layer for AI video generation with BFT coordination"
+    },
+    "T010": {
+      "title": "Validator Node Implementation",
+      "priority": "P2",
+      "estimated_tokens": 10000,
+      "rationale": "Independent CLIP-based verification for content quality and challenge participation"
+    },
+    "T011": {
+      "title": "Super-Node Implementation (Tier 1 Storage and Relay)",
+      "priority": "P2",
+      "estimated_tokens": 12000,
+      "rationale": "Regional storage layer with Reed-Solomon erasure coding and audit response"
+    },
+    "T012": {
+      "title": "Regional Relay Node Implementation (Tier 2 Distribution)",
+      "priority": "P3",
+      "estimated_tokens": 8000,
+      "rationale": "City-level caching and distribution for low-latency viewer experience"
+    },
+    "T013": {
+      "title": "Viewer Client Application (Tauri Desktop App)",
+      "priority": "P2",
+      "estimated_tokens": 14000,
+      "rationale": "End-user interface with WebCodecs playback and optional P2P seeding"
+    }
+  },
+  "dependency_analysis": {
+    "T009_depends_on": ["T001", "T002", "T003", "T004", "T005"],
+    "T010_depends_on": ["T001", "T002", "T003", "T004", "T009"],
+    "T011_depends_on": ["T001", "T002", "T003", "T006", "T009"],
+    "T012_depends_on": ["T001", "T002", "T011"],
+    "T013_depends_on": ["T009", "T011", "T012"]
+  },
+  "critical_path_impact": "T009 is on critical path as primary off-chain execution layer. T011, T012, T013 form viewer delivery pipeline.",
+  "phase_allocation": {
+    "phase1_moonriver": ["T009", "T010", "T011"],
+    "phase2_moonbeam": ["T012", "T013"]
+  },
+  "total_estimated_tokens_added": 59000,
+  "verification": {
+    "all_tasks_have_acceptance_criteria": true,
+    "all_tasks_have_test_scenarios": true,
+    "all_dependencies_verified_in_manifest": true,
+    "all_tasks_match_prd_architecture": true
+  }
+}
