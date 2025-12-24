@@ -474,7 +474,7 @@ impl<T: Config> Pallet<T> {
 
 ## Dependencies
 
-- **T001**: Moonbeam fork and dev environment
+- **T001**: ICN Chain bootstrap and dev environment
 - **T002**: pallet-icn-stake for role definitions and account references
 - **frame-support**: For Hashing trait and storage macros
 - **sp-runtime**: For saturating arithmetic
@@ -489,7 +489,7 @@ impl<T: Config> Pallet<T> {
 
 4. **Governance-adjustable retention**: Allows network to adapt storage costs vs historical audit depth via on-chain voting.
 
-5. **Aggregated events (v8.0.1)**: Batching multiple events per account into single transaction reduces TPS pressure on Moonbeam (target <50 TPS).
+5. **Aggregated events (v8.0.1)**: Batching multiple events per account into single transaction optimizes on-chain efficiency.
 
 6. **Saturating arithmetic**: All score updates use saturating_add/sub to prevent overflow/underflow panics on chain.
 

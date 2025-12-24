@@ -28,7 +28,7 @@ actual_tokens: null
 Implement the Director Node Core Runtime, the heart of ICN's off-chain AI video generation system. This Rust binary runs the Tokio async runtime and coordinates all director responsibilities: monitoring on-chain elections, scheduling generation pipelines, coordinating BFT consensus via gRPC, and integrating with the Vortex Python sidecar.
 
 Directors are elected via VRF-based randomness for each slot (5 per slot) and must:
-1. Monitor Moonbeam for DirectorsElected events via subxt chain client
+1. Monitor ICN Chain for DirectorsElected events via subxt chain client
 2. Schedule Vortex pipeline execution with lookahead (slot + 2)
 3. Exchange CLIP embeddings with other elected directors via gRPC mesh
 4. Compute 3-of-5 BFT consensus agreement
@@ -64,12 +64,12 @@ This task implements the Rust runtime skeleton WITHOUT the Vortex engine itself 
 - T011 (Super-Nodes) can receive video chunks from canonical directors
 - Mainnet launch with 50+ autonomous director nodes
 
-**Priority Justification:** Priority 1 (Critical Path) - This is the primary off-chain execution layer. Without directors, there's no content generation, rendering the entire system non-functional. Must be completed before Moonriver testnet deployment (Week 8).
+**Priority Justification:** Priority 1 (Critical Path) - This is the primary off-chain execution layer. Without directors, there's no content generation, rendering the entire system non-functional. Must be completed before ICN Testnet deployment (Week 8).
 
 ## Acceptance Criteria
 
 - [ ] Binary compiles with `cargo build --release -p icn-director` and passes clippy/format checks
-- [ ] Chain client successfully connects to Moonbeam/Moonriver RPC endpoint and subscribes to finalized blocks
+- [ ] Chain client successfully connects to ICN Chain RPC endpoint and subscribes to finalized blocks
 - [ ] Election monitor detects `DirectorsElected` events and identifies if current node is elected
 - [ ] Slot scheduler maintains pipeline lookahead queue (current slot + 2 slots)
 - [ ] BFT coordinator establishes gRPC connections to other 4 elected directors (mTLS with PeerId auth)
@@ -111,7 +111,7 @@ This task implements the Rust runtime skeleton WITHOUT the Vortex engine itself 
 
 **Test Case 4: Chain Disconnection and Reconnection**
 - Given: Director is running and subscribed to blocks
-- When: Moonbeam RPC endpoint becomes unreachable
+- When: ICN Chain RPC endpoint becomes unreachable
 - Then: Chain client logs error and enters reconnection loop with exponential backoff
   And: After endpoint recovery, subscription resumes from last known block
   And: No missed elections in recovered block range
@@ -240,7 +240,7 @@ fn compute_agreement(embeddings: Vec<(PeerId, Vec<f32>)>) -> BftResult {
 ## Dependencies
 
 **Hard Dependencies** (must be complete first):
-- [T001] Moonbeam Repository Fork and Development Environment Setup - Need Substrate types for subxt codegen
+- [T001] ICN Chain Bootstrap - Need Substrate types for subxt codegen
 - [T002] pallet-icn-stake - Need Stakes storage for role verification
 - [T003] pallet-icn-reputation - Need reputation scores for P2P peer weighting
 - [T004] pallet-icn-director - Need DirectorsElected event and submit_bft_result extrinsic
@@ -251,7 +251,7 @@ fn compute_agreement(embeddings: Vec<(PeerId, Vec<f32>)>) -> BftResult {
 - [T007] pallet-icn-treasury - Reward distribution is handled on-chain, director just operates
 
 **External Dependencies:**
-- Moonbeam/Moonriver RPC endpoint (wss://moonbeam.api.onfinality.io or local dev node)
+- ICN Chain RPC endpoint (local dev node or ICN Testnet)
 - STUN/TURN servers for NAT traversal (public or self-hosted)
 - DNS seeds for bootstrap (to be deployed alongside directors)
 
@@ -309,7 +309,7 @@ fn compute_agreement(embeddings: Vec<(PeerId, Vec<f32>)>) -> BftResult {
 
 **Created By:** task-creator agent
 **Reason:** User request to create comprehensive off-chain node tasks for ICN project
-**Dependencies:** T001 (Moonbeam fork), T002 (stake pallet), T003 (reputation pallet), T004 (director pallet), T005 (BFT pallet)
+**Dependencies:** T001 (ICN Chain bootstrap), T002 (stake pallet), T003 (reputation pallet), T004 (director pallet), T005 (BFT pallet)
 **Estimated Complexity:** Complex (15,000 tokens) - Core orchestration layer with multiple integrations (chain, P2P, gRPC, Python)
 
 ## Completion Checklist
@@ -324,7 +324,7 @@ fn compute_agreement(embeddings: Vec<(PeerId, Vec<f32>)>) -> BftResult {
 - [ ] No regression in existing director node tests (if any)
 
 **Integration Ready:**
-- [ ] Successfully subscribes to Moonbeam/Moonriver events
+- [ ] Successfully subscribes to ICN Chain events
 - [ ] BFT consensus completes in <10s with 5 directors
 - [ ] Metrics verified in Prometheus/Grafana dashboard
 - [ ] P2P peer count stable at >10 for 1 hour
@@ -341,4 +341,4 @@ fn compute_agreement(embeddings: Vec<(PeerId, Vec<f32>)>) -> BftResult {
 - [ ] Deployment guide written (Docker, systemd service)
 
 **Definition of Done:**
-Task is complete when director node binary runs autonomously for 24 hours on Moonriver testnet, successfully participates in 10+ elections, achieves 3-of-5 BFT consensus in >90% of rounds, and all observability metrics are within SLO targets (<2s BFT exchange, <10s total round time, >10 P2P peers).
+Task is complete when director node binary runs autonomously for 24 hours on ICN Testnet, successfully participates in 10+ elections, achieves 3-of-5 BFT consensus in >90% of rounds, and all observability metrics are within SLO targets (<2s BFT exchange, <10s total round time, >10 P2P peers).

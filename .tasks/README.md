@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains the task management system for the Interdimensional Cable Network (ICN) project. Tasks are organized into phases matching the PRD roadmap, with detailed specifications for Moonbeam pallet development, off-chain infrastructure, and AI/ML pipeline implementation.
+This directory contains the task management system for the Interdimensional Cable Network (ICN) project. Tasks are organized into phases matching the PRD roadmap, with detailed specifications for ICN Chain pallet development, off-chain infrastructure, and AI/ML pipeline implementation.
 
 ## Directory Structure
 
@@ -11,7 +11,7 @@ This directory contains the task management system for the Interdimensional Cabl
 ├── manifest.json              # Task index and dependency graph
 ├── metrics.json               # Performance tracking and token usage
 ├── tasks/                     # Individual task files
-│   ├── T001-moonbeam-fork-setup.md
+│   ├── T001-icn-chain-bootstrap.md
 │   ├── T002-pallet-icn-stake.md
 │   └── ... (additional tasks)
 ├── context/                   # Session-loaded context (<1000 tokens total)
@@ -26,42 +26,59 @@ This directory contains the task management system for the Interdimensional Cabl
 
 ## Task Phases
 
-### Phase 1: Moonriver Testnet (Weeks 1-8)
+### Phase A: Documentation Refactor (Weeks 1-2)
+**Focus**: Strategic pivot documentation and task alignment
+
+**Tasks**:
+- Update PRD, TAD, and ADRs for ICN Chain strategy
+- Rewrite task dependencies and critical path
+
+### Phase B: ICN Solochain MVP (Weeks 3-10)
 **Focus**: Core pallet development and local testing
 
 **Tasks**:
-- T001: Moonbeam fork and development environment setup
+- T001: ICN Chain bootstrap and development environment setup
 - T002: pallet-icn-stake implementation
 - T003: pallet-icn-reputation with Merkle proofs
 - T004: pallet-icn-director with VRF election
-- T005: pallet-icn-bft with challenge mechanism
-- T006: pallet-icn-pinning with erasure coding
-- T007: pallet-icn-treasury for reward distribution
-- T008: Moonriver deployment and integration testing
+- T005: pallet-icn-pinning with erasure coding
+- T006: pallet-icn-treasury for reward distribution
+- T007: pallet-icn-bft with challenge mechanism
+- T038: Chain spec and genesis configuration
 
 **Exit Criteria**:
 - All pallets compile and pass unit tests
-- Runtime upgrade deployed to Moonriver
+- ICN Solochain running with minimal validator set
 - Staking → Election → Reputation → BFT flow demonstrated
 - 10+ test nodes participating
 
-### Phase 2: Moonbeam Mainnet (Weeks 9-16)
-**Focus**: Security hardening and production launch
+### Phase C: Parachain Readiness (Weeks 11-18)
+**Focus**: Cumulus integration and shared security
 
-**Tasks** (to be created):
+**Tasks**:
+- T039: Cumulus parachain integration
+- T040: Coretime planning and acquisition
 - Security audit (Oak Security/SRLabs)
-- Governance proposal preparation
-- ICN ERC-20 token deployment
-- Mainnet runtime upgrade
-- Node onboarding and monitoring
+- Parachain slot registration
 
 **Exit Criteria**:
 - Security audit passed
-- Governance proposal approved
-- ICN token live on Moonbeam
-- 50+ mainnet nodes, 500+ community members
+- Runtime compatible with Cumulus
+- Coretime acquisition plan documented
+- 50+ nodes, 500+ community members
 
-### Phase 3: Scale & Iterate (Ongoing)
+### Phase D: Ethereum Integration (Optional)
+**Focus**: EVM and bridge connectivity
+
+**Tasks**:
+- T008: Optional Frontier EVM integration
+- T041: Snowbridge integration for Ethereum bridging
+
+**Exit Criteria**:
+- Frontier EVM enabled OR Snowbridge gateway integration
+- Ethereum access story documented
+
+### Phase E: Scale & Iterate (Ongoing)
 **Focus**: Feature expansion and optimization
 
 **Future Work**:
@@ -164,7 +181,7 @@ cargo fmt -- --check
 
 ### Runtime WASM
 ```bash
-cargo build --release --target wasm32-unknown-unknown -p moonbeam-runtime
+cargo build --release --target wasm32-unknown-unknown -p icn-chain-runtime
 ```
 
 ### Python (Vortex Engine)
@@ -175,7 +192,7 @@ python vortex/benchmarks/slot_generation.py --slots 5 --max-time 15
 
 ### Integration
 ```bash
-./scripts/submit-runtime-upgrade.sh --network moonriver --wasm <path>
+./scripts/submit-runtime-upgrade.sh --network icn-testnet --wasm <path>
 ```
 
 ## Metrics Tracking
@@ -218,5 +235,5 @@ View metrics: `cat .tasks/metrics.json`
 
 **Initialized**: 2025-12-24
 **Project**: Interdimensional Cable Network (ICN)
-**Architecture**: Moonbeam Custom Pallets (v8.0.1)
+**Architecture**: ICN Polkadot SDK Chain (v9.0)
 **Timeline**: 3-6 months to MVP

@@ -2,17 +2,17 @@
 
 ## Tech Stack
 
-### On-Chain Layer (Moonbeam Pallets)
-- **Framework**: Substrate FRAME (polkadot-v1.0.0)
-- **Parachain**: Moonbeam v0.35.0 (Polkadot ecosystem)
+### On-Chain Layer (ICN Chain)
+- **Framework**: Polkadot SDK (polkadot-stable2409)
+- **Deployment**: ICN Solochain → Parachain (Cumulus)
 - **Language**: Rust 1.75+
-- **EVM Layer**: Frontier for ERC-20 compatibility
+- **Optional EVM**: Frontier for ERC-20 compatibility (Phase D)
 - **Pallets**: 6 custom pallets (stake, reputation, director, bft, pinning, treasury)
 
 ### Off-Chain Layer (P2P Mesh)
 - **Runtime**: Rust 1.75+ with Tokio 1.35+ async
 - **P2P**: rust-libp2p 0.53.0 (GossipSub, Kademlia DHT, QUIC transport)
-- **Chain Client**: subxt 0.34+ for type-safe Substrate RPC
+- **Chain Client**: subxt 0.34+ for type-safe ICN Chain RPC
 - **AI Bridge**: PyO3 0.20+ for Rust ↔ Python FFI
 
 ### AI/ML Pipeline (Vortex Engine)
@@ -43,7 +43,7 @@
 ## System Architecture
 
 ### Hybrid On-Chain/Off-Chain Design
-- **On-Chain (Moonbeam)**: State changes, stake/slashing, reputation events, BFT result storage, challenge disputes
+- **On-Chain (ICN Chain)**: State changes, stake/slashing, reputation events, BFT result storage, challenge disputes
 - **Off-Chain (P2P)**: AI generation, BFT coordination, video distribution, erasure coding
 
 ### Hierarchical Swarm (4 Tiers)
@@ -74,12 +74,14 @@ BftChallenge { slot, challenger, deadline, evidence_hash, resolved }
 
 ### Critical Design Decisions (ADRs)
 
-1. **Moonbeam over Custom Parachain**: 3-6× faster, 5-10× cheaper, shared Polkadot security
-2. **Static VRAM Residency**: All AI models remain GPU-resident (no swapping, predictable latency)
-3. **Dual CLIP Ensemble**: ViT-B-32 + ViT-L-14 weighted ensemble reduces disputes by ~40%
-4. **BFT Challenge Period**: 50-block (~5 min) window for disputes, 25 ICN challenger bond, 100 ICN director slashing
-5. **VRF Director Election**: Moonbeam BABE VRF for cryptographically unpredictable selection
-6. **Reed-Solomon Erasure Coding**: 10+4 scheme with 5× geographic replication
+1. **ICN Chain over Moonbeam Extension**: Full sovereignty, no governance dependency, staged deployment
+2. **Staged Deployment**: Solochain MVP → Parachain → Coretime scaling
+3. **Static VRAM Residency**: All AI models remain GPU-resident (no swapping, predictable latency)
+4. **Dual CLIP Ensemble**: ViT-B-32 + ViT-L-14 weighted ensemble reduces disputes by ~40%
+5. **BFT Challenge Period**: 50-block (~5 min) window for disputes, 25 ICN challenger bond, 100 ICN director slashing
+6. **ICN Chain Randomness**: Runtime `T::Randomness` source for cryptographically unpredictable director selection
+7. **Reed-Solomon Erasure Coding**: 10+4 scheme with 5× geographic replication
+8. **Optional Frontier EVM**: Ethereum compatibility available when needed (Phase D)
 
 ## Validation Strategy
 
@@ -96,24 +98,27 @@ BftChallenge { slot, challenger, deadline, evidence_hash, resolved }
 
 ### Commands
 ```bash
-# Substrate pallets
+# ICN Chain build
 cargo build --release --all-features
 cargo test --all-features
 cargo clippy --all-features -- -D warnings
 
 # Runtime WASM
-cargo build --release --target wasm32-unknown-unknown -p moonbeam-runtime
+cargo build --release --target wasm32-unknown-unknown -p icn-runtime
+
+# Run local node
+./target/release/icn-node --dev --alice --rpc-port 9944
 
 # Vortex engine
 pytest vortex/tests/unit --cov=vortex
 python vortex/benchmarks/slot_generation.py --slots 5 --max-time 15
 
-# Integration
-./scripts/submit-runtime-upgrade.sh --network moonriver --wasm <path>
+# Integration tests
+cd icn-chain/test && pnpm test
 ```
 
 ## Critical Paths
 
 1. **Pallet Development**: stake → reputation → director → bft → pinning → treasury
 2. **Off-Chain Nodes**: Director (Vortex) → Super-Node (storage) → Viewer (Tauri)
-3. **Deployment**: Moonriver testnet → Security audit → Governance → Moonbeam mainnet
+3. **Deployment**: ICN Testnet → Security audit → Validator onboarding → ICN Mainnet → Parachain (optional)

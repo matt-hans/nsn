@@ -62,7 +62,7 @@ Super-Nodes operate with minimum 50 ICN stake, are geographically distributed ac
 - Long-term content archival (7-day retention default, governance-adjustable)
 - Geographic redundancy (withstand entire region outages)
 
-**Priority Justification:** Priority 2 (Important) - Required for mainnet availability SLA (99.5%) but not critical for Moonriver MVP. Initial testnet can rely on directors keeping content temporarily. Super-Nodes add production-grade durability.
+**Priority Justification:** Priority 2 (Important) - Required for mainnet availability SLA (99.5%) but not critical for ICN Testnet MVP. Initial testnet can rely on directors keeping content temporarily. Super-Nodes add production-grade durability.
 
 ## Acceptance Criteria
 
@@ -181,7 +181,7 @@ cargo fmt -p icn-super-node -- --check
   --config config/super-node.toml \
   --storage-path /mnt/icn-storage \
   --region NA-WEST \
-  --chain-endpoint wss://moonriver.api.onfinality.io
+  --chain-endpoint ws://localhost:9944
 
 # Check metrics
 curl http://localhost:9102/metrics | grep icn_super_node_
@@ -296,7 +296,7 @@ pub async fn publish_shard_manifest(
 ## Dependencies
 
 **Hard Dependencies** (must be complete first):
-- [T001] Moonbeam Repository Fork - Need chain metadata
+- [T001] ICN Chain Repository Fork - Need chain metadata
 - [T002] pallet-icn-stake - Super-Nodes must stake minimum 50 ICN
 - [T003] pallet-icn-reputation - Earn reputation for audit responses
 - [T006] pallet-icn-pinning - Pinning deals, audit challenges, rewards
@@ -365,7 +365,7 @@ pub async fn publish_shard_manifest(
 
 **Created By:** task-creator agent
 **Reason:** User request to create comprehensive off-chain node tasks for ICN project
-**Dependencies:** T001 (Moonbeam fork), T002 (stake pallet), T003 (reputation pallet), T006 (pinning pallet), T009 (director node)
+**Dependencies:** T001 (ICN Chain fork), T002 (stake pallet), T003 (reputation pallet), T006 (pinning pallet), T009 (director node)
 **Estimated Complexity:** Complex (12,000 tokens) - Storage layer with erasure coding, DHT integration, audit response
 
 ## Completion Checklist
@@ -397,4 +397,4 @@ pub async fn publish_shard_manifest(
 - [ ] Disaster recovery procedure (restore from erasure shards)
 
 **Definition of Done:**
-Task is complete when Super-Node runs for 7 days on Moonriver testnet storing 1000+ video chunks (total 50GB), successfully responds to 100+ audits with 100% success rate, serves 10,000+ shard transfers to relays, and maintains <1s average shard retrieval latency.
+Task is complete when Super-Node runs for 7 days on ICN Testnet testnet storing 1000+ video chunks (total 50GB), successfully responds to 100+ audits with 100% success rate, serves 10,000+ shard transfers to relays, and maintains <1s average shard retrieval latency.

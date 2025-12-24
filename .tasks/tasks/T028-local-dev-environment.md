@@ -25,7 +25,7 @@ actual_tokens: null
 
 ## Description
 
-Create a comprehensive local development environment using Docker Compose that enables developers to test the entire ICN stack locally without requiring Moonriver/Moonbeam access. This environment includes a local Substrate node, mock STUN/TURN servers, GPU passthrough for Vortex testing, and pre-configured model weights volume.
+Create a comprehensive local development environment using Docker Compose that enables developers to test the entire ICN stack locally. This environment includes a local ICN Chain node, mock STUN/TURN servers, GPU passthrough for Vortex testing, and pre-configured model weights volume.
 
 This is the foundation for all developer workflows and enables rapid iteration on pallets, off-chain nodes, and AI generation logic without cloud infrastructure costs.
 
@@ -44,7 +44,7 @@ This is the foundation for all developer workflows and enables rapid iteration o
 
 ## Business Context
 
-**User Story:** As a developer, I want to run the entire ICN stack locally, so that I can test changes without deploying to Moonriver or requiring expensive cloud infrastructure.
+**User Story:** As a developer, I want to run the entire ICN stack locally, so that I can test changes without deploying to ICN Testnet or requiring expensive cloud infrastructure.
 
 **Why This Matters:**
 - Reduces development cycle time from hours (deploy to testnet) to minutes (local testing)
@@ -58,7 +58,7 @@ This is the foundation for all developer workflows and enables rapid iteration o
 - Integration testing (T035)
 - Developer onboarding
 
-**Priority Justification:** P1 - Critical path blocker for all development work. Without local environment, developers must deploy to Moonriver for every code change, slowing iteration by 10-20×.
+**Priority Justification:** P1 - Critical path blocker for all development work. Without local environment, developers must deploy to ICN Testnet for every code change, slowing iteration by 10-20×.
 
 ## Acceptance Criteria
 
@@ -253,7 +253,7 @@ FROM paritytech/substrate-relay:latest
 WORKDIR /app
 
 # Copy built runtime (assumes cargo build completed)
-COPY --from=builder /app/target/release/moonbeam-runtime.wasm /app/runtime.wasm
+COPY --from=builder /app/target/release/icn_runtime.wasm /app/runtime.wasm
 
 # Pre-fund development accounts
 COPY docker/chain-spec-dev.json /app/chain-spec.json
@@ -490,7 +490,7 @@ docker-compose exec vortex ls -lh /models
 - None (this is foundation task)
 
 **Soft Dependencies** (nice to have):
-- T001 (Moonbeam Fork Setup) - provides pallet code to deploy
+- T001 (ICN Chain Bootstrap) - provides pallet code to deploy
 
 **External Dependencies:**
 - Docker 24.0+ with Compose plugin

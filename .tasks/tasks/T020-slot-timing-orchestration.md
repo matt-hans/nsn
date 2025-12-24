@@ -36,7 +36,7 @@ Implement slot timing orchestration to ensure the Vortex pipeline meets the 45-s
 - **21-26s: BFT PHASE** (off-chain, separate task)
   - Directors exchange CLIP embeddings
   - Compute 3-of-5 agreement
-  - Submit BFT result to Moonbeam
+  - Submit BFT result to ICN Chain
 - **26-40s: PROPAGATION PHASE** (off-chain, separate task)
   - Super-nodes download from canonical director
   - Regional relays download from super-nodes

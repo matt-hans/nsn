@@ -90,11 +90,11 @@ Prepare comprehensive documentation and materials for third-party security audit
 3. Increase election frequency
 
 **Mitigations:**
-- Moonbeam's BABE VRF is verifiable and unpredictable
+- ICN Chain's randomness source is verifiable and unpredictable
 - VRF output includes block hash (uncontrollable)
 - Grinding attack requires >50% stake (expensive)
 
-**Audit Question:** Are we correctly using Moonbeam's VRF? Any implementation bugs?
+**Audit Question:** Are we correctly using ICN Chain's randomness source? Any implementation bugs?
 ```
 
 **Scenario 3: DoS Attack - Challenge Spam**
@@ -331,7 +331,7 @@ tar -czf icn-audit-materials.tar.gz \
 - **Trade-offs:** Oak cheaper ($20k-$40k), Trail of Bits more comprehensive ($60k+)
 
 **Decision 2: Pre-Audit vs. Post-Audit Timeline**
-- **Rationale:** Audit before mainnet launch (Phase 2), after Moonriver testing
+- **Rationale:** Audit before mainnet launch (Phase B), after ICN Testnet validation
 - **Trade-offs:** (+) Finds bugs early. (-) Delays mainnet launch by 2-4 weeks
 
 ## Risks & Mitigations

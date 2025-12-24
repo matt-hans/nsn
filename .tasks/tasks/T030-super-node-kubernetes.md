@@ -59,7 +59,7 @@ This deployment must handle PersistentVolumeClaims for storage, horizontal pod a
 - Regional compliance (data sovereignty)
 - Community node operator participation
 
-**Priority Justification:** P2 - Critical for mainnet but depends on Super-Node implementation (T011). Required before public launch but can be tested on Moonriver with 3 regions initially.
+**Priority Justification:** P2 - Critical for mainnet but depends on Super-Node implementation (T011). Required before public launch but can be tested on ICN Testnet with 3 regions initially.
 
 ## Acceptance Criteria
 

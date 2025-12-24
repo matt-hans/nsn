@@ -14,7 +14,7 @@ context_refs:
   - context/acceptance-templates.md
 
 docs_refs:
-  - PRD Section 29 (Success Criteria - Moonriver)
+  - PRD Section 29 (Success Criteria - ICN Testnet)
 
 est_tokens: 8000
 actual_tokens: null
@@ -252,7 +252,7 @@ RUST_LOG=debug cargo test --features integration-tests
 
 ## Design Decisions
 
-**Decision 1: Local Node vs. Moonriver Testnet**
+**Decision 1: Local Node vs. ICN Testnet Testnet**
 - **Rationale:** Local node is faster (no network latency), deterministic, free
 - **Trade-offs:** (+) Fast, isolated. (-) Doesn't test real network conditions
 

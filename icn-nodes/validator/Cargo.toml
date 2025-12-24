@@ -1,0 +1,26 @@
+[package]
+name = "icn-validator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ICN Validator Node - CLIP-based semantic verification"
+
+[[bin]]
+name = "icn-validator"
+path = "src/main.rs"
+
+[dependencies]
+icn-common.workspace = true
+tokio.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+prometheus.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

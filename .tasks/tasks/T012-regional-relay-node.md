@@ -60,7 +60,7 @@ Relays operate with minimum 10 ICN stake, are distributed at city-level granular
 - Geographic load balancing (relays auto-discover viewers in their region)
 - Graceful degradation (viewers fall back to Super-Nodes if relay unavailable)
 
-**Priority Justification:** Priority 3 (Enhancement) - Nice to have for mainnet but not critical for Moonriver MVP. Early testnet can rely on Super-Node direct connections. Relays optimize for <45s glass-to-glass latency SLA.
+**Priority Justification:** Priority 3 (Enhancement) - Nice to have for mainnet but not critical for ICN Testnet MVP. Early testnet can rely on Super-Node direct connections. Relays optimize for <45s glass-to-glass latency SLA.
 
 ## Acceptance Criteria
 
@@ -293,7 +293,7 @@ pub async fn fetch_shard_from_upstream(
 ## Dependencies
 
 **Hard Dependencies** (must be complete first):
-- [T001] Moonbeam Repository Fork - For chain types (minimal usage)
+- [T001] ICN Chain Repository Fork - For chain types (minimal usage)
 - [T002] pallet-icn-stake - Relays must stake minimum 10 ICN
 - [T011] Super-Node - Relays fetch shards from Super-Nodes
 
@@ -352,7 +352,7 @@ pub async fn fetch_shard_from_upstream(
 
 **Created By:** task-creator agent
 **Reason:** User request to create comprehensive off-chain node tasks for ICN project
-**Dependencies:** T001 (Moonbeam fork), T002 (stake pallet), T011 (Super-Node)
+**Dependencies:** T001 (ICN Chain fork), T002 (stake pallet), T011 (Super-Node)
 **Estimated Complexity:** Standard (8,000 tokens) - Caching and distribution layer, relatively straightforward
 
 ## Completion Checklist

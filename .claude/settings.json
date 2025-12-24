@@ -1,6 +1,5 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "description": "Claude Code settings with portable virtual environment hook",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,12 +7,25 @@
         "hooks": [
           {
             "type": "command",
-            "command": "# Virtual Environment Auto-Activation Hook\n# This hook automatically discovers and activates Python virtual environments\n# before executing shell commands. It's portable across projects.\n\n# Skip if already activated\nif [ -n \"$VIRTUAL_ENV\" ] && [ -f \"$VIRTUAL_ENV/bin/activate\" ]; then\n  exit 0\nfi\n\n# Configuration\nVENV_NAMES=\"venv .venv env .env virtualenv\"\nSEARCH_SUBDIRS=\". backend server api src app\"\nMAX_DEPTH=5\n\n# Find project root\nfind_project_root() {\n  local dir=\"$1\"\n  local depth=0\n  while [ $depth -lt $MAX_DEPTH ] && [ \"$dir\" != \"/\" ]; do\n    if [ -f \"$dir/.git/config\" ] || [ -f \"$dir/pyproject.toml\" ] || \n       [ -f \"$dir/setup.py\" ] || [ -f \"$dir/requirements.txt\" ] || \n       [ -f \"$dir/Pipfile\" ] || [ -d \"$dir/.claude\" ]; then\n      echo \"$dir\"\n      return 0\n    fi\n    dir=$(dirname \"$dir\")\n    depth=$((depth + 1))\n  done\n  echo \"$PWD\"\n}\n\n# Check if valid venv\nis_valid_venv() {\n  [ -f \"$1/bin/activate\" ] && [ -f \"$1/bin/python\" ]\n}\n\n# Find and activate venv\nPROJECT_ROOT=$(find_project_root \"$PWD\")\n\nfor subdir in $SEARCH_SUBDIRS; do\n  if [ \"$subdir\" = \".\" ]; then\n    search_path=\"$PROJECT_ROOT\"\n  else\n    search_path=\"$PROJECT_ROOT/$subdir\"\n  fi\n  \n  [ -d \"$search_path\" ] || continue\n  \n  for venv_name in $VENV_NAMES; do\n    candidate=\"$search_path/$venv_name\"\n    if is_valid_venv \"$candidate\"; then\n      source \"$candidate/bin/activate\"\n      echo \"[venv-hook] Activated: $candidate\"\n      exit 0\n    fi\n  done\ndone\n\n# Check if this is a Python project that needs a venv\nif [ -f \"$PROJECT_ROOT/requirements.txt\" ] || [ -f \"$PROJECT_ROOT/pyproject.toml\" ] || \n   [ -f \"$PROJECT_ROOT/setup.py\" ] || [ -f \"$PROJECT_ROOT/Pipfile\" ]; then\n  echo \"[venv-hook] WARNING: Python project detected but no virtual environment found.\" >&2\n  echo \"[venv-hook] Create one with: python3 -m venv venv\" >&2\n  # Don't exit with error - allow command to proceed\nfi\n\nexit 0"
+            "command": "# Virtual Environment Auto-Activation Hook\\n# Automatically discovers and activates Python virtual environments.\\n# Portable across projects - silent pass-through when no venv exists.\\n\\n# Skip if already activated\\nif [ -n \\\"$VIRTUAL_ENV\\\" ] && [ -f \\\"$VIRTUAL_ENV/bin/activate\\\" ]; then\\n  exit 0\\nfi\\n\\n# Configuration\\n# NOTE: .env EXCLUDED - that's for dotenv files, not virtual environments\\nVENV_NAMES=\\\"venv .venv env virtualenv\\\"\\nSEARCH_SUBDIRS=\\\". backend server api src app\\\"\\nMAX_DEPTH=5\\n\\n# Find project root\\nfind_project_root() {\\n  dir=\\\"$1\\\"\\n  depth=0\\n  while [ $depth -lt $MAX_DEPTH ] && [ \\\"$dir\\\" != \\\"/\\\" ]; do\\n    if [ -f \\\"$dir/.git/config\\\" ] || [ -f \\\"$dir/pyproject.toml\\\" ] || \\n       [ -f \\\"$dir/setup.py\\\" ] || [ -f \\\"$dir/requirements.txt\\\" ] || \\n       [ -f \\\"$dir/Pipfile\\\" ] || [ -d \\\"$dir/.claude\\\" ]; then\\n      echo \\\"$dir\\\"\\n      return 0\\n    fi\\n    dir=$(dirname \\\"$dir\\\")\\n    depth=$((depth + 1))\\n  done\\n  echo \\\"$PWD\\\"\\n}\\n\\n# Check if valid venv (must have both activate script and python binary)\\nis_valid_venv() {\\n  [ -f \\\"$1/bin/activate\\\" ] && [ -f \\\"$1/bin/python\\\" ]\\n}\\n\\n# Find and activate venv\\nPROJECT_ROOT=$(find_project_root \\\"$PWD\\\")\\n\\nfor subdir in $SEARCH_SUBDIRS; do\\n  if [ \\\"$subdir\\\" = \\\".\\\" ]; then\\n    search_path=\\\"$PROJECT_ROOT\\\"\\n  else\\n    search_path=\\\"$PROJECT_ROOT/$subdir\\\"\\n  fi\\n  \\n  [ -d \\\"$search_path\\\" ] || continue\\n  \\n  for venv_name in $VENV_NAMES; do\\n    candidate=\\\"$search_path/$venv_name\\\"\\n    if is_valid_venv \\\"$candidate\\\"; then\\n      # Use . (dot) instead of source for POSIX compliance\\n      # Wrap in subshell with error handling - silent fail is better than breaking\\n      if . \\\"$candidate/bin/activate\\\" 2>/dev/null; then\\n        echo \\\"[venv-hook] Activated: $candidate\\\" >&2\\n        exit 0\\n      fi\\n    fi\\n  done\\ndone\\n\\n# Silent exit - no warning for missing venv (too noisy for non-Python projects)\\n# Projects that need venv will create one\\nexit 0"
           }
         ]
       }
     ],
-    "PostToolUse": []
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/rust-compile-check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "description": "Claude Code settings with portable virtual environment hook",
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true
   }
 }
-

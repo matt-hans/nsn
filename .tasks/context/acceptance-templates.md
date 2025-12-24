@@ -49,7 +49,7 @@ cargo clippy --all-features -- -D warnings
 cargo fmt -- --check
 
 # Build runtime WASM
-cargo build --release --target wasm32-unknown-unknown -p moonbeam-runtime
+cargo build --release --target wasm32-unknown-unknown -p icn-chain-runtime
 
 # Verify runtime weights
 cargo run --release -p icn-weights-check

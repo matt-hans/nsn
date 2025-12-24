@@ -1,0 +1,56 @@
+# Rust
+target/
+Cargo.lock
+*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.eggs/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Node.js
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*.local
+
+# Build artifacts
+*.wasm
+*.log
+
+# Model weights (download separately)
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+
+# Secrets
+*.pem
+*.key
+secrets/

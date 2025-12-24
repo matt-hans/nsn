@@ -27,7 +27,7 @@ actual_tokens: null
 
 Build a production-ready Docker image for ICN Director nodes that includes the Rust binary (core runtime), Python sidecar (Vortex engine), pre-loaded AI model weights, and all necessary dependencies. The image must support GPU passthrough for CUDA operations and expose required ports for P2P networking, metrics, and gRPC communication.
 
-This image is the deployable artifact for all Director nodes on Moonriver/Moonbeam and must be optimized for size, startup time, and runtime performance.
+This image is the deployable artifact for all Director nodes on ICN Testnet/ICN Chain and must be optimized for size, startup time, and runtime performance.
 
 **Technical Approach:**
 - Multi-stage Docker build to minimize final image size
@@ -40,7 +40,7 @@ This image is the deployable artifact for all Director nodes on Moonriver/Moonbe
 
 **Integration Points:**
 - Deployed by Kubernetes (T030) or bare metal operators
-- Connects to Moonbeam RPC endpoints
+- Connects to ICN Chain RPC endpoints
 - Publishes to P2P mesh (libp2p)
 - Exposes metrics to Prometheus (T033)
 
@@ -55,12 +55,12 @@ This image is the deployable artifact for all Director nodes on Moonriver/Moonbe
 - Reduces support burden (single artifact vs. multi-component setup)
 
 **What It Unblocks:**
-- Moonriver testnet deployment (end of Phase 1)
+- ICN Testnet testnet deployment (end of Phase 1)
 - Community node operator onboarding
 - Kubernetes orchestration (T030)
 - Production mainnet launch (Phase 2)
 
-**Priority Justification:** P2 - Critical for deployment but depends on Director node implementation (T009). Must be ready before Moonriver deployment in Week 8.
+**Priority Justification:** P2 - Critical for deployment but depends on Director node implementation (T009). Must be ready before ICN Testnet deployment in Week 8.
 
 ## Acceptance Criteria
 
@@ -216,7 +216,7 @@ USER icn
 
 # Environment variables (override via docker run -e)
 ENV RUST_LOG=info
-ENV SUBSTRATE_WS_URL=wss://wss.api.moonbeam.network
+ENV SUBSTRATE_WS_URL=ws://localhost:9944
 ENV MODELS_PATH=/models
 ENV P2P_PORT=9000
 ENV METRICS_PORT=9100
@@ -516,7 +516,7 @@ docker run --rm --gpus all \
   -p 9000:9000 \
   -p 9100:9100 \
   -p 50051:50051 \
-  -e SUBSTRATE_WS_URL=wss://wss.api.moonbeam.network \
+  -e SUBSTRATE_WS_URL=ws://localhost:9944 \
   icn-director:test
 
 # Test health check
@@ -662,4 +662,4 @@ def download_with_retry(url, output_path, max_retries=5):
 - [ ] Build cache optimization configured
 
 **Definition of Done:**
-Task is complete when a node operator can run `docker pull ghcr.io/icn/director:latest && docker run --gpus all -p 9000:9000 ghcr.io/icn/director:latest`, and within 60 seconds have a fully functional Director node connected to Moonbeam mainnet, with all AI models loaded and P2P networking active.
+Task is complete when a node operator can run `docker pull ghcr.io/icn/director:latest && docker run --gpus all -p 9000:9000 ghcr.io/icn/director:latest`, and within 60 seconds have a fully functional Director node connected to ICN Chain mainnet, with all AI models loaded and P2P networking active.

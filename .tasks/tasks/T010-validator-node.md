@@ -59,7 +59,7 @@ Unlike directors (5 elected per slot), validators operate continuously and permi
 - Reputation-weighted validator selection (high-reputation validators prioritized for challenges)
 - Reduced BFT failure rate (validators catch issues before finalization)
 
-**Priority Justification:** Priority 2 (Important) - Required for mainnet launch but not critical for Moonriver MVP. Directors can initially operate without challenge mechanism enabled. Validators add security layer before significant economic value at stake.
+**Priority Justification:** Priority 2 (Important) - Required for mainnet launch but not critical for ICN Testnet MVP. Directors can initially operate without challenge mechanism enabled. Validators add security layer before significant economic value at stake.
 
 ## Acceptance Criteria
 
@@ -164,7 +164,7 @@ cargo fmt -p icn-validator -- --check
 # Run validator (requires CLIP models downloaded)
 ./target/release/icn-validator \
   --config config/validator.toml \
-  --chain-endpoint wss://moonriver.api.onfinality.io \
+  --chain-endpoint ws://localhost:9944 \
   --keypair keys/validator.json \
   --models-dir models/clip/
 
@@ -244,7 +244,7 @@ impl Attestation {
 ## Dependencies
 
 **Hard Dependencies** (must be complete first):
-- [T001] Moonbeam Repository Fork - Need chain metadata for subxt
+- [T001] ICN Chain Repository Fork - Need chain metadata for subxt
 - [T002] pallet-icn-stake - Validators must stake minimum 10 ICN
 - [T003] pallet-icn-reputation - Validators earn reputation for correct attestations
 - [T004] pallet-icn-director - Need `PendingChallenges` storage and `resolve_challenge` extrinsic
@@ -306,7 +306,7 @@ impl Attestation {
 
 **Created By:** task-creator agent
 **Reason:** User request to create comprehensive off-chain node tasks for ICN project
-**Dependencies:** T001 (Moonbeam fork), T002 (stake pallet), T003 (reputation pallet), T004 (director pallet), T009 (director node)
+**Dependencies:** T001 (ICN Chain fork), T002 (stake pallet), T003 (reputation pallet), T004 (director pallet), T009 (director node)
 **Estimated Complexity:** Standard (10,000 tokens) - Focused verification service with CLIP inference and attestation
 
 ## Completion Checklist
@@ -336,4 +336,4 @@ impl Attestation {
 - [ ] Deployment guide written (systemd service, Docker Compose)
 
 **Definition of Done:**
-Task is complete when validator node runs for 24 hours on Moonriver testnet, successfully validates 100+ video chunks with <2% false positive rate, participates in 5+ challenge resolutions, and all CLIP inference completes within 3-second budget.
+Task is complete when validator node runs for 24 hours on ICN Testnet testnet, successfully validates 100+ video chunks with <2% false positive rate, participates in 5+ challenge resolutions, and all CLIP inference completes within 3-second budget.

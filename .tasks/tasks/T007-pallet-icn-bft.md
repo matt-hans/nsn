@@ -364,7 +364,7 @@ impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 
 ## Dependencies
 
-- **T001**: Moonbeam fork
+- **T001**: ICN Chain bootstrap
 - **T004**: pallet-icn-director for consensus finalization integration
 - **frame-support**: Storage traits
 

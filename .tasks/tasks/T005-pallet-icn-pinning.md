@@ -523,7 +523,7 @@ impl<T: Config> Pallet<T> {
 
 ## Dependencies
 
-- **T001**: Moonbeam fork
+- **T001**: ICN Chain bootstrap
 - **T002**: pallet-icn-stake for role checking and slashing
 - **frame-support**: Currency trait for payments
 - **sp-runtime**: Randomness for audit challenges

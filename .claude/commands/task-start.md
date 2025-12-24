@@ -81,7 +81,7 @@ PLUGIN CONSTRAINTS FOR PLANNING:
 substrate-architect:
 - Storage types must use Bounded variants
 - Weight plan required for each extrinsic
-- VRF integration must use Moonbeam BABE
+- VRF integration must use ICN Chain randomness source
 
 bft-prover:
 - Attestation threshold must be > 50%

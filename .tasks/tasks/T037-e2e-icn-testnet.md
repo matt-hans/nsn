@@ -1,21 +1,21 @@
 ---
 id: T037
-title: End-to-End Testing on Moonriver Testnet (50+ Nodes, Full Slot Generation)
+title: End-to-End Testing on ICN Testnet (50+ Nodes, Full Slot Generation)
 status: pending
 priority: 1
 agent: fullstack
-dependencies: [T001, T002, T003, T004, T005, T006, T007, T009, T010, T011, T028, T029, T035]
+dependencies: [T001, T002, T003, T004, T005, T006, T007, T009, T010, T011, T028, T029, T035, T038]
 blocked_by: []
 created: 2025-12-24T00:00:00Z
 updated: 2025-12-24T00:00:00Z
-tags: [testing, e2e, moonriver, integration, phase1]
+tags: [testing, e2e, icn-testnet, integration, phase-a]
 
 context_refs:
   - context/project.md
   - context/architecture.md
 
 docs_refs:
-  - PRD Section 29 (Success Criteria - Moonriver Phase 1)
+  - PRD Section 9 (Success Criteria)
   - PRD Section 6 (Deployment Phases)
 
 est_tokens: 9000
@@ -24,27 +24,30 @@ actual_tokens: null
 
 ## Description
 
-Execute comprehensive end-to-end testing on Moonriver testnet with 10+ participant nodes simulating the full ICN protocol: stake ICN tokens → elect directors → generate AI video via Vortex → achieve BFT consensus → distribute video via P2P → update reputation → handle challenges/disputes. Validates entire system under real-world network conditions before mainnet launch.
+Execute comprehensive end-to-end testing on ICN Testnet (our own Polkadot SDK solochain) with 10+ participant nodes simulating the full ICN protocol: stake ICN tokens → elect directors → generate AI video via Vortex → achieve BFT consensus → distribute video via P2P → update reputation → handle challenges/disputes. Validates entire system under real-world network conditions before mainnet launch.
+
+**Key Difference from Previous Approach**: ICN Testnet is our own chain with controlled validators - no external governance approval needed. Full sovereignty over runtime upgrades.
 
 **Test Objectives:**
-1. Verify runtime upgrade deployed successfully to Moonriver
+1. Verify ICN Chain operational with controlled validator set
 2. Simulate 10+ nodes (3 Directors, 3 Super-Nodes, 4 Viewers)
 3. Complete 10+ slot generations end-to-end
 4. Test challenge/dispute mechanism with intentional fraud
 5. Verify P2P video distribution to all viewers
 6. Measure glass-to-glass latency (<45s target)
-7. Load test BFT coordination (target: 50 TPS on-chain events)
+7. Load test BFT coordination (target: 100+ TPS on-chain events)
 
 **Success Criteria (from PRD):**
-- All pallets operational on Moonriver
+- ICN Testnet operational with controlled validators
 - 10+ test nodes participating
 - Complete staking → election → reputation → BFT flow
 - Video distribution working
+- 99.5%+ validator uptime
 
 ## Acceptance Criteria
 
-- [ ] Moonriver runtime upgrade proposal submitted and enacted
-- [ ] 10+ test accounts funded with DEV tokens (Moonriver testnet)
+- [ ] ICN Testnet deployed with 3-5 validators
+- [ ] 10+ test accounts funded with ICN tokens
 - [ ] 3 Director nodes running with GPU (RTX 3060+)
 - [ ] 3 Super-Node instances deployed (erasure storage configured)
 - [ ] 4 Viewer nodes connected to P2P mesh
@@ -56,28 +59,33 @@ Execute comprehensive end-to-end testing on Moonriver testnet with 10+ participa
 - [ ] Glass-to-glass latency measured: average <45s, P99 <60s
 - [ ] Reputation scores updated correctly for all participants
 - [ ] No critical errors in logs (panic, segfault, OOM)
-- [ ] TPS load test: 50 on-chain events/second sustained for 5 minutes
+- [ ] TPS load test: 100 on-chain events/second sustained for 5 minutes
 - [ ] Prometheus metrics collected for all nodes
 - [ ] Test report generated with performance data
 
 ## Test Scenarios
 
-**Test Case 1: Runtime Deployment and Initialization**
-- Given: Moonriver testnet access, runtime WASM built
-- When: Submit `sudo.sudoUncheckedWeight(system.setCode)` extrinsic
-- Then: Runtime upgrade succeeds, all pallets callable, no storage migration errors
+**Test Case 1: ICN Chain Deployment and Initialization**
+- Given: ICN node binary built, chain spec configured
+- When: Start 3-5 validator nodes with session keys
+- Then: Chain starts producing blocks, all validators participate, finality achieved
 
-**Test Case 2: Multi-Account Staking**
-- Given: 10 test accounts with 1000 DEV each
+**Test Case 2: Runtime Upgrade (Forkless)**
+- Given: ICN Chain running with sudo key
+- When: Submit `sudo.sudoUncheckedWeight(system.setCode)` extrinsic with new runtime WASM
+- Then: Runtime upgrade succeeds, all pallets callable, no storage migration errors, no external approval needed
+
+**Test Case 3: Multi-Account Staking**
+- Given: 10 test accounts with 1000 ICN each
 - When: Each account stakes 100-500 ICN with different roles (Director/SuperNode/Validator)
 - Then: Stakes recorded on-chain, roles assigned correctly, regional distribution enforced
 
-**Test Case 3: Director Election and Cooldown**
+**Test Case 4: Director Election and Cooldown**
 - Given: 5 Directors staked across 3 regions
 - When: Advance to slot 100
 - Then: Exactly 5 directors elected, no more than 2 from same region, cooldown prevents re-election for 20 slots
 
-**Test Case 4: Full Slot Generation**
+**Test Case 5: Full Slot Generation**
 - Given: 5 Directors elected for slot 200
 - When: Recipe published to GossipSub topic `/icn/recipes/1.0.0`
 - Then:
@@ -86,11 +94,11 @@ Execute comprehensive end-to-end testing on Moonriver testnet with 10+ participa
   3. CLIP verification scores >0.75 for all
   4. BFT coordination via gRPC completes in <10s
   5. 3+ Directors agree on canonical embedding hash
-  6. Canonical Director submits BFT result to Moonriver
+  6. Canonical Director submits BFT result to ICN Chain
   7. Super-Nodes download video chunks within 5s
   8. Viewers receive video within 30s
 
-**Test Case 5: BFT Challenge (Fraud Detection)**
+**Test Case 6: BFT Challenge (Fraud Detection)**
 - Given: Slot 250 completed with BFT result
 - When: Challenger detects fraudulent result (CLIP score <0.60), submits challenge with 25 ICN bond
 - Then:
@@ -101,7 +109,7 @@ Execute comprehensive end-to-end testing on Moonriver testnet with 10+ participa
   5. Challenger refunded 25 ICN + 10 ICN reward
   6. Reputation updated (-200 for directors, +50 for challenger)
 
-**Test Case 6: Video Distribution Hierarchy**
+**Test Case 7: Video Distribution Hierarchy**
 - Given: Canonical video generated by Director
 - When: Video published to P2P network
 - Then:
@@ -110,61 +118,63 @@ Execute comprehensive end-to-end testing on Moonriver testnet with 10+ participa
   3. Viewers (Tier 3) download from Relays within 20s
   4. Total propagation time <30s
 
-**Test Case 7: Reputation Decay and Updates**
+**Test Case 8: Reputation Decay and Updates**
 - Given: Directors and Validators with reputation scores >500
 - When: 2 weeks pass with no activity
 - Then: Reputation decays 10% per week (compounding), on-chain storage reflects updated scores
 
-**Test Case 8: Load Test - 50 TPS**
-- Given: 10+ nodes active
-- When: Submit 50 reputation events/second for 5 minutes (15,000 total events)
-- Then: All events processed, Moonriver handles load, block times stable (~6s), no timeouts
+**Test Case 9: Load Test - 100 TPS**
+- Given: 10+ nodes active, ICN Chain with own validators
+- When: Submit 100 reputation events/second for 5 minutes (30,000 total events)
+- Then: All events processed, chain handles load, block times stable (~6s), no timeouts
 
-**Test Case 9: NAT Traversal (Real Network Conditions)**
+**Test Case 10: NAT Traversal (Real Network Conditions)**
 - Given: Viewers behind NAT (home routers)
 - When: Viewers attempt P2P connections
 - Then: STUN → UPnP → Circuit Relay fallback succeeds, all viewers connected
 
-**Test Case 10: Graceful Degradation (Node Failure)**
+**Test Case 11: Graceful Degradation (Node Failure)**
 - Given: 5 Directors elected, 1 Director node crashes
 - When: BFT coordination continues with 4 remaining Directors
 - Then: Consensus reached with 3-of-4 agreement, system continues operating
 
+**Test Case 12: Validator Failure Recovery**
+- Given: 5 ICN Chain validators
+- When: 1 validator goes offline
+- Then: Chain continues producing blocks (4/5 threshold), blocks finalized, offline validator can rejoin
+
 ## Technical Implementation
 
-**File:** `scripts/moonriver-e2e-test.sh`
+**File:** `scripts/icn-testnet-e2e-test.sh`
 
 ```bash
 #!/bin/bash
 set -euo pipefail
 
-MOONRIVER_WS="wss://wss.api.moonriver.moonbeam.network"
+ICN_TESTNET_WS="ws://icn-testnet.example.com:9944"
 DIRECTOR_COUNT=3
 SUPER_NODE_COUNT=3
 VIEWER_COUNT=4
 SLOT_COUNT=10
 
-echo "🧪 ICN End-to-End Testing on Moonriver"
-echo "========================================"
+echo "🧪 ICN End-to-End Testing on ICN Testnet"
+echo "=========================================="
 
-# Step 1: Deploy runtime
-echo "1️⃣ Deploying runtime to Moonriver..."
-./scripts/submit-runtime-upgrade.sh \
-  --network moonriver \
-  --wasm target/wasm32-unknown-unknown/release/moonbeam_runtime.wasm \
-  --sudo-seed "$MOONRIVER_SUDO_KEY"
+# Step 1: Verify chain is running
+echo "1️⃣ Verifying ICN Testnet is operational..."
+./scripts/check-chain-health.sh $ICN_TESTNET_WS
 
 # Step 2: Fund test accounts
-echo "2️⃣ Funding test accounts..."
+echo "2️⃣ Funding test accounts (using sudo or faucet)..."
 for i in $(seq 1 10); do
-  ./scripts/fund-account.sh "//TestAccount$i" 1000
+  ./scripts/fund-account.sh "//TestAccount$i" 1000 --chain-url $ICN_TESTNET_WS
 done
 
 # Step 3: Start Director nodes
 echo "3️⃣ Starting $DIRECTOR_COUNT Director nodes..."
 for i in $(seq 1 $DIRECTOR_COUNT); do
   docker run -d --name director-$i --gpus all \
-    -e SUBSTRATE_WS_URL=$MOONRIVER_WS \
+    -e ICN_CHAIN_WS_URL=$ICN_TESTNET_WS \
     -e STAKING_KEY="$(cat keys/director-$i.key)" \
     ghcr.io/icn/director:latest
 done
@@ -173,7 +183,7 @@ done
 echo "4️⃣ Starting $SUPER_NODE_COUNT Super-Nodes..."
 for i in $(seq 1 $SUPER_NODE_COUNT); do
   docker run -d --name super-node-$i \
-    -e SUBSTRATE_WS_URL=$MOONRIVER_WS \
+    -e ICN_CHAIN_WS_URL=$ICN_TESTNET_WS \
     -e STAKING_KEY="$(cat keys/super-node-$i.key)" \
     ghcr.io/icn/super-node:latest
 done
@@ -192,7 +202,7 @@ sleep 30
 
 # Step 7: Stake and delegate
 echo "7️⃣ Staking accounts..."
-./scripts/stake-all-accounts.sh
+./scripts/stake-all-accounts.sh --chain-url $ICN_TESTNET_WS
 
 # Step 8: Trigger slot generations
 echo "8️⃣ Generating $SLOT_COUNT slots..."
@@ -201,7 +211,7 @@ for slot in $(seq 1 $SLOT_COUNT); do
   ./scripts/publish-recipe.sh recipes/test-recipe-$slot.json
 
   # Wait for slot completion
-  timeout 60s ./scripts/wait-for-bft-result.sh $slot || {
+  timeout 60s ./scripts/wait-for-bft-result.sh $slot --chain-url $ICN_TESTNET_WS || {
     echo "   ❌ Slot $slot failed to complete"
     exit 1
   }
@@ -211,7 +221,7 @@ done
 
 # Step 9: Trigger challenge
 echo "9️⃣ Testing challenge mechanism..."
-./scripts/submit-challenge.sh --slot 5 --evidence-hash 0xdeadbeef
+./scripts/submit-challenge.sh --slot 5 --evidence-hash 0xdeadbeef --chain-url $ICN_TESTNET_WS
 
 # Step 10: Collect metrics
 echo "🔟 Collecting performance metrics..."
@@ -226,6 +236,27 @@ echo "✅ End-to-end testing complete!"
 echo "   Report: test-results/e2e-report.html"
 ```
 
+**File:** `scripts/check-chain-health.sh`
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+CHAIN_WS_URL=$1
+
+echo "Checking ICN Chain health at $CHAIN_WS_URL..."
+
+# Check block production
+BLOCK_NUMBER=$(subxt-cli metadata --url $CHAIN_WS_URL | head -5)
+if [[ -z "$BLOCK_NUMBER" ]]; then
+  echo "❌ Chain not responding"
+  exit 1
+fi
+
+echo "✅ Chain is healthy"
+echo "   Latest block: $BLOCK_NUMBER"
+```
+
 **File:** `scripts/wait-for-bft-result.sh`
 
 ```bash
@@ -233,12 +264,12 @@ echo "   Report: test-results/e2e-report.html"
 set -euo pipefail
 
 SLOT=$1
-MOONRIVER_WS="wss://wss.api.moonriver.moonbeam.network"
+CHAIN_WS_URL="${2:-ws://localhost:9944}"
 
 echo "Waiting for BFT result for slot $SLOT..."
 
 for i in {1..60}; do
-  result=$(polkadot-js-api query.icnDirector.bftResults $SLOT)
+  result=$(subxt-cli query IcnDirector BftResults $SLOT --url $CHAIN_WS_URL 2>/dev/null || echo "null")
 
   if [[ "$result" != "null" ]]; then
     echo "✅ BFT result received for slot $SLOT"
@@ -273,17 +304,20 @@ cat > $REPORT_FILE <<EOF
 <!DOCTYPE html>
 <html>
 <head>
-  <title>ICN Moonriver E2E Test Report</title>
+  <title>ICN Testnet E2E Test Report</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 40px; }
-    .metric { margin: 20px 0; }
-    .pass { color: green; font-weight: bold; }
-    .fail { color: red; font-weight: bold; }
+    body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; background: #0d1117; color: #c9d1d9; }
+    h1 { color: #58a6ff; }
+    h2 { color: #8b949e; }
+    .metric { margin: 20px 0; padding: 15px; background: #161b22; border-radius: 8px; }
+    .pass { color: #3fb950; font-weight: bold; }
+    .fail { color: #f85149; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>ICN Moonriver E2E Test Report</h1>
+  <h1>ICN Testnet E2E Test Report</h1>
   <p>Generated: $(date)</p>
+  <p><strong>Chain:</strong> ICN Testnet (Polkadot SDK Solochain)</p>
 
   <h2>Results Summary</h2>
   <div class="metric">
@@ -316,7 +350,7 @@ cat > $REPORT_FILE <<EOF
 
   <h2>Conclusion</h2>
   <p class="$([ $successful_slots -ge 8 ] && [ $(awk 'BEGIN { print ('$avg_latency' < 45) }') -eq 1 ] && echo 'pass' || echo 'fail')">
-    $([ $successful_slots -ge 8 ] && [ $(awk 'BEGIN { print ('$avg_latency' < 45) }') -eq 1 ] && echo '✅ PASS - Ready for mainnet' || echo '❌ FAIL - Needs optimization')
+    $([ $successful_slots -ge 8 ] && [ $(awk 'BEGIN { print ('$avg_latency' < 45) }') -eq 1 ] && echo '✅ PASS - Ready for ICN Mainnet' || echo '❌ FAIL - Needs optimization')
   </p>
 </body>
 </html>
@@ -329,7 +363,7 @@ echo "Report generated: $REPORT_FILE"
 
 ```bash
 # Run full E2E test
-./scripts/moonriver-e2e-test.sh
+./scripts/icn-testnet-e2e-test.sh
 
 # Run single slot test
 ./scripts/publish-recipe.sh recipes/test.json
@@ -352,52 +386,59 @@ open test-results/e2e-report.html
 ## Dependencies
 
 **Hard Dependencies:**
-- [T001] Moonbeam Fork Setup
+- [T001] ICN Chain Bootstrap
 - [T002-T007] All pallets implemented
 - [T009-T011] Off-chain node implementations
 - [T028] Local dev environment (for testing scripts)
 - [T029] Director Docker image
 - [T035] Integration tests (validates components work)
+- [T038] Chain specification and genesis configuration
 
 **External Dependencies:**
-- Moonriver testnet access
-- DEV tokens for testing (faucet)
-- Cloud VMs for 10+ nodes (or community volunteers)
+- Cloud VMs for ICN Testnet validators (3-5 nodes)
+- Cloud VMs for 10+ test nodes (or community volunteers)
 - 3 GPUs (RTX 3060+) for Directors
 
 ## Design Decisions
 
-**Decision 1: 10 Nodes vs. 50 Nodes for Initial Test**
+**Decision 1: Own Testnet vs. External Network**
+- **Rationale:** ICN Testnet is our own chain - full control, no governance approval, fast iteration
+- **Trade-offs:** (+) Full sovereignty. (+) No external dependencies. (-) Manage our own validators
+
+**Decision 2: 10 Nodes vs. 50 Nodes for Initial Test**
 - **Rationale:** 10 nodes sufficient to validate protocol, easier to coordinate, lower cost
 - **Trade-offs:** (+) Manageable, cost-effective. (-) Doesn't test full-scale network
 
-**Decision 2: Moonriver vs. Local Testnet**
-- **Rationale:** Moonriver provides real network conditions (latency, censorship, NAT)
-- **Trade-offs:** (+) Realistic. (-) Higher costs, slower iteration
+**Decision 3: Controlled Validators**
+- **Rationale:** Use trusted validator set for testnet (3-5 nodes we operate)
+- **Trade-offs:** (+) Simple operations. (+) Fast runtime upgrades. (-) Not fully decentralized yet
 
 ## Risks & Mitigations
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Runtime upgrade rejected by governance | High | Low | Engage Moonriver community early, provide clear rationale |
+| Validator nodes crash | High | Medium | Run backup validators, automated restart |
 | Insufficient GPU capacity | High | Medium | Use cloud GPU instances (AWS g4dn, GCP A10) |
-| Network partitions during testing | Medium | Medium | Test with 3 geographically distributed nodes |
+| Network partitions during testing | Medium | Medium | Test with geographically distributed nodes |
 | BFT fails to reach consensus | High | Low | Extensive local testing first (T035), fallback to 2-of-5 threshold |
 
 ## Progress Log
 
-### [2025-12-24] - Task Created
-**Dependencies:** T001-T007, T009-T011, T028, T029, T035
+### [2025-12-24] - Task Updated
+- Rewritten for ICN Testnet (own chain) instead of Moonriver
+- Removed governance approval requirements
+- Updated scripts for ICN Chain endpoints
 
 ## Completion Checklist
 
-- [ ] Moonriver runtime deployed
+- [ ] ICN Testnet deployed with controlled validators
 - [ ] 10+ nodes running (3 Directors, 3 Super-Nodes, 4 Viewers)
 - [ ] 10+ slots generated successfully
 - [ ] Glass-to-glass latency measured (<45s avg)
 - [ ] Challenge mechanism tested
-- [ ] TPS load test passed (50 events/sec)
+- [ ] TPS load test passed (100 events/sec)
 - [ ] Test report generated
 
 **Definition of Done:**
-End-to-end testing on Moonriver demonstrates full ICN protocol with 10+ nodes, 10+ successful slot generations, glass-to-glass latency <45s average, BFT consensus rate ≥80%, and challenge mechanism validated with real fraud detection and slashing.
+End-to-end testing on ICN Testnet demonstrates full ICN protocol with 10+ nodes, 10+ successful slot generations, glass-to-glass latency <45s average, BFT consensus rate ≥80%, and challenge mechanism validated with real fraud detection and slashing.
+

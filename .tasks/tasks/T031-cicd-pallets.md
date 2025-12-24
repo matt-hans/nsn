@@ -25,7 +25,7 @@ actual_tokens: null
 
 ## Description
 
-Implement comprehensive CI/CD pipeline for Substrate pallets using GitHub Actions. Pipeline includes Rust compilation (nightly-2024-01-01), unit/integration tests, Clippy linting, security auditing (cargo-audit, cargo-deny), runtime WASM build, and automated Moonriver deployment on merge to develop branch.
+Implement comprehensive CI/CD pipeline for ICN Chain runtime and pallets using GitHub Actions. Pipeline includes Rust compilation, unit/integration tests, Clippy linting, security auditing (cargo-audit, cargo-deny), runtime WASM build, and automated ICN Testnet deployment on merge to develop branch.
 
 **Technical Approach:**
 - GitHub Actions workflow with matrix strategy for pallet testing
@@ -33,12 +33,12 @@ Implement comprehensive CI/CD pipeline for Substrate pallets using GitHub Action
 - wasm32-unknown-unknown target for runtime builds
 - Parallel test execution across pallets
 - Cached dependencies for faster builds (<5 min)
-- Automated runtime upgrade submission to Moonriver
+- Automated runtime upgrade submission to ICN Testnet
 
 **Integration Points:**
 - Triggered on PR, push to main/develop
 - Artifacts: Runtime WASM, benchmarks, coverage reports
-- Deploys to Moonriver testnet on develop branch merge
+- Deploys to ICN Testnet on develop branch merge
 
 ## Business Context
 
@@ -48,7 +48,7 @@ Implement comprehensive CI/CD pipeline for Substrate pallets using GitHub Action
 - Reduces time-to-deployment from hours to minutes
 - Catches bugs before code review
 - Ensures runtime WASM always builds successfully
-- Automates Moonriver testnet deployments
+- Automates ICN Testnet deployments
 
 **What It Unblocks:**
 - Rapid pallet iteration (Phase 1)
@@ -69,7 +69,7 @@ Implement comprehensive CI/CD pipeline for Substrate pallets using GitHub Action
 - [ ] cargo-deny checks pass (licenses, advisories, bans)
 - [ ] Runtime WASM builds successfully for wasm32-unknown-unknown target
 - [ ] Benchmark weights checked for excessive growth (>10% increase fails)
-- [ ] Automated Moonriver runtime upgrade on develop branch merge
+- [ ] Automated ICN Testnet runtime upgrade on develop branch merge
 - [ ] Build time <10 minutes (with caching)
 - [ ] Artifacts uploaded: WASM, coverage, benchmarks
 
@@ -90,10 +90,10 @@ Implement comprehensive CI/CD pipeline for Substrate pallets using GitHub Action
 - When: Benchmarks run and compare to baseline
 - Then: If weights increase >10%, build fails with "Weight regression detected" error
 
-**Test Case 4: Automated Moonriver Deployment**
+**Test Case 4: Automated ICN Testnet Deployment**
 - Given: PR merged to develop branch
 - When: CI/CD pipeline completes all checks
-- Then: Runtime WASM submitted to Moonriver via `submit-runtime-upgrade.sh`, upgrade proposed on-chain
+- Then: Runtime WASM submitted to ICN Testnet via `submit-runtime-upgrade.sh`, upgrade proposed on-chain
 
 **Test Case 5: Caching Effectiveness**
 - Given: Two sequential builds with no dependency changes
@@ -266,19 +266,19 @@ jobs:
 
       - name: Build WASM
         run: |
-          cargo build --release --target wasm32-unknown-unknown -p moonbeam-runtime
+          cargo build --release --target wasm32-unknown-unknown -p icn-runtime
 
       - name: Upload WASM Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: moonbeam-runtime-wasm
-          path: target/wasm32-unknown-unknown/release/moonbeam_runtime.wasm
+          name: icn-runtime-wasm
+          path: target/wasm32-unknown-unknown/release/icn_runtime.wasm
 
       - name: Check Weight Benchmarks
         run: cargo run --release -p icn-weights-check
 
-  deploy-moonriver:
-    name: Deploy to Moonriver
+  deploy-icn-testnet:
+    name: Deploy to ICN Testnet
     runs-on: ubuntu-latest
     needs: [build-wasm, security]
     if: github.ref == 'refs/heads/develop'
@@ -288,7 +288,7 @@ jobs:
       - name: Download WASM
         uses: actions/download-artifact@v3
         with:
-          name: moonbeam-runtime-wasm
+          name: icn-runtime-wasm
           path: ./wasm
 
       - name: Setup Substrate Tools
@@ -302,8 +302,8 @@ jobs:
           MOONRIVER_SUDO_KEY: ${{ secrets.MOONRIVER_SUDO_KEY }}
         run: |
           ./scripts/submit-runtime-upgrade.sh \
-            --network moonriver \
-            --wasm ./wasm/moonbeam_runtime.wasm \
+            --network icn-testnet \
+            --wasm ./wasm/icn_runtime.wasm \
             --sudo-seed "$MOONRIVER_SUDO_KEY"
 ```
 
@@ -327,10 +327,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$NETWORK" == "moonriver" ]]; then
-  WS_URL="wss://wss.api.moonriver.moonbeam.network"
-elif [[ "$NETWORK" == "moonbeam" ]]; then
-  WS_URL="wss://wss.api.moonbeam.network"
+if [[ "$NETWORK" == "icn-testnet" ]]; then
+  WS_URL="wss://testnet.icn.example.com"
+elif [[ "$NETWORK" == "icn-mainnet" ]]; then
+  WS_URL="wss://mainnet.icn.example.com"
 else
   echo "Invalid network: $NETWORK"
   exit 1
@@ -418,12 +418,12 @@ gh run download <run_id>
 ## Dependencies
 
 **Hard Dependencies:**
-- [T001] Moonbeam Fork Setup - provides pallet code
+- [T001] ICN Chain Bootstrap - provides pallet code
 - [T002] pallet-icn-stake - first pallet to test
 
 **External Dependencies:**
 - GitHub Actions runner with 4 CPU cores
-- Moonriver testnet access
+- ICN Testnet access (our own chain)
 - MOONRIVER_SUDO_KEY secret in GitHub repo
 
 ## Design Decisions
@@ -447,7 +447,7 @@ gh run download <run_id>
 | Nightly toolchain breaks | High | Low | Pin to specific nightly (nightly-2024-01-01), test upgrades in separate PR |
 | CI queue time >30 min | Medium | High | Use GitHub Actions matrix parallelism, aggressive caching |
 | False positive security alerts | Low | Medium | Maintain cargo-deny allowlist for false positives |
-| Moonriver upgrade fails | High | Low | Test on local node first, require manual approval step for mainnet |
+| ICN Testnet upgrade fails | High | Low | Test on local node first, require manual approval step for mainnet |
 
 ## Progress Log
 
@@ -478,4 +478,4 @@ gh run download <run_id>
 - [ ] Troubleshooting common CI failures
 
 **Definition of Done:**
-Task is complete when GitHub Actions workflow automatically builds, tests, and deploys all 6 pallets on every PR/merge, with full test coverage reporting, security scanning, and automated Moonriver runtime upgrades on develop branch.
+Task is complete when GitHub Actions workflow automatically builds, tests, and deploys all 6 pallets on every PR/merge, with full test coverage reporting, security scanning, and automated ICN Testnet runtime upgrades on develop branch.

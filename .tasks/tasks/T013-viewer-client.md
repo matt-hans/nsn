@@ -63,7 +63,7 @@ Viewers operate permissionlessly (no stake required for consumption), represent 
 - Revenue generation (future: premium features, in-app ICN purchasing)
 - Community-driven content curation (upvoting, playlists)
 
-**Priority Justification:** Priority 2 (Important) - Required for public mainnet launch but not critical for Moonriver MVP. Initial testnet can use CLI tools or browser DevTools. Viewer app is the "front door" for mainstream users.
+**Priority Justification:** Priority 2 (Important) - Required for public mainnet launch but not critical for ICN Testnet MVP. Initial testnet can use CLI tools or browser DevTools. Viewer app is the "front door" for mainstream users.
 
 ## Acceptance Criteria
 

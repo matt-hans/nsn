@@ -58,7 +58,7 @@ Implement ReputationOracle service that synchronizes on-chain reputation scores 
 
 ## Acceptance Criteria
 
-- [ ] **Chain Client**: subxt OnlineClient connected to Moonbeam RPC
+- [ ] **Chain Client**: subxt OnlineClient connected to ICN Chain RPC
 - [ ] **Storage Query**: Queries pallet-icn-reputation::ReputationScores storage
 - [ ] **Cache Update**: Updates local cache with fetched scores
 - [ ] **PeerId Mapping**: Maps AccountId32 to PeerId correctly

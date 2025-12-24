@@ -344,7 +344,7 @@ curl http://localhost:9100/metrics | grep icn_p2p
 ## Dependencies
 
 **Hard Dependencies** (must be complete first):
-- [T001] Moonbeam Fork and Development Environment - provides Rust toolchain and Substrate types
+- [T001] ICN Chain Fork and Development Environment - provides Rust toolchain and Substrate types
 
 **Soft Dependencies:**
 - None (foundation layer)
@@ -391,7 +391,7 @@ curl http://localhost:9100/metrics | grep icn_p2p
 | QUIC blocked by firewall | High | Medium | Implement TCP fallback in T023 (NAT traversal), advertise both QUIC and TCP multiaddrs |
 | Connection limit too low | Medium | Low | Make connection limits configurable, monitor metrics in production, increase if needed |
 | Keypair loss/corruption | High | Low | Implement keypair backup/recovery mechanism, encrypted storage, clear documentation for operators |
-| libp2p version incompatibility | Medium | Low | Pin to exact version 0.53.0, test upgrades in Moonriver before Moonbeam mainnet |
+| libp2p version incompatibility | Medium | Low | Pin to exact version 0.53.0, test upgrades in ICN Testnet before ICN Chain mainnet |
 | Noise handshake failure | Medium | Medium | Implement retry logic with exponential backoff, log detailed error context, fallback to unencrypted transport in dev mode only |
 | Yamux stream deadlock | Low | Low | Implement stream timeouts, monitor stream count metrics, use libp2p's tested yamux implementation |
 
@@ -401,7 +401,7 @@ curl http://localhost:9100/metrics | grep icn_p2p
 
 **Created By:** task-creator agent
 **Reason:** User request for P2P networking layer tasks (Phase 1)
-**Dependencies:** T001 (Moonbeam fork and dev environment)
+**Dependencies:** T001 (ICN Chain fork and dev environment)
 **Estimated Complexity:** Standard (core infrastructure, well-defined scope)
 
 ## Completion Checklist

@@ -33,7 +33,7 @@ Implement the director election pallet that uses VRF-based randomness to select 
 ## Acceptance Criteria
 
 1. `on_initialize()` hook triggers director election at correct slot boundaries (~8 blocks/slot)
-2. `elect_directors()` uses Moonbeam's `T::Randomness` (BABE VRF) for cryptographically secure randomness
+2. `elect_directors()` uses ICN Chain's `T::Randomness` for cryptographically secure randomness
 3. Exactly 5 directors elected per slot from eligible candidates (Director role + not in cooldown)
 4. Multi-region constraint enforced: maximum 2 directors from same region per slot
 5. Reputation-weighted selection with sublinear scaling (sqrt) and ±20% deterministic jitter
@@ -604,7 +604,7 @@ impl<T: Config> Pallet<T> {
 
 ## Dependencies
 
-- **T001**: Moonbeam fork
+- **T001**: ICN Chain bootstrap
 - **T002**: pallet-icn-stake for role checking and slashing
 - **T003**: pallet-icn-reputation for weighted selection
 - **frame-support**: Randomness trait for VRF
@@ -612,7 +612,7 @@ impl<T: Config> Pallet<T> {
 
 ## Design Decisions
 
-1. **VRF over block hash**: Moonbeam's BABE VRF is cryptographically unpredictable, whereas block hashes can be influenced by block producers.
+1. **VRF over block hash**: ICN Chain's randomness source is cryptographically unpredictable, whereas block hashes can be influenced by block producers.
 
 2. **2-slot lookahead**: Electing directors 2 slots ahead gives them ~90 seconds to coordinate off-chain BFT before their slot starts.
 

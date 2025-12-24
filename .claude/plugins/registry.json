@@ -6,7 +6,7 @@
       "interface": "plugins/interfaces/substrate.md",
       "full_context": "plugins/substrate-architect.md",
       "activation": {
-        "tags": ["pallets", "substrate", "on-chain", "runtime", "moonbeam"],
+        "tags": ["pallets", "substrate", "on-chain", "runtime", "icn-chain"],
         "file_patterns": ["pallets/**/*.rs", "runtime/**/*.rs", "**/pallet-*.rs"],
         "content_signals": ["#[pallet::", "frame_support", "pallet-icn-", "StorageValue", "StorageMap"]
       },

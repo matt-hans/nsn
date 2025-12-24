@@ -19,7 +19,7 @@ Plugin interface for substrate-architect validation.
 ## L2 Mandatory Checks
 
 - Benchmark functions MUST exist for all extrinsics
-- Runtime integration MUST compile in moonbeam-runtime context
+- Runtime integration MUST compile in icn-chain-runtime context
 - Saturating arithmetic MUST be used (no overflow panics)
 
 ## L3 Standard Guidance
@@ -50,7 +50,7 @@ Plugin interface for substrate-architect validation.
 - Score thresholds per role
 
 ### Director Pallet
-- VRF election via Moonbeam BABE integration
+- VRF election via ICN Chain randomness source
 - BFT result storage with attestation mapping
 - Challenge mechanism with 50-block window
 

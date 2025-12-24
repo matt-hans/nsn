@@ -28,7 +28,7 @@ Implement the treasury pallet that manages ICN token emissions according to the 
 
 **Value delivered**: Creates a self-sustaining economic model where network participants are rewarded proportionally to their contribution type (generation > validation > storage > governance).
 
-**Priority justification**: P2 because reward distribution can be simulated off-chain initially. Required for mainnet economic security but not blocking Phase 1 Moonriver testing.
+**Priority justification**: P2 because reward distribution can be simulated off-chain initially. Required for mainnet economic security but not blocking Phase A ICN Testnet.
 
 ## Acceptance Criteria
 
@@ -437,7 +437,7 @@ impl<T: Config> Pallet<T> {
 
 ## Dependencies
 
-- **T001**: Moonbeam fork
+- **T001**: ICN Chain bootstrap
 - **T002**: pallet-icn-stake for role identification
 - **frame-support**: Currency trait for transfers
 

@@ -1,0 +1,29 @@
+[package]
+name = "icn-super-node"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ICN Super-Node - Tier 1 erasure-coded storage and relay"
+
+[[bin]]
+name = "icn-super-node"
+path = "src/main.rs"
+
+[dependencies]
+icn-common.workspace = true
+tokio.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+prometheus.workspace = true
+
+# Erasure coding
+reed-solomon-erasure = "6.0"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
