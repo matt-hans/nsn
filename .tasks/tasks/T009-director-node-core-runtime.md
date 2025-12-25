@@ -342,3 +342,20 @@ fn compute_agreement(embeddings: Vec<(PeerId, Vec<f32>)>) -> BftResult {
 
 **Definition of Done:**
 Task is complete when director node binary runs autonomously for 24 hours on ICN Testnet, successfully participates in 10+ elections, achieves 3-of-5 BFT consensus in >90% of rounds, and all observability metrics are within SLO targets (<2s BFT exchange, <10s total round time, >10 P2P peers).
+
+---
+
+## Technical Reference (from context7)
+
+- **Dependencies**: `tokio 1.35+` (async runtime), `libp2p 0.53+` (GossipSub, Kademlia, QUIC transport)
+- **Patterns**:
+  - Use `#[tokio::main]` macro or `Runtime::new()` for async entrypoint
+  - `tokio::spawn` for concurrent task execution (per-connection handlers)
+  - `tokio::select!` for racing multiple async operations (election events vs timeouts)
+  - `mpsc::channel` for multi-producer single-consumer messaging between tasks
+- **APIs**:
+  - `SwarmBuilder::with_new_identity().with_tokio().with_tcp()` → Configure libp2p swarm
+  - `gossipsub::Behaviour::new()` with `MessageAuthenticity::Signed` for pub/sub
+  - `kad::Behaviour::new()` + `MemoryStore` for DHT key-value storage
+  - `swarm.listen_on("/ip4/0.0.0.0/tcp/0")` → Start listener
+- **Source**: [context7/tokio-rs/tokio](https://context7.com/tokio-rs/tokio), [context7/libp2p/rust-libp2p](https://context7.com/libp2p/rust-libp2p)

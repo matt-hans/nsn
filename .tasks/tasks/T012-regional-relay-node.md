@@ -382,3 +382,20 @@ pub async fn fetch_shard_from_upstream(
 
 **Definition of Done:**
 Task is complete when relay runs for 24 hours on testnet serving 100+ viewers, achieves >80% cache hit rate, maintains <100ms average shard delivery latency, and successfully fails over to backup Super-Node within 1 second during simulated upstream outage.
+
+---
+
+## Technical Reference (from context7)
+
+- **Dependencies**: `libp2p 0.53+` (Kademlia, QUIC), `lru 0.12+`, `quinn 0.11+` (QUIC transport)
+- **Patterns**:
+  - DHT query: `swarm.behaviour_mut().kademlia.get_record(key)` → Discover shard manifests
+  - Stream-based protocol: `Control.accept(StreamProtocol::new("/my-protocol"))` for inbound
+  - `Control.open_stream(peer_id, protocol)` → Outbound QUIC stream to Super-Node
+  - Latency detection via `tokio::time::timeout(Duration, TcpStream::connect())`
+- **APIs**:
+  - `kad::Behaviour::new(peer_id, MemoryStore)` → Initialize Kademlia
+  - `swarm.select_next_some().await` → Event loop for handling peer events
+  - `kad::Event::OutboundQueryProgressed { result: GetRecordOk }` → Handle DHT responses
+  - QUIC endpoint: `quinn::Endpoint::client()` with TLS config for secure transport
+- **Source**: [context7/libp2p/rust-libp2p](https://context7.com/libp2p/rust-libp2p), [context7/tokio-rs/tokio](https://context7.com/tokio-rs/tokio)

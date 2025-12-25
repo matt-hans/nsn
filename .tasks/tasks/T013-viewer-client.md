@@ -437,3 +437,20 @@ export class AdaptiveBitrateController {
 
 **Definition of Done:**
 Task is complete when viewer app is installed and used by 10+ beta testers for 7 days, achieves >95% playback success rate (no buffering), <10s cold start time, and receives positive UX feedback (NPS >8) indicating readiness for public launch.
+
+---
+
+## Technical Reference (from context7)
+
+- **Dependencies**: `@tauri-apps/api 2.0+`, `@tauri-apps/plugin-shell`, React 18+, Zustand 4+
+- **Patterns**:
+  - `invoke('command_name', { arg1, arg2 })` → Call Rust backend from frontend
+  - `mockIPC()` with `@tauri-apps/api/mocks` for testing command responses
+  - State management: `create<AppState>((set) => ({ field: value, setField: (v) => set({ field: v }) }))`
+  - Plugin command format: `invoke('plugin:name|command', payload)`
+- **APIs**:
+  - `import { invoke } from '@tauri-apps/api/core'` → Primary IPC function
+  - `#[tauri::command] fn my_command() -> String` (Rust) → Define backend command
+  - `tauri::generate_handler![cmd1, cmd2]` → Register commands in plugin/app
+  - Event mocking: `mockIPC(() => {}, { shouldMockEvents: true })` for listen/emit testing
+- **Source**: [context7/tauri_app](https://tauri.app/develop/calling-rust), [context7/tauri_app (testing)](https://tauri.app/develop/tests/mocking)

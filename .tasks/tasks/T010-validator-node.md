@@ -337,3 +337,20 @@ impl Attestation {
 
 **Definition of Done:**
 Task is complete when validator node runs for 24 hours on ICN Testnet testnet, successfully validates 100+ video chunks with <2% false positive rate, participates in 5+ challenge resolutions, and all CLIP inference completes within 3-second budget.
+
+---
+
+## Technical Reference (from context7)
+
+- **Dependencies**: `ort 2.0+` (ONNX Runtime Rust wrapper), `tokio 1.35+`, `libp2p 0.53+`
+- **Patterns**:
+  - Use `Session::builder()?.with_optimization_level(Level3)?.commit_from_file()` for model loading
+  - `session.run(ort::inputs!["image" => tensor])?` for inference execution
+  - Retrieve outputs by name: `outputs["output0"].try_extract_array::<f32>()?`
+  - Ed25519 attestation signing with structured message format
+- **APIs**:
+  - `Session::builder()` → Configure ONNX session with optimization level and thread count
+  - `GraphOptimizationLevel::Level3` → Maximum optimization for inference performance
+  - `with_intra_threads(4)` → Parallel inference within session
+  - GossipSub subscription via `swarm.behaviour_mut().gossipsub.subscribe(&topic)`
+- **Source**: [context7/pykeio/ort](https://github.com/pykeio/ort), [context7/tokio-rs/tokio](https://context7.com/tokio-rs/tokio)

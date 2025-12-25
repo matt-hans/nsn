@@ -398,3 +398,20 @@ pub async fn publish_shard_manifest(
 
 **Definition of Done:**
 Task is complete when Super-Node runs for 7 days on ICN Testnet testnet storing 1000+ video chunks (total 50GB), successfully responds to 100+ audits with 100% success rate, serves 10,000+ shard transfers to relays, and maintains <1s average shard retrieval latency.
+
+---
+
+## Technical Reference (from context7)
+
+- **Dependencies**: `reed-solomon-simd 3.0+` (SIMD-optimized erasure coding), `libp2p 0.53+` (Kademlia DHT)
+- **Patterns**:
+  - `reed_solomon_simd::encode(10, 4, original_shards)` → Generate 4 parity from 10 data shards
+  - `reed_solomon_simd::decode(10, 4, available_originals, available_recovery)` → Reconstruct
+  - DHT record storage: `kad::Record { key, value, publisher: None, expires: None }`
+  - `kademlia.put_record(record, kad::Quorum::One)` for shard manifest publishing
+- **APIs**:
+  - `encode(original_count, recovery_count, data)` → Returns `Vec<Vec<u8>>` of recovery shards
+  - `decode()` with tuple iterators `[(index, &shard)]` for partial reconstruction
+  - `kademlia.set_mode(Some(kad::Mode::Server))` → Enable DHT serving
+  - `swarm.behaviour_mut().kademlia.add_address(&peer_id, multiaddr)` → Peer discovery
+- **Source**: [context7/reed-solomon-simd](https://docs.rs/reed-solomon-simd), [context7/libp2p/rust-libp2p](https://context7.com/libp2p/rust-libp2p)
