@@ -80,7 +80,7 @@ pub mod pallet {
 	use super::*;
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
-	pub type BlockNumberFor<T> = <T as frame_system::Config>::BlockNumber;
+	use sp_runtime::traits::{Hash, Saturating, Zero};
 
 	/// Pallet for ICN reputation tracking
 	#[pallet::pallet]
@@ -103,19 +103,26 @@ pub mod pallet {
 		///
 		/// Can be adjusted by governance via storage update.
 		#[pallet::constant]
-		type DefaultRetentionPeriod: Get<Self::BlockNumber>;
+		type DefaultRetentionPeriod: Get<BlockNumberFor<Self>>;
 
 		/// Checkpoint interval in blocks (default: 1000)
 		///
 		/// Every N blocks, a snapshot of all reputation scores is taken.
 		#[pallet::constant]
-		type CheckpointInterval: Get<Self::BlockNumber>;
+		type CheckpointInterval: Get<BlockNumberFor<Self>>;
 
 		/// Decay rate per week in percent (default: 5)
 		///
 		/// Applied to inactive accounts based on last_activity.
 		#[pallet::constant]
 		type DecayRatePerWeek: Get<u64>;
+
+		/// Maximum accounts to include in checkpoint (L0: bounded iteration)
+		///
+		/// Prevents unbounded iteration in create_checkpoint().
+		/// Realistic bound: < 10,000 accounts (MVP phase).
+		#[pallet::constant]
+		type MaxCheckpointAccounts: Get<u32>;
 
 		/// Weight information for extrinsics
 		type WeightInfo: WeightInfo;
@@ -169,7 +176,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn merkle_roots)]
 	pub type MerkleRoots<T: Config> =
-		StorageMap<_, Twox64Concat, T::BlockNumber, T::Hash, OptionQuery>;
+		StorageMap<_, Twox64Concat, BlockNumberFor<T>, T::Hash, OptionQuery>;
 
 	/// Checkpoints created at regular intervals
 	///
@@ -186,8 +193,8 @@ pub mod pallet {
 	pub type Checkpoints<T: Config> = StorageMap<
 		_,
 		Twox64Concat,
-		T::BlockNumber,
-		CheckpointData<T::Hash, T::BlockNumber>,
+		BlockNumberFor<T>,
+		CheckpointData<T::Hash, BlockNumberFor<T>>,
 		OptionQuery,
 	>;
 
@@ -204,7 +211,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn retention_period)]
 	pub type RetentionPeriod<T: Config> =
-		StorageValue<_, T::BlockNumber, ValueQuery, T::DefaultRetentionPeriod>;
+		StorageValue<_, BlockNumberFor<T>, ValueQuery, T::DefaultRetentionPeriod>;
 
 	/// Aggregated reputation events for TPS optimization
 	///
@@ -237,6 +244,12 @@ pub mod pallet {
 		MerkleRootPublished { block: BlockNumberFor<T>, root: T::Hash, event_count: u32 },
 		/// Checkpoint created
 		CheckpointCreated { block: BlockNumberFor<T>, score_count: u32 },
+		/// Checkpoint truncated (exceeded MaxCheckpointAccounts)
+		CheckpointTruncated {
+			block: BlockNumberFor<T>,
+			total: u32,
+			included: u32,
+		},
 		/// Old events pruned
 		EventsPruned { before_block: BlockNumberFor<T>, count: u32 },
 		/// Retention period updated
@@ -248,10 +261,6 @@ pub mod pallet {
 	pub enum Error<T> {
 		/// Maximum events per block exceeded
 		MaxEventsExceeded,
-		/// Invalid slot number
-		InvalidSlot,
-		/// Arithmetic overflow in decay calculation
-		DecayOverflow,
 	}
 
 	/// Hooks for block finalization
@@ -370,7 +379,7 @@ pub mod pallet {
 		#[pallet::weight(10_000)]
 		pub fn update_retention(
 			origin: OriginFor<T>,
-			new_period: T::BlockNumber,
+			new_period: BlockNumberFor<T>,
 		) -> DispatchResult {
 			ensure_root(origin)?;
 
@@ -401,7 +410,7 @@ pub mod pallet {
 		/// # L2: Saturating arithmetic
 		/// No arithmetic operations, just hashing.
 		pub fn compute_merkle_root(
-			events: &[ReputationEvent<T::AccountId, T::BlockNumber>],
+			events: &[ReputationEvent<T::AccountId, BlockNumberFor<T>>],
 		) -> T::Hash {
 			if events.is_empty() {
 				return T::Hash::default();
@@ -460,19 +469,22 @@ pub mod pallet {
 		/// * `block` - Current block number
 		///
 		/// # Behavior
-		/// 1. Iterate all reputation scores
+		/// 1. Iterate all reputation scores (bounded by MaxCheckpointAccounts)
 		/// 2. Compute Merkle root of (account, score) pairs
 		/// 3. Store checkpoint with count and root
 		///
 		/// # L0 Compliance
-		/// Iteration bounded by number of accounts with reputation.
-		/// Realistic bound: < 10,000 accounts (MVP phase).
-		fn create_checkpoint(block: T::BlockNumber) {
-			// Collect all reputation scores into a Vec
-			// Note: This is bounded by actual account count with reputation
-			let scores: Vec<(T::AccountId, ReputationScore)> =
-				ReputationScores::<T>::iter().collect();
+		/// Iteration bounded by MaxCheckpointAccounts constant.
+		/// If account count exceeds limit, checkpoint is truncated and warning emitted.
+		fn create_checkpoint(block: BlockNumberFor<T>) {
+			// L0: Bounded iteration to prevent unbounded storage reads
+			let max_accounts = T::MaxCheckpointAccounts::get() as usize;
 
+			let scores: Vec<(T::AccountId, ReputationScore)> = ReputationScores::<T>::iter()
+				.take(max_accounts) // L0: Bounded iteration
+				.collect();
+
+			let total_accounts = ReputationScores::<T>::count();
 			let score_count = scores.len() as u32;
 			let merkle_root = Self::compute_scores_merkle(&scores);
 
@@ -480,7 +492,16 @@ pub mod pallet {
 
 			Checkpoints::<T>::insert(block, checkpoint);
 
-			Self::deposit_event(Event::CheckpointCreated { block, score_count });
+			// Emit warning if checkpoint was truncated
+			if total_accounts > score_count {
+				Self::deposit_event(Event::CheckpointTruncated {
+					block,
+					total: total_accounts,
+					included: score_count,
+				});
+			} else {
+				Self::deposit_event(Event::CheckpointCreated { block, score_count });
+			}
 		}
 
 		/// Compute Merkle root of all reputation scores
@@ -500,7 +521,7 @@ pub mod pallet {
 
 			// Hash each (account, score) pair as a leaf
 			let leaves: Vec<T::Hash> =
-				scores.iter().map(|(account, score)| T::Hashing::hash_of(&(*account, score))).collect();
+				scores.iter().map(|(account, score)| T::Hashing::hash_of(&(account, score))).collect();
 
 			Self::build_merkle_tree(&leaves)
 		}
@@ -518,7 +539,7 @@ pub mod pallet {
 		/// # L0 Compliance
 		/// Bounded iteration over MerkleRoots and Checkpoints.
 		/// Pruning ensures storage doesn't grow unbounded.
-		fn prune_old_events(before_block: T::BlockNumber) {
+		fn prune_old_events(before_block: BlockNumberFor<T>) {
 			let mut pruned_roots = 0u32;
 
 			// Prune Merkle roots (L0: bounded iteration)

@@ -327,6 +327,7 @@ parameter_types! {
 	pub const MaxStakePerNode: Balance = 1_000 * UNIT;  // 1000 ICN (anti-centralization)
 	pub const MaxRegionPercentage: u32 = 20;            // 20% max per region
 	pub const DelegationMultiplier: u32 = 5;            // 5× validator stake
+	pub const RegionCapBootstrapStake: Balance = 1_000 * UNIT; // Enforce caps after 1000 ICN total
 	pub const MaxDelegationsPerDelegator: u32 = 10;     // L0 constraint: bounded
 	pub const MaxDelegatorsPerValidator: u32 = 100;     // L0 constraint: bounded
 }
@@ -341,10 +342,11 @@ impl pallet_icn_stake::Config for Runtime {
 	type MinStakeRelay = MinStakeRelay;
 	type MaxStakePerNode = MaxStakePerNode;
 	type MaxRegionPercentage = MaxRegionPercentage;
+	type RegionCapBootstrapStake = RegionCapBootstrapStake;
 	type DelegationMultiplier = DelegationMultiplier;
 	type MaxDelegationsPerDelegator = MaxDelegationsPerDelegator;
 	type MaxDelegatorsPerValidator = MaxDelegatorsPerValidator;
-	type WeightInfo = ();
+	type WeightInfo = pallet_icn_stake::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_icn_reputation::Config for Runtime {

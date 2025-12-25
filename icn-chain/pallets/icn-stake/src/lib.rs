@@ -99,6 +99,10 @@ pub mod pallet {
 		#[pallet::constant]
 		type MaxRegionPercentage: Get<u32>;
 
+		/// Stake total threshold before enforcing region caps (bootstrap phase)
+		#[pallet::constant]
+		type RegionCapBootstrapStake: Get<BalanceOf<Self>>;
+
 		/// Delegation multiplier (5× validator stake)
 		#[pallet::constant]
 		type DelegationMultiplier: Get<u32>;
@@ -306,9 +310,8 @@ pub mod pallet {
 				.ok_or(Error::<T>::Overflow)?;
 
 			// Check: new_region_stake * 100 <= new_network_total * MaxRegionPercentage
-			// Skip region cap check during bootstrap phase (first full staker)
-			// Bootstrap threshold: MaxStakePerNode (one full node) before enforcing region caps
-			let bootstrap_threshold = T::MaxStakePerNode::get();
+			// Bootstrap: enforce region caps only after total stake exceeds threshold.
+			let bootstrap_threshold = T::RegionCapBootstrapStake::get();
 			if current_total >= bootstrap_threshold {
 				let region_percent_scaled = new_region_stake.saturating_mul(100u32.into());
 				let max_allowed_scaled =
@@ -338,10 +341,11 @@ pub mod pallet {
 			// Determine role based on new stake amount
 			let role = Self::determine_role(new_total);
 
-			// Calculate unlock block
-			let unlock_at = <frame_system::Pallet<T>>::block_number()
+			// Calculate unlock block (never shorten an existing lock)
+			let requested_unlock = <frame_system::Pallet<T>>::block_number()
 				.checked_add(&lock_blocks)
 				.ok_or(Error::<T>::Overflow)?;
+			let unlock_at = sp_std::cmp::max(current_stake.locked_until, requested_unlock);
 
 			// Update storage
 			Stakes::<T>::insert(
@@ -460,6 +464,14 @@ pub mod pallet {
 			// Calculate new stake
 			let new_amount = stake_info.amount.saturating_sub(amount);
 
+			// Enforce delegation cap after reducing validator stake
+			let max_delegation =
+				new_amount.saturating_mul(T::DelegationMultiplier::get().into());
+			ensure!(
+				stake_info.delegated_to_me <= max_delegation,
+				Error::<T>::DelegationCapExceeded
+			);
+
 			// Update freeze (reduce or clear)
 			if new_amount.is_zero() {
 				T::Currency::thaw(&T::RuntimeFreezeReason::from(FreezeReason::Staking), &who)?;
@@ -563,6 +575,14 @@ pub mod pallet {
 
 			// Calculate new amount after slashing
 			let new_amount = stake_info.amount.saturating_sub(slash_amount);
+
+			// Enforce delegation cap after slashing
+			let max_delegation =
+				new_amount.saturating_mul(T::DelegationMultiplier::get().into());
+			ensure!(
+				stake_info.delegated_to_me <= max_delegation,
+				Error::<T>::DelegationCapExceeded
+			);
 
 			// Burn slashed tokens by reducing freeze and burning balance
 			T::Currency::set_freeze(

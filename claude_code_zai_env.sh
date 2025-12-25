@@ -184,19 +184,87 @@ configure_claude() {
 }
 
 # ========================
+#     Reset Configuration
+# ========================
+
+reset_claude() {
+    log_info "Resetting Claude Code to default (Anthropic)..."
+
+    # Remove settings.json env overrides
+    node --eval '
+        const os = require("os");
+        const fs = require("fs");
+        const path = require("path");
+
+        const homeDir = os.homedir();
+        const filePath = path.join(homeDir, ".claude", "settings.json");
+
+        if (fs.existsSync(filePath)) {
+            const content = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+            if (content.env) {
+                // Remove Z.AI specific configs
+                delete content.env.ANTHROPIC_BASE_URL;
+                delete content.env.API_TIMEOUT_MS;
+                delete content.env.ANTHROPIC_AUTH_TOKEN;
+                delete content.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
+
+                // Remove env if empty
+                if (Object.keys(content.env).length === 0) {
+                    delete content.env;
+                }
+            }
+            fs.writeFileSync(filePath, JSON.stringify(content, null, 2), "utf-8");
+        }
+    ' || {
+        log_error "Failed to update settings.json"
+        exit 1
+    }
+
+    log_success "Claude Code has been reset to default settings."
+    echo "   You may need to run 'claude login' to authenticate with Anthropic."
+}
+
+# ========================
 #        Main
 # ========================
 
 main() {
+    local mode="zai"
+
+    # Parse arguments
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            --reset|reset) mode="reset" ;;
+            --zai|zai) mode="zai" ;;
+            --help|-h)
+                echo "Usage: $0 [options]"
+                echo "Options:"
+                echo "  --zai       Switch to Z.AI environment (default)"
+                echo "  --reset     Reset to default Anthropic environment"
+                exit 0
+                ;;
+            *)
+                echo "Unknown parameter: $1"
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
     echo "🚀 Starting $SCRIPT_NAME"
 
     check_nodejs
     install_claude_code
     configure_claude_json
-    configure_claude
+
+    if [ "$mode" == "reset" ]; then
+        reset_claude
+    else
+        configure_claude
+    fi
 
     echo ""
-    log_success "🎉 Installation completed successfully!"
+    log_success "🎉 Operation completed successfully!"
     echo ""
     echo "🚀 You can now start using Claude Code with:"
     echo "   claude"

@@ -101,6 +101,7 @@ parameter_types! {
 	pub const MaxStakePerNode: Balance = 1000;
 	pub const MaxRegionPercentage: u32 = 20; // 20%
 	pub const DelegationMultiplier: u32 = 5; // 5× validator stake
+	pub const RegionCapBootstrapStake: Balance = 1000; // Enforce caps after 1000 ICN total
 
 	// Bounded limits (L0 constraint compliance)
 	pub const MaxDelegationsPerDelegator: u32 = 100;
@@ -116,6 +117,7 @@ impl pallet_icn_stake::Config for Test {
 	type MinStakeRelay = MinStakeRelay;
 	type MaxStakePerNode = MaxStakePerNode;
 	type MaxRegionPercentage = MaxRegionPercentage;
+	type RegionCapBootstrapStake = RegionCapBootstrapStake;
 	type DelegationMultiplier = DelegationMultiplier;
 	type MaxDelegationsPerDelegator = MaxDelegationsPerDelegator;
 	type MaxDelegatorsPerValidator = MaxDelegatorsPerValidator;

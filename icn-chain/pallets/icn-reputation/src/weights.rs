@@ -19,54 +19,16 @@ use frame_support::weights::Weight;
 /// Weight functions for pallet_icn_reputation.
 pub trait WeightInfo {
 	fn record_event() -> Weight;
-	fn on_finalize_merkle_root() -> Weight;
-	fn on_finalize_checkpoint() -> Weight;
-	fn on_finalize_prune() -> Weight;
 }
 
-// Original weights from stub implementation
-// TODO: Replace with actual benchmark results
-
+// Placeholder weights - TODO: Replace with actual benchmark results
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
 
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: ReputationScores (r:1 w:1)
 	/// Storage: PendingEvents (r:1 w:1)
 	fn record_event() -> Weight {
-		// Base weight: reads + writes
 		Weight::from_parts(10_000, 0)
-			.saturating_add(T::DbWeight::get().reads(2))
-			.saturating_add(T::DbWeight::get().writes(2))
-	}
-
-	/// Storage: PendingEvents (r:1 w:1)
-	/// Storage: MerkleRoots (r:0 w:1)
-	/// Storage: Event (r:1 w:1)
-	fn on_finalize_merkle_root() -> Weight {
-		// Assume 5 events per block average
-		Weight::from_parts(15_000, 0)
-			.saturating_add(T::DbWeight::get().reads(2))
-			.saturating_add(T::DbWeight::get().writes(2))
-	}
-
-	/// Storage: ReputationScores (r:1 w:0)
-	/// Storage: Checkpoints (r:0 w:1)
-	/// Storage: Event (r:1 w:1)
-	fn on_finalize_checkpoint() -> Weight {
-		// Assume 100 accounts with reputation
-		Weight::from_parts(50_000, 0)
-			.saturating_add(T::DbWeight::get().reads(1))
-			.saturating_add(T::DbWeight::get().writes(2))
-	}
-
-	/// Storage: MerkleRoots (r:100 w:100)
-	/// Storage: RetentionPeriod (r:1 w:0)
-	/// Storage: Event (r:0 w:1)
-	fn on_finalize_prune() -> Weight {
-		// Assume 100 blocks to prune per call
-		Weight::from_parts(30_000, 0)
-			.saturating_add(T::DbWeight::get().reads(101))
-			.saturating_add(T::DbWeight::get().writes(101))
 	}
 }
 
@@ -74,17 +36,5 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 impl WeightInfo for () {
 	fn record_event() -> Weight {
 		Weight::from_parts(10_000, 0)
-	}
-
-	fn on_finalize_merkle_root() -> Weight {
-		Weight::from_parts(15_000, 0)
-	}
-
-	fn on_finalize_checkpoint() -> Weight {
-		Weight::from_parts(50_000, 0)
-	}
-
-	fn on_finalize_prune() -> Weight {
-		Weight::from_parts(30_000, 0)
 	}
 }

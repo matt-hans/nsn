@@ -435,6 +435,31 @@ fn deposit_stake_insufficient_balance() {
 }
 
 #[test]
+fn deposit_does_not_shorten_lock() {
+	ExtBuilder::default().build().execute_with(|| {
+		// GIVEN: Alice stakes with a long lock
+		assert_ok!(IcnStake::deposit_stake(
+			RuntimeOrigin::signed(ALICE),
+			100,
+			200,
+			Region::NaWest
+		));
+		let initial_unlock = IcnStake::stakes(ALICE).locked_until;
+
+		// WHEN: Alice deposits again with a shorter lock
+		assert_ok!(IcnStake::deposit_stake(
+			RuntimeOrigin::signed(ALICE),
+			10,
+			50,
+			Region::NaWest
+		));
+
+		// THEN: Lock is not shortened
+		assert_eq!(IcnStake::stakes(ALICE).locked_until, initial_unlock);
+	});
+}
+
+#[test]
 fn withdraw_partial_stake() {
 	ExtBuilder::default().build().execute_with(|| {
 		// GIVEN: Alice stakes 150 ICN
@@ -453,6 +478,33 @@ fn withdraw_partial_stake() {
 		// THEN: Remaining stake = 100, role still Director
 		assert_eq!(IcnStake::stakes(ALICE).amount, 100);
 		assert_eq!(IcnStake::stakes(ALICE).role, NodeRole::Director);
+	});
+}
+
+#[test]
+fn withdraw_below_delegation_cap_fails() {
+	ExtBuilder::default().build().execute_with(|| {
+		// GIVEN: Charlie has stake and delegated-to-me balance
+		assert_ok!(IcnStake::deposit_stake(
+			RuntimeOrigin::signed(CHARLIE),
+			100,
+			10,
+			Region::EuWest
+		));
+		assert_ok!(IcnStake::delegate(
+			RuntimeOrigin::signed(DAVE),
+			CHARLIE,
+			400
+		));
+
+		// Advance past lock period
+		roll_to(20);
+
+		// WHEN: Charlie withdraws enough to violate delegation cap (new max = 200)
+		assert_noop!(
+			IcnStake::withdraw_stake(RuntimeOrigin::signed(CHARLIE), 60),
+			Error::<Test>::DelegationCapExceeded
+		);
 	});
 }
 
@@ -845,6 +897,36 @@ fn slash_zero_amount_noop() {
 		// THEN: Stake unchanged
 		assert_eq!(IcnStake::stakes(ALICE).amount, 100);
 		assert_eq!(IcnStake::stakes(ALICE).role, NodeRole::Director);
+	});
+}
+
+#[test]
+fn slash_below_delegation_cap_fails() {
+	// Slash that would violate delegation cap should fail
+	ExtBuilder::default().build().execute_with(|| {
+		// GIVEN: Charlie has stake and delegations
+		assert_ok!(IcnStake::deposit_stake(
+			RuntimeOrigin::signed(CHARLIE),
+			100,
+			1000,
+			Region::EuWest
+		));
+		assert_ok!(IcnStake::delegate(
+			RuntimeOrigin::signed(DAVE),
+			CHARLIE,
+			300
+		));
+
+		// WHEN: Root slashes enough to violate cap (new max = 100)
+		assert_noop!(
+			IcnStake::slash(
+				RuntimeOrigin::root(),
+				CHARLIE,
+				80,
+				crate::SlashReason::BftFailure
+			),
+			Error::<Test>::DelegationCapExceeded
+		);
 	});
 }
 

@@ -8,7 +8,7 @@
 
 //! Types for the ICN Reputation pallet.
 
-use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
+use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 
@@ -28,7 +28,7 @@ use sp_runtime::RuntimeDebug;
 /// - SeederChunkServed: +1 seeder
 /// - PinningAuditPassed: +10 seeder
 /// - PinningAuditFailed: -50 seeder
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub enum ReputationEventType {
 	/// Director slot successfully completed
 	DirectorSlotAccepted,
@@ -111,7 +111,7 @@ impl ReputationEventType {
 /// };
 /// // total() = (200*50 + 5*30 + 1*20) / 100 = 100.7
 /// ```
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
 pub struct ReputationScore {
 	/// Director-specific score (slot acceptance/rejection/missed)
 	pub director_score: u64,
@@ -213,7 +213,7 @@ impl ReputationScore {
 /// # Merkle Leaf
 /// The hash of this struct (using T::Hashing) becomes a leaf in the
 /// Merkle tree for that block.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(AccountId, BlockNumber))]
 pub struct ReputationEvent<AccountId, BlockNumber> {
 	/// Account affected by this event
@@ -236,7 +236,7 @@ pub struct ReputationEvent<AccountId, BlockNumber> {
 ///
 /// # Merkle Root
 /// Computed over all (account, score) pairs at this block.
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct CheckpointData<Hash, BlockNumber> {
 	/// Block number of this checkpoint
 	pub block: BlockNumber,
@@ -263,7 +263,7 @@ pub struct CheckpointData<Hash, BlockNumber> {
 /// - net_validator_delta = 5
 /// - net_seeder_delta = 0
 /// - event_count = 4
-#[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
 pub struct AggregatedReputation {
 	/// Net director score change (sum of all director event deltas)
 	pub net_director_delta: i64,
