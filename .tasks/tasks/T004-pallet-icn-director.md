@@ -4,7 +4,7 @@
 ```yaml
 id: T004
 title: Implement pallet-icn-director (Director Election & BFT Coordination)
-status: pending
+status: completed
 priority: P1
 tags: [pallets, substrate, director, bft, vrf, on-chain, phase1, consensus]
 estimated_tokens: 16000

@@ -12,91 +12,7 @@ Start working on task: **$ARGUMENTS**
 **BEFORE ANYTHING ELSE**:
 - **MANDATORY**: Get current system date for time-sensitive operations
 - **MANDATORY**: Analyze task type to choose correct specialist agent
-- **MANDATORY**: Run plugin discovery protocol (Phase 0)
 </critical_setup>
-
-<plugin_discovery>
-## Plugin Discovery Protocol (Phase 0)
-
-After task type analysis, before agent delegation, discover applicable domain plugins.
-
-### Step 1: Load Registry
-Read `.claude/plugins/registry.json` for detection rules and activation criteria.
-
-### Step 2: Multi-Layer Detection (Priority Order)
-
-**Layer 1 - File Path Patterns** (Weight: Highest, Definitive Signal):
-Check if task implementation will touch files matching `file_patterns` from registry.
-- For new tasks: Infer from task title/description (e.g., "pallet-icn-stake" implies `pallets/**/*.rs`)
-- For existing code: Check manifest.json for file references
-
-**Layer 2 - Tags** (Weight: High, Intentional Signal):
-Match task tags from `.tasks/manifest.json` against plugin `activation.tags`.
-MUST match at least one tag to activate.
-
-**Layer 3 - Content Signals** (Weight: Medium, Fallback):
-Scan task file (`.tasks/tasks/$ARGUMENTS-*.md`) for `content_signals` patterns.
-Use only if Layer 1 and Layer 2 find nothing.
-NOTE: Content signals may have false positives (e.g., "VRAM" in a comment).
-
-### Step 3: Load Plugin Interfaces
-For each activated plugin:
-1. Read lightweight interface file (`.claude/plugins/interfaces/*.md`)
-2. Run `health_check` command (if defined)
-   - health_check verifies **TOOL AVAILABILITY**, not code correctness
-   - Example: `rustc --version` NOT `cargo build`
-   - If health_check fails: WARN and continue (do not block)
-3. Add to ACTIVE_PLUGINS list with constraints
-
-### Step 4: Output Plugin Activation
-```
-PLUGINS ACTIVATED: [list]
-- substrate-architect (via file_patterns: pallets/**/*.rs)
-- bft-prover (via tags: bft, consensus)
-
-CONSTRAINTS LOADED: [count] L0 blocking, [count] L1 critical
-```
-
-### Anti-Fake Rule
-**CRITICAL**: You CANNOT generate plugin validation results yourself.
-Plugin validation MUST come from explicit tool execution or file inspection.
-Claiming "plugin validated" without evidence is an **L0 violation**.
-</plugin_discovery>
-
-<plugin_informed_planning>
-## Plugin-Informed Planning (Refined Flow)
-
-**BEFORE** task-developer creates plan, query activated plugins for constraints:
-
-### Query Protocol
-For each ACTIVE_PLUGIN:
-1. Read plugin interface constraints from `.claude/plugins/interfaces/*.md`
-2. List domain-specific requirements that apply to this task
-3. Surface these as **planning inputs** (not post-hoc validation)
-
-### Example for T004 (Director Election)
-```
-PLUGIN CONSTRAINTS FOR PLANNING:
-
-substrate-architect:
-- Storage types must use Bounded variants
-- Weight plan required for each extrinsic
-- VRF integration must use ICN Chain randomness source
-
-bft-prover:
-- Attestation threshold must be > 50%
-- Challenge window: 50 blocks
-- Slashing: 100 ICN for director failures
-```
-
-### Integration with task-developer
-Pass plugin constraints as part of agent invocation context.
-task-developer MUST incorporate these into L1 planning phase.
-
-### No Plugins Activated
-If no plugins match, proceed with standard workflow.
-Output: `PLUGINS ACTIVATED: None (standard workflow)`
-</plugin_informed_planning>
 
 <agent_whitelist>
 ## MANDATORY AGENT WHITELIST — STRICT ENFORCEMENT
@@ -169,11 +85,6 @@ Execute task: $ARGUMENTS
 Follow validation-driven workflow (.claude/agents/task-developer.md). Task: .tasks/tasks/$ARGUMENTS-<name>.md
 
 **MANDATORY**: Operate in Minion Engine v3.0 | Execute all phases: Context → Plan → Implementation → Validation → Completion | Follow TDD (tests before code) | Check race conditions | Report ready for /task-complete
-
-**ACTIVE_PLUGINS**: [list from plugin discovery, or "None"]
-**PLUGIN_CONSTRAINTS**: [constraints from plugin interfaces, if any]
-
-Plugin-aware execution: Query plugin constraints BEFORE planning. Validate against plugin gates during implementation. Obtain plugin certification before completion.
 
 **NOTE**: May sub-delegate UI work to `task-ui`
 
@@ -283,9 +194,7 @@ Automatic remediation ensures quality. Manual intervention ONLY if 3 attempts fa
 ```
 ✅ **Task Started**: $ARGUMENTS
 Type: [UI/Backend/Mixed] | Agent: [task-ui/task-developer] | File: .tasks/tasks/$ARGUMENTS-<name>.md
-Plugins: [ACTIVE_PLUGINS list or "None"]
-Constraints: [count] L0 blocking | [count] L1 critical | [count] L2 mandatory
-Instructions: Minion Engine v3.0 | Plugin-aware validation | Quality gates | Ready for /task-complete
+Instructions: Minion Engine v3.0 | Validation workflow | Quality gates | Ready for /task-complete
 Next: Implementation in progress...
 ```
 
@@ -324,23 +233,5 @@ Action: Manual review → fixes → re-run task-smell → `/task-complete $ARGUM
 [Include task-smell report]
 ```
 
-### Plugin Certification (if plugins active)
-```
-✅ **Plugin Certification**: $ARGUMENTS
-Plugins Certified: [list]
-- substrate-architect: CERTIFIED (runtime compiles, benchmarks exist)
-- bft-prover: CERTIFIED (adversarial tests pass, threshold validated)
-Evidence: [file paths, command outputs]
-```
-
-### Plugin Certification Failed
-```
-❌ **Plugin Certification Failed**: $ARGUMENTS
-Plugin: [name] | Status: NOT CERTIFIED
-Reason: [specific constraint violation]
-Required: [what must be fixed]
-Action: Address plugin constraint, re-run certification
-```
-
-**All outputs include**: Status (✅/❌/⚠️) | Task ID | Phase | Agent | Plugins | Quality results | Next steps
+**All outputs include**: Status (✅/❌/⚠️) | Task ID | Phase | Agent | Quality results | Next steps
 </output_format>

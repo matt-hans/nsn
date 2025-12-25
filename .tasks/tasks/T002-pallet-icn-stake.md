@@ -4,7 +4,7 @@
 ```yaml
 id: T002
 title: Implement pallet-icn-stake (Staking & Role Eligibility)
-status: pending
+status: completed
 priority: P1
 tags: [pallets, substrate, staking, on-chain, phase1]
 estimated_tokens: 12000

@@ -4,7 +4,7 @@
 ```yaml
 id: T005
 title: Implement pallet-icn-pinning (Erasure Coding & Audits)
-status: pending
+status: completed
 priority: P1
 tags: [pallets, substrate, pinning, storage, audits, on-chain, phase1]
 estimated_tokens: 13000

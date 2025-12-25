@@ -1,12 +1,13 @@
 {
   "initialized_at": "2025-12-24T00:00:00Z",
-  "tasks_completed": 2,
-  "total_tokens_used": 23700,
-  "average_tokens_per_task": 11850,
-  "token_estimate_accuracy": 0.84,
+  "tasks_completed": 5,
+  "total_tokens_used": 71000,
+  "average_tokens_per_task": 14200,
+  "token_estimate_accuracy": 0.82,
   "completions": [
     {
       "task_id": "T001",
+      "title": "ICN Polkadot SDK Chain Bootstrap",
       "estimated_tokens": 8000,
       "actual_tokens": 9200,
       "variance": 1200,
@@ -15,30 +16,58 @@
     },
     {
       "task_id": "T002",
+      "title": "Implement pallet-icn-stake",
       "estimated_tokens": 12000,
       "actual_tokens": 14500,
       "variance": 2500,
       "accuracy": 0.83,
       "completed_at": "2025-12-24T17:47:28Z"
+    },
+    {
+      "task_id": "T003",
+      "title": "Implement pallet-icn-reputation",
+      "estimated_tokens": 14000,
+      "actual_tokens": 16800,
+      "variance": 2800,
+      "accuracy": 0.83,
+      "completed_at": "2025-12-24T21:45:00Z"
+    },
+    {
+      "task_id": "T004",
+      "title": "Implement pallet-icn-director",
+      "estimated_tokens": 16000,
+      "actual_tokens": 18500,
+      "variance": 2500,
+      "accuracy": 0.86,
+      "completed_at": "2025-12-25T02:48:00Z"
+    },
+    {
+      "task_id": "T006",
+      "title": "Implement pallet-icn-treasury",
+      "estimated_tokens": 10000,
+      "actual_tokens": 12000,
+      "variance": 2000,
+      "accuracy": 0.83,
+      "completed_at": "2025-12-25T10:30:00Z"
     }
   ],
   "phase_progress": {
-    "phaseA_documentation_refactor": {
-      "total_tasks": 0,
+    "phase_a_icn_solo": {
+      "total_tasks": 33,
+      "completed": 5,
+      "percentage": 15.2
+    },
+    "phase_b_icn_mainnet": {
+      "total_tasks": 4,
       "completed": 0,
       "percentage": 0
     },
-    "phaseB_icn_solochain_mvp": {
-      "total_tasks": 8,
-      "completed": 2,
-      "percentage": 25.0
-    },
-    "phaseC_parachain_readiness": {
+    "phase_c_parachain": {
       "total_tasks": 2,
       "completed": 0,
       "percentage": 0
     },
-    "phaseD_ethereum_integration": {
+    "phase_d_bridges": {
       "total_tasks": 2,
       "completed": 0,
       "percentage": 0
@@ -46,7 +75,7 @@
   },
   "token_savings": {
     "estimated_monolithic": 120000,
-    "estimated_modular": 8000,
-    "savings_percentage": 93.3
+    "estimated_modular": 71000,
+    "savings_percentage": 40.8
   }
 }

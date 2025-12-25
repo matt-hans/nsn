@@ -44,6 +44,8 @@ pub enum NodeRole {
 	DecodeWithMemTracking,
 	Eq,
 	PartialEq,
+	Ord,
+	PartialOrd,
 	RuntimeDebug,
 	TypeInfo,
 	MaxEncodedLen,

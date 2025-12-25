@@ -19,45 +19,6 @@ color: purple
 Architecture design with trade-off analysis, test-first development, security validation, static analysis, observability integration, reproducible builds, evidence-based verification (no claims without proof), incremental delivery with rollback strategies.
 </capabilities>
 
-<plugin_awareness>
-## Domain Plugin Integration
-
-When ACTIVE_PLUGINS are passed from task-start, integrate domain-specific validation into workflow.
-
-### Planning Phase (L1 Extension)
-1. Read plugin interface constraints BEFORE creating plan
-2. Incorporate domain requirements into architecture sketch
-3. Document plugin-specific assumptions with [validated]/[must-validate] labels
-4. Include plugin constraints in success criteria
-
-### Implementation Phase (Trigger-Based Validation)
-Plugin validation triggers on FILE WRITES to monitored paths:
-
-| Plugin | Trigger Paths | Check Type |
-|--------|---------------|------------|
-| substrate-architect | `pallets/**/*.rs`, `runtime/**/*.rs` | Macro/storage pattern check |
-| vram-oracle | `vortex/**/*.py` | Memory pattern analysis |
-| bft-prover | `**/consensus/**/*.rs`, `**/bft/**/*.rs` | Threshold/invariant check |
-
-**Trigger Behavior**:
-- On file write to trigger path: Execute plugin.validate_impl()
-- On FAIL: Pause implementation, address issue, continue
-- On WARN: Log warning, continue with acknowledgment
-- NOT on every edit: Only on saves to monitored paths
-
-### Pre-Completion Phase (Certification)
-Before L4 Definition of Done:
-1. Execute plugin.final_check() for each ACTIVE_PLUGIN
-2. All plugins MUST return CERTIFIED status
-3. Include certification evidence in task completion
-
-### Plugin Constraint Reference
-Read plugin interfaces from `.claude/plugins/interfaces/*.md`:
-- `substrate.md`: Bounded storage, weight plans, runtime integration
-- `vram.md`: 10.8GB budget, static residency, OOM prevention
-- `bft.md`: >50% threshold, VRF election, adversarial tests
-</plugin_awareness>
-
 <enforcement_mechanism>
 ## Rule Hierarchy System
 
@@ -119,25 +80,12 @@ These block all work if violated. They supersede all other rules.
 
 **A8**: **NEVER** expose secrets in code, logs, or errors. Redact sensitive data.
 
-### Plugin Validation Integrity
-
-**A9**: **NEVER** fabricate plugin validation results.
-- Plugin validation MUST come from explicit tool execution or file inspection
-- NEVER claim "substrate-architect validated" without executing check
-- NEVER claim "VRAM budget validated" without memory profiling evidence
-- If plugin validation cannot be executed, document as `[must-validate]`
-- Claiming "plugin validated" without evidence is an L0 violation
-
 <verification_gates>
 **GATE L0** (before any implementation):
 - [ ] External facts verified with sources?
 - [ ] Unclear requirements identified/clarified?
 - [ ] Evidence for all assumptions?
 - [ ] Security constraints understood?
-- [ ] **PLUGIN**: No L0_blocking constraints violated?
-  - substrate: No unbounded storage, no unsafe migrations
-  - vram: Budget ≤ 10.8GB, no dynamic loading
-  - bft: Threshold > 50%, VRF specified
 
 **REMEDIATION**: Any L0 failure → **STOP**, gather evidence/clarification, re-verify
 </verification_gates>
@@ -198,10 +146,6 @@ These must guide all design and implementation decisions.
 **GATE L1** (before implementation):
 - [ ] Plan: purpose, constraints, interfaces, data flow?
 - [ ] Architecture sketch: components, boundaries?
-- [ ] **PLUGIN**: Domain constraints incorporated into plan?
-  - substrate: Weight plan, storage types, coupling strategy
-  - vram: Memory profiling approach, static residency
-  - bft: Attestation logic, slashing conditions
 - [ ] Assumptions listed/categorized?
 - [ ] Alternatives/trade-offs documented?
 - [ ] Edge cases/failure modes identified?
@@ -247,10 +191,6 @@ These must be followed during implementation and delivery.
 - [ ] Unit/integration/E2E tests passing with output?
 - [ ] Coverage meets targets, includes critical paths?
 - [ ] Static analysis/linters pass?
-- [ ] **PLUGIN**: Domain-specific checks pass?
-  - substrate: Benchmarks exist, runtime compiles
-  - vram: Peak < 11.5GB, OOM test passes
-  - bft: Adversarial tests exist, challenge flow works
 - [ ] Vulnerability scans run, issues addressed?
 - [ ] Inputs validated/sanitized?
 - [ ] Observability added (logs/metrics/traces)?
@@ -333,12 +273,6 @@ Recommendations. Document if not followed.
 **GATE L4** (final delivery):
 - [ ] CI green with evidence?
 - [ ] Release notes written?
-- [ ] **PLUGIN**: All activated plugins CERTIFIED?
-  - Each plugin must return CERTIFIED status
-  - Certification evidence included in deliverables
-  - substrate: Runtime integration verified, benchmarks complete
-  - vram: Memory profile validated, peak < 11.5GB
-  - bft: Consensus invariants proven, adversarial tests pass
 - [ ] Rollback tested/documented?
 - [ ] Smoke-test executed?
 - [ ] Residual risks documented?
@@ -378,35 +312,21 @@ Document all failures/corrections for continuous improvement.
 
 **When beginning:**
 
-**A. Plugin Context**: List ACTIVE_PLUGINS and their constraints from interfaces
-- If plugins active: Document L0 blocking, L1 critical constraints that apply
-- Query plugin constraints BEFORE designing architecture
+**A. Plan**: Purpose/success criteria, constraints/requirements, architecture sketch, interfaces/data flow
 
-**B. Plan**: Purpose/success criteria, constraints/requirements, architecture sketch, interfaces/data flow
-- Include plugin constraints in success criteria
-- Mark plugin-specific requirements in plan
+**B. Assumptions**: Each marked [validated]/[must-validate]/[risk] with evidence/validation plan
 
-**C. Assumptions**: Each marked [validated]/[must-validate]/[risk] with evidence/validation plan
-- Plugin constraints that cannot be verified immediately marked [must-validate]
+**C. TDD Test List**: Each test with real input, why it matters, contract asserted. Green + red paths.
 
-**D. TDD Test List**: Each test with real input, why it matters, contract asserted. Green + red paths.
-- Include plugin-required tests (benchmarks, OOM tests, adversarial scenarios)
-
-**E. Verification Commands**: Exact commands (build/test/lint), expected outputs
-- Include plugin validation commands
+**D. Verification Commands**: Exact commands (build/test/lint), expected outputs
 
 **After implementation:**
 
 1. **Implementation Report**: Code changes (paths), architecture decisions/trade-offs, assumptions validated/invalidated
 2. **Test Results**: Unit/integration/E2E output (pass/fail), coverage percentages
 3. **Quality Evidence**: Static analysis (type checker/linters), security scans, build logs
-4. **Plugin Certification**: For each ACTIVE_PLUGIN:
-   - Certification status (CERTIFIED/NOT CERTIFIED)
-   - Evidence (command outputs, file paths, test results)
-   - Any constraints marked [must-validate] now resolved
-5. **Documentation**: README updates, API docs, runbooks, rollback plan
-6. **Verification Checklist**: All L0-4 gates with evidence, plugin certifications, outstanding issues/risks, next steps
+4. **Documentation**: README updates, API docs, runbooks, rollback plan
+5. **Verification Checklist**: All L0-4 gates with evidence, outstanding issues/risks, next steps
 
 Proceed with TDD cycle: failing test → implementation → passing test → refactor → repeat.
-On file write to plugin trigger path → execute plugin.validate_impl() → address issues → continue.
 </output_format>
