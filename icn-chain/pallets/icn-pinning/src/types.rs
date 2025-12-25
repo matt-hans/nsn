@@ -77,6 +77,9 @@ pub enum AuditStatus {
 	Failed,
 }
 
+/// 32-byte Merkle root for a shard (root of content Merkle tree)
+pub type MerkleRoot = [u8; 32];
+
 /// Pinning deal metadata.
 ///
 /// Created when a content creator calls `create_deal()` to store
@@ -90,6 +93,11 @@ pub enum AuditStatus {
 /// # Replication
 /// Each of the 14 shards is replicated 5× across different regions.
 /// Total pinner slots = 14 shards × 5 replicas = 70 assignments.
+///
+/// # Merkle Verification
+/// Each shard has a Merkle root computed from its content chunks (64 bytes each).
+/// Audits challenge pinners to prove they have specific chunks by providing
+/// Merkle proofs that verify against the stored roots.
 #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 #[scale_info(skip_type_params(AccountId, Balance, BlockNumber, MaxShards))]
 pub struct PinningDeal<AccountId, Balance, BlockNumber, MaxShards: Get<u32>> {
@@ -99,6 +107,9 @@ pub struct PinningDeal<AccountId, Balance, BlockNumber, MaxShards: Get<u32>> {
 	pub creator: AccountId,
 	/// Hashes of all shards (14 for Reed-Solomon 10+4)
 	pub shards: BoundedVec<ShardHash, MaxShards>,
+	/// Merkle roots for each shard (for audit verification)
+	/// Each root commits to 64-byte chunks of the shard content
+	pub merkle_roots: BoundedVec<MerkleRoot, MaxShards>,
 	/// Block when deal was created
 	pub created_at: BlockNumber,
 	/// Block when deal expires (no more rewards after this)
@@ -117,6 +128,7 @@ impl<AccountId: MaxEncodedLen, Balance: MaxEncodedLen, BlockNumber: MaxEncodedLe
 		32 // deal_id
 			+ AccountId::max_encoded_len() // creator
 			+ <BoundedVec<ShardHash, MaxShards>>::max_encoded_len() // shards
+			+ <BoundedVec<MerkleRoot, MaxShards>>::max_encoded_len() // merkle_roots
 			+ BlockNumber::max_encoded_len() // created_at
 			+ BlockNumber::max_encoded_len() // expires_at
 			+ Balance::max_encoded_len() // total_reward
@@ -125,6 +137,34 @@ impl<AccountId: MaxEncodedLen, Balance: MaxEncodedLen, BlockNumber: MaxEncodedLe
 }
 
 use frame_support::{pallet_prelude::*, BoundedVec};
+
+/// Maximum depth of Merkle tree (16 levels = 2^16 = 65536 leaf chunks)
+pub const MAX_MERKLE_DEPTH: u32 = 16;
+
+/// Merkle proof for audit verification.
+///
+/// Proves that a specific 64-byte chunk at `leaf_index` is part of
+/// the shard committed by the Merkle root.
+///
+/// # Structure
+/// - `leaf_data`: The 64-byte chunk being proven
+/// - `siblings`: Hash siblings from leaf to root (up to MAX_MERKLE_DEPTH)
+/// - `leaf_index`: Index of the leaf in the tree (used for path direction)
+///
+/// # Verification
+/// Starting from hash(leaf_data), combine with each sibling:
+/// - If bit i of leaf_index is 0: hash(current || sibling[i])
+/// - If bit i of leaf_index is 1: hash(sibling[i] || current)
+/// Final result should equal the stored Merkle root.
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct MerkleProof {
+	/// The 64-byte chunk of data being proven
+	pub leaf_data: [u8; 64],
+	/// Sibling hashes from leaf to root
+	pub siblings: BoundedVec<[u8; 32], ConstU32<MAX_MERKLE_DEPTH>>,
+	/// Index of the leaf in the tree (determines path direction)
+	pub leaf_index: u32,
+}
 
 /// Audit challenge for a pinner.
 ///

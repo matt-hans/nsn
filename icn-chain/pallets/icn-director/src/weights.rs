@@ -11,11 +11,12 @@
 //! THIS FILE IS AUTO-GENERATED - DO NOT EDIT MANUALLY
 //!
 //! Run `cargo build --release --features runtime-benchmarks` to regenerate.
+//!
+//! NOTE: Placeholder weights with estimated PoV sizes for Cumulus compatibility.
 
 #![allow(clippy::all)]
 
-use frame_support::weights::Weight;
-use sp_runtime::traits::Get;
+use frame_support::{traits::Get, weights::Weight};
 
 /// Weight functions for pallet_icn_director.
 pub trait WeightInfo {
@@ -24,27 +25,36 @@ pub trait WeightInfo {
 	fn resolve_challenge() -> Weight;
 }
 
-// Placeholder weights - TODO: Replace with actual benchmark results
+// Placeholder weights with PoV sizes
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
 
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: ElectedDirectors (r:1 w:0)
+	/// Proof: ElectedDirectors (max_values: Some(1), max_size: Some(256), added: 751, mode: MaxEncodedLen)
 	/// Storage: BftResults (r:1 w:1)
+	/// Proof: BftResults (max_values: None, max_size: Some(512), added: 2987, mode: MaxEncodedLen)
 	/// Storage: SlotStatuses (r:0 w:1)
+	/// Proof: SlotStatuses (max_values: None, max_size: Some(16), added: 2491, mode: MaxEncodedLen)
 	/// Storage: Cooldowns (r:0 w:5)
+	/// Proof: Cooldowns (max_values: None, max_size: Some(40), added: 2515, mode: MaxEncodedLen)
 	fn submit_bft_result() -> Weight {
-		Weight::from_parts(50_000, 0)
+		// PoV size: ElectedDirectors(256) + BftResults(512) + overhead(128) = 896 bytes
+		Weight::from_parts(50_000_000, 3738)
 			.saturating_add(T::DbWeight::get().reads(2))
 			.saturating_add(T::DbWeight::get().writes(7))
 	}
 
 	/// Storage: BftResults (r:1 w:0)
+	/// Proof: BftResults (max_values: None, max_size: Some(512), added: 2987, mode: MaxEncodedLen)
 	/// Storage: FinalizedSlots (r:1 w:0)
+	/// Proof: FinalizedSlots (max_values: None, max_size: Some(16), added: 2491, mode: MaxEncodedLen)
 	/// Storage: PendingChallenges (r:1 w:1)
+	/// Proof: PendingChallenges (max_values: None, max_size: Some(256), added: 2731, mode: MaxEncodedLen)
 	/// Storage: Stakes (r:1 w:0)
-	/// Storage: SlotStatuses (r:0 w:1)
+	/// Proof: Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
 	fn challenge_bft_result() -> Weight {
-		Weight::from_parts(75_000, 0)
+		// PoV size: BftResults(512) + FinalizedSlots(16) + PendingChallenges(256) + Stakes(128) + overhead(192) = 1104 bytes
+		Weight::from_parts(75_000_000, 10812)
 			.saturating_add(T::DbWeight::get().reads(4))
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
@@ -57,7 +67,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: FinalizedSlots (r:0 w:1)
 	/// Storage: SlotStatuses (r:0 w:1)
 	fn resolve_challenge() -> Weight {
-		Weight::from_parts(150_000, 0)
+		// PoV size: PendingChallenges(256) + BftResults(512) + ElectedDirectors(256) + Stakes(128*5) + ReputationScores(64*5) + overhead(256) = 2240 bytes
+		Weight::from_parts(150_000_000, 18000)
 			.saturating_add(T::DbWeight::get().reads(13))
 			.saturating_add(T::DbWeight::get().writes(13))
 	}
@@ -66,14 +77,14 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 // For tests
 impl WeightInfo for () {
 	fn submit_bft_result() -> Weight {
-		Weight::from_parts(50_000, 0)
+		Weight::from_parts(50_000_000, 3738)
 	}
 
 	fn challenge_bft_result() -> Weight {
-		Weight::from_parts(75_000, 0)
+		Weight::from_parts(75_000_000, 10812)
 	}
 
 	fn resolve_challenge() -> Weight {
-		Weight::from_parts(150_000, 0)
+		Weight::from_parts(150_000_000, 18000)
 	}
 }

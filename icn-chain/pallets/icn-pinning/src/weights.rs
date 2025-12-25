@@ -31,6 +31,7 @@ pub trait WeightInfo {
 	fn create_deal(s: u32) -> Weight;
 	fn initiate_audit() -> Weight;
 	fn submit_audit_proof() -> Weight;
+	fn claim_rewards() -> Weight;
 }
 
 /// Weights for pallet_icn_pinning using the Substrate node and recommended hardware.
@@ -74,6 +75,20 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(1))
 			.saturating_add(T::DbWeight::get().writes(1))
 	}
+
+	/// Storage: PinnerRewards (r:1 w:1)
+	/// Proof: PinnerRewards (max_values: None, max_size: Some(48), added: 2523, mode: MaxEncodedLen)
+	/// Storage: System Account (r:2 w:2)
+	/// Proof: System Account (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	fn claim_rewards() -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `150`
+		//  Estimated: `2523 + 5206 = 7729` (PinnerRewards + 2x Account)
+		// Minimum execution time: 25_000 picoseconds.
+		Weight::from_parts(30_000_000, 7729)
+			.saturating_add(T::DbWeight::get().reads(3))
+			.saturating_add(T::DbWeight::get().writes(3))
+	}
 }
 
 // For backwards compatibility and tests
@@ -90,5 +105,9 @@ impl WeightInfo for () {
 
 	fn submit_audit_proof() -> Weight {
 		Weight::from_parts(15_000_000, 2987)
+	}
+
+	fn claim_rewards() -> Weight {
+		Weight::from_parts(30_000_000, 7729)
 	}
 }

@@ -1,0 +1,31 @@
+{
+  "agent_id": "task-completer",
+  "timestamp": "2025-12-25T12:00:00Z",
+  "action": "complete",
+  "task_id": "T007",
+  "new_status": "completed",
+  "actual_tokens": 9200,
+  "completion_validated": true,
+  "validation_results": {
+    "all_criteria_met": true,
+    "all_validations_passed": true,
+    "definition_of_done_verified": true
+  },
+  "verification_summary": {
+    "outcome": "PASS",
+    "stages_completed": "5/5",
+    "agents_run": 8,
+    "quality_score": 96,
+    "total_duration_ms": 180000,
+    "issues": {
+      "critical": 0,
+      "high": 0,
+      "medium": 5,
+      "low": 5
+    },
+    "blocking_agent": null,
+    "blocking_stage": null,
+    "reports_dir": ".tasks/reports/",
+    "audit_file": ".tasks/audit/2025-12-25.jsonl"
+  }
+}

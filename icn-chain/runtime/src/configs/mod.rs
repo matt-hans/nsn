@@ -343,7 +343,6 @@ parameter_types! {
 }
 
 impl pallet_icn_stake::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
 	type Currency = Balances;
 	type RuntimeFreezeReason = RuntimeFreezeReason;
 	type MinStakeDirector = MinStakeDirector;
@@ -360,7 +359,6 @@ impl pallet_icn_stake::Config for Runtime {
 }
 
 impl pallet_icn_reputation::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
 	type MaxEventsPerBlock = ReputationMaxEventsPerBlock;
 	type DefaultRetentionPeriod = ReputationDefaultRetentionPeriod;
 	type CheckpointInterval = ReputationCheckpointInterval;
@@ -370,18 +368,10 @@ impl pallet_icn_reputation::Config for Runtime {
 	type WeightInfo = pallet_icn_reputation::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_icn_director::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-}
+impl pallet_icn_director::Config for Runtime {}
 
-impl pallet_icn_bft::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-}
+impl pallet_icn_bft::Config for Runtime {}
 
-impl pallet_icn_pinning::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-}
+impl pallet_icn_pinning::Config for Runtime {}
 
-impl pallet_icn_treasury::Config for Runtime {
-	type RuntimeEvent = RuntimeEvent;
-}
+impl pallet_icn_treasury::Config for Runtime {}

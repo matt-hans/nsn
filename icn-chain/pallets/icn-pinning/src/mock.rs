@@ -4,7 +4,7 @@
 //! Mock runtime for ICN Pinning pallet tests.
 
 use crate as pallet_icn_pinning;
-use frame_support::{construct_runtime, parameter_types, traits::ConstU32, traits::Everything};
+use frame_support::{construct_runtime, parameter_types, traits::ConstU32, traits::Everything, PalletId};
 use sp_core::H256;
 use sp_runtime::{traits::IdentityLookup, BuildStorage, traits::BlakeTwo256};
 
@@ -127,6 +127,7 @@ impl pallet_icn_reputation::Config for Test {
 parameter_types! {
 	pub const AuditSlashAmount: u128 = 10_000_000_000_000_000_000; // 10 ICN
 	pub const MaxSelectableCandidates: u32 = 1000; // Max candidates to consider
+	pub const PinningPalletId: PalletId = PalletId(*b"icn/pinn");
 }
 
 impl pallet_icn_pinning::Config for Test {
@@ -140,6 +141,7 @@ impl pallet_icn_pinning::Config for Test {
 	type MaxActiveDeals = ConstU32<100>;
 	type MaxPendingAudits = ConstU32<100>;
 	type MaxSelectableCandidates = MaxSelectableCandidates;
+	type PalletId = PinningPalletId;
 	type WeightInfo = ();
 }
 
@@ -154,9 +156,14 @@ impl frame_support::traits::Randomness<H256, u64> for TestRandomness {
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
+	use sp_runtime::traits::AccountIdConversion;
+
 	let mut t = frame_system::GenesisConfig::<Test>::default()
 		.build_storage()
 		.unwrap();
+
+	// Get the pallet account ID from the PalletId
+	let pallet_account: u64 = PinningPalletId::get().into_account_truncating();
 
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![
@@ -166,7 +173,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 			(4, 1_000_000_000_000_000_000_000), // Dave: 1000 ICN
 			(5, 1_000_000_000_000_000_000_000), // Eve: 1000 ICN
 			(6, 1_000_000_000_000_000_000_000), // Account 6: 1000 ICN
-			(999, 10_000_000_000_000_000_000), // Pallet account: 10000 ICN initial balance
+			(pallet_account, 10_000_000_000_000_000_000_000), // Pallet account: 10000 ICN initial balance
 		],
 		dev_accounts: None,
 	}

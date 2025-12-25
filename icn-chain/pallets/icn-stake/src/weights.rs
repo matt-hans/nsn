@@ -1,5 +1,5 @@
 // Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Moonbeam.
+// This file is part of ICN Chain.
 
 //! Weights for pallet-icn-stake
 //!
@@ -8,7 +8,12 @@
 //! HOSTNAME: Placeholder
 //! CPU: Placeholder
 //!
-//! NOTE: Runtime benchmarking not yet performed. These are placeholder weights.
+//! NOTE: Runtime benchmarking not yet performed. These are placeholder weights
+//! with estimated PoV (Proof of Validity) sizes for Cumulus compatibility.
+//!
+//! PoV Size Estimation:
+//! - Storage item size is estimated from MaxEncodedLen
+//! - PoV includes: storage key prefix (32 bytes) + key (32 bytes) + value
 
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(unused_parens)]
@@ -36,7 +41,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: IcnStake RegionStakes (r:1 w:1)
 	/// Proof: IcnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
 	fn deposit_stake() -> Weight {
-		Weight::from_parts(50_000_000, 0)
+		// PoV size: Stakes(128) + TotalStaked(16) + RegionStakes(32) + overhead(192) = 368 bytes
+		Weight::from_parts(50_000_000, 5621)
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
@@ -46,7 +52,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: IcnStake Delegations (r:1 w:1)
 	/// Proof: IcnStake Delegations (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
 	fn delegate() -> Weight {
-		Weight::from_parts(40_000_000, 0)
+		// PoV size: Stakes(128) + Delegations(64) + overhead(128) = 320 bytes
+		Weight::from_parts(40_000_000, 5142)
 			.saturating_add(T::DbWeight::get().reads(2))
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
@@ -58,7 +65,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: IcnStake RegionStakes (r:1 w:1)
 	/// Proof: IcnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
 	fn withdraw_stake() -> Weight {
-		Weight::from_parts(45_000_000, 0)
+		// PoV size: Stakes(128) + TotalStaked(16) + RegionStakes(32) + overhead(192) = 368 bytes
+		Weight::from_parts(45_000_000, 5621)
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
@@ -68,7 +76,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: IcnStake Stakes (r:1 w:1)
 	/// Proof: IcnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
 	fn revoke_delegation() -> Weight {
-		Weight::from_parts(35_000_000, 0)
+		// PoV size: Delegations(64) + Stakes(128) + overhead(128) = 320 bytes
+		Weight::from_parts(35_000_000, 5142)
 			.saturating_add(T::DbWeight::get().reads(2))
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
@@ -80,7 +89,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: IcnStake RegionStakes (r:1 w:1)
 	/// Proof: IcnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
 	fn slash() -> Weight {
-		Weight::from_parts(50_000_000, 0)
+		// PoV size: Stakes(128) + TotalStaked(16) + RegionStakes(32) + overhead(192) = 368 bytes
+		Weight::from_parts(50_000_000, 5621)
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
@@ -89,18 +99,18 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 // For backwards compatibility and tests
 impl WeightInfo for () {
 	fn deposit_stake() -> Weight {
-		Weight::from_parts(50_000_000, 0)
+		Weight::from_parts(50_000_000, 5621)
 	}
 	fn delegate() -> Weight {
-		Weight::from_parts(40_000_000, 0)
+		Weight::from_parts(40_000_000, 5142)
 	}
 	fn withdraw_stake() -> Weight {
-		Weight::from_parts(45_000_000, 0)
+		Weight::from_parts(45_000_000, 5621)
 	}
 	fn revoke_delegation() -> Weight {
-		Weight::from_parts(35_000_000, 0)
+		Weight::from_parts(35_000_000, 5142)
 	}
 	fn slash() -> Weight {
-		Weight::from_parts(50_000_000, 0)
+		Weight::from_parts(50_000_000, 5621)
 	}
 }

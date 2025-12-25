@@ -56,12 +56,13 @@ pub mod pallet {
 		pallet_prelude::*,
 		traits::fungible::{Inspect, InspectHold, Mutate, MutateHold},
 		traits::Randomness,
-		BoundedVec,
+		BoundedVec, PalletId,
 	};
 	use frame_system::pallet_prelude::*;
 	use pallet_icn_reputation::ReputationEventType;
 	use pallet_icn_stake::{NodeRole, SlashReason};
-	use sp_runtime::traits::{Hash, SaturatedConversion, Saturating};
+	use sp_runtime::traits::{AccountIdConversion, Hash, SaturatedConversion, Saturating};
+	use sp_std::vec::Vec;
 
 	/// Balance type from the currency trait
 	pub type BalanceOf<T> =
@@ -80,9 +81,6 @@ pub mod pallet {
 	pub trait Config:
 		frame_system::Config + pallet_icn_stake::Config + pallet_icn_reputation::Config
 	{
-		/// The overarching event type
-		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
 		/// The currency type for deal payments and rewards
 		type Currency: Inspect<Self::AccountId>
 			+ InspectHold<Self::AccountId, Reason = Self::RuntimeHoldReason>
@@ -118,6 +116,10 @@ pub mod pallet {
 		/// Maximum candidates to consider in select_pinners() (L0 constraint)
 		#[pallet::constant]
 		type MaxSelectableCandidates: Get<u32>;
+
+		/// The pinning pallet's ID, used for deriving its sovereign account
+		#[pallet::constant]
+		type PalletId: Get<PalletId>;
 
 		/// Weight information for extrinsics
 		type WeightInfo: WeightInfo;
@@ -196,6 +198,15 @@ pub mod pallet {
 		OptionQuery,
 	>;
 
+	/// Merkle roots by shard hash
+	///
+	/// Maps shard hash to its Merkle root for audit proof verification.
+	/// Populated when a deal is created, used by `verify_merkle_proof()`.
+	#[pallet::storage]
+	#[pallet::getter(fn shard_merkle_roots)]
+	pub type ShardMerkleRoots<T: Config> =
+		StorageMap<_, Blake2_128Concat, ShardHash, MerkleRoot, OptionQuery>;
+
 	// =========================================================================
 	// Events
 	// =========================================================================
@@ -257,6 +268,8 @@ pub mod pallet {
 		InsufficientShards,
 		/// Too many shards (exceeds MaxShardsPerDeal)
 		TooManyShards,
+		/// Merkle roots count doesn't match shards count
+		MerkleRootsMismatch,
 		/// Insufficient super-nodes for replication
 		InsufficientSuperNodes,
 		/// Audit not found
@@ -273,6 +286,10 @@ pub mod pallet {
 		DealNotFound,
 		/// No rewards to claim
 		NoRewards,
+		/// Merkle root not found for shard
+		MerkleRootNotFound,
+		/// Invalid Merkle proof
+		InvalidMerkleProof,
 	}
 
 	// =========================================================================
@@ -312,12 +329,14 @@ pub mod pallet {
 		///
 		/// # Arguments
 		/// * `shards` - Shard hashes (14 for Reed-Solomon 10+4)
+		/// * `merkle_roots` - Merkle roots for each shard (for audit verification)
 		/// * `duration_blocks` - How long to pin (e.g., 100800 = ~7 days)
 		/// * `payment` - Total reward pool for pinners
 		///
 		/// # Errors
 		/// * `InsufficientShards` - Less than 10 shards
 		/// * `TooManyShards` - More than MaxShardsPerDeal
+		/// * `MerkleRootsMismatch` - Number of merkle_roots doesn't match shards
 		/// * `InsufficientSuperNodes` - Not enough super-nodes for replication
 		/// * `InsufficientBalance` - Not enough balance for payment
 		///
@@ -329,6 +348,7 @@ pub mod pallet {
 		pub fn create_deal(
 			origin: OriginFor<T>,
 			shards: BoundedVec<ShardHash, T::MaxShardsPerDeal>,
+			merkle_roots: BoundedVec<MerkleRoot, T::MaxShardsPerDeal>,
 			duration_blocks: BlockNumberFor<T>,
 			payment: BalanceOf<T>,
 		) -> DispatchResult {
@@ -338,6 +358,12 @@ pub mod pallet {
 			ensure!(
 				shards.len() >= ERASURE_DATA_SHARDS,
 				Error::<T>::InsufficientShards
+			);
+
+			// Verify merkle_roots count matches shards count
+			ensure!(
+				merkle_roots.len() == shards.len(),
+				Error::<T>::MerkleRootsMismatch
 			);
 
 			// Transfer payment from creator to pallet account and hold it
@@ -361,11 +387,12 @@ pub mod pallet {
 				.try_into()
 				.map_err(|_| Error::<T>::Overflow)?;
 
-			// Create deal
+			// Create deal with merkle roots
 			let deal = PinningDeal {
 				deal_id,
 				creator: creator.clone(),
 				shards: shards.clone(),
+				merkle_roots: merkle_roots.clone(),
 				created_at: current_block,
 				expires_at,
 				total_reward: payment,
@@ -374,8 +401,11 @@ pub mod pallet {
 
 			PinningDeals::<T>::insert(deal_id, deal);
 
-			// Assign shards to super-nodes
-			for shard in shards.iter() {
+			// Assign shards to super-nodes and store merkle roots for verification
+			for (i, shard) in shards.iter().enumerate() {
+				// Store merkle root for this shard (for audit verification)
+				ShardMerkleRoots::<T>::insert(shard, merkle_roots[i]);
+
 				let pinners = Self::select_pinners(*shard, REPLICATION_FACTOR)?;
 				ShardAssignments::<T>::insert(shard, pinners.clone());
 
@@ -556,17 +586,20 @@ pub mod pallet {
 
 		/// Submit proof for a pending audit.
 		///
-		/// Pinner provides Merkle proof showing they have the requested bytes.
-		/// Simplified verification for MVP: checks proof has expected length.
+		/// Pinner provides structured Merkle proof showing they have the requested
+		/// bytes at the challenged position. The proof is verified against the
+		/// stored Merkle root for the shard.
 		///
 		/// # Arguments
 		/// * `audit_id` - Audit identifier
-		/// * `proof` - Merkle proof bytes (simplified: just check length > 0)
+		/// * `proof` - Structured Merkle proof containing leaf data and siblings
 		///
 		/// # Errors
 		/// * `AuditNotFound` - No audit with this ID
 		/// * `NotAuditTarget` - Caller is not the audited pinner
 		/// * `AuditAlreadyCompleted` - Audit already resolved
+		/// * `MerkleRootNotFound` - No Merkle root stored for shard
+		/// * `InvalidMerkleProof` - Proof doesn't verify against stored root
 		///
 		/// # Events
 		/// * `AuditCompleted` - Audit passed or failed
@@ -575,7 +608,7 @@ pub mod pallet {
 		pub fn submit_audit_proof(
 			origin: OriginFor<T>,
 			audit_id: AuditId,
-			proof: BoundedVec<u8, ConstU32<1024>>, // Max 1KB proof
+			proof: MerkleProof,
 		) -> DispatchResult {
 			let pinner = ensure_signed(origin)?;
 
@@ -590,19 +623,17 @@ pub mod pallet {
 			let current_block = <frame_system::Pallet<T>>::block_number();
 			let slot = current_block.saturated_into::<u64>();
 
-			// Verify Merkle proof
+			// Get stored Merkle root for this shard
+			let expected_root = ShardMerkleRoots::<T>::get(&audit.shard_hash)
+				.ok_or(Error::<T>::MerkleRootNotFound)?;
+
+			// Verify Merkle proof against stored root
 			//
-			// For MVP: We verify the proof structure and minimum requirements.
-			// Full Merkle tree verification would require:
-			// 1. Store Merkle root in PinningDeal when created
-			// 2. Proof contains: leaf_hash + sibling_hashes + path_bits
-			// 3. Recompute root from proof and verify against stored root
-			//
-			// Current MVP verification:
-			// - Proof must meet minimum byte_length requirement
-			// - Proof must be non-empty
-			// - Proof hash must be deterministic (reproducible)
-			let valid = Self::verify_merkle_proof(&proof, &audit);
+			// The proof must:
+			// 1. Contain the 64-byte leaf data at the challenged position
+			// 2. Include sibling hashes for path reconstruction
+			// 3. Reconstruct to the stored Merkle root
+			let valid = Self::verify_merkle_proof(&proof, &expected_root, &audit);
 
 			if valid {
 				audit.status = AuditStatus::Passed;
@@ -658,8 +689,7 @@ pub mod pallet {
 		/// # Events
 		/// * `RewardsClaimed` - Rewards successfully claimed
 		#[pallet::call_index(4)]
-		// Weight placeholder: should be benchmarked in production
-		#[pallet::weight(10_000)]
+		#[pallet::weight(<T as Config>::WeightInfo::claim_rewards())]
 		pub fn claim_rewards(origin: OriginFor<T>) -> DispatchResult {
 			let pinner = ensure_signed(origin)?;
 
@@ -705,69 +735,93 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		/// Verify Merkle proof for audit challenge.
 		///
-		/// # MVP Implementation
-		/// For the MVP, we perform basic structural verification:
-		/// - Proof must meet minimum byte_length requirement
-		/// - Proof must be non-empty
-		/// - Proof hash must be deterministic (reproducible)
+		/// Reconstructs the Merkle root from the proof and compares it against
+		/// the stored root for the shard. The algorithm:
 		///
-		/// # Production Implementation
-		/// Full Merkle verification would:
-		/// 1. Extract leaf hash from proof
-		/// 2. Traverse sibling hashes using path bits
-		/// 3. Recompute Merkle root
-		/// 4. Compare against stored root in PinningDeal
+		/// 1. Hash the 64-byte leaf data to get the leaf hash
+		/// 2. For each sibling in the proof:
+		///    - If bit i of leaf_index is 0: hash(current || sibling)
+		///    - If bit i of leaf_index is 1: hash(sibling || current)
+		/// 3. Compare final computed root with expected_root
 		///
 		/// # Arguments
-		/// * `proof` - Merkle proof bytes
-		/// * `audit` - Audit challenge to verify against
+		/// * `proof` - Structured Merkle proof
+		/// * `expected_root` - The stored Merkle root to verify against
+		/// * `audit` - Audit challenge (for additional validation)
 		///
 		/// # Returns
-		/// true if proof is valid, false otherwise
+		/// true if proof verifies, false otherwise
 		fn verify_merkle_proof(
-			proof: &BoundedVec<u8, ConstU32<1024>>,
+			proof: &MerkleProof,
+			expected_root: &MerkleRoot,
 			audit: &PinningAudit<T::AccountId, BlockNumberFor<T>>,
 		) -> bool {
-			// Requirement 1: Proof must meet minimum byte length
-			if proof.len() < audit.challenge.byte_length as usize {
+			// Validation 1: Leaf index must be consistent with challenge offset
+			// Each leaf is 64 bytes, so byte_offset / 64 should equal leaf_index
+			let expected_leaf_index = audit.challenge.byte_offset / 64;
+			if proof.leaf_index != expected_leaf_index {
 				return false;
 			}
 
-			// Requirement 2: Proof must be non-empty
-			if proof.is_empty() {
+			// Validation 2: Must have at least one sibling (non-trivial tree)
+			if proof.siblings.is_empty() {
 				return false;
 			}
 
-			// Requirement 3: Proof must have valid structure (reasonable size)
-			// Max 1KB proof, must be multiple of 32 bytes (hash size)
-			if proof.len() > 1024 || proof.len() % 32 != 0 {
+			// Validation 3: Number of siblings must match tree depth
+			// leaf_index bits used should equal number of siblings
+			let tree_depth = proof.siblings.len() as u32;
+			if tree_depth > MAX_MERKLE_DEPTH {
 				return false;
 			}
 
-			// Requirement 4: Proof hash must be deterministic
-			// Compute hash of proof and verify it's non-zero (prevents all-zeros attacks)
-			let proof_hash = T::Hashing::hash(proof.as_ref());
-			let proof_bytes = proof_hash.as_ref();
+			// Step 1: Hash the leaf data to get leaf hash
+			let mut current_hash: [u8; 32] = T::Hashing::hash(&proof.leaf_data)
+				.as_ref()[0..32]
+				.try_into()
+				.unwrap_or([0u8; 32]);
 
-			// Check that hash is not all zeros (basic validity check)
-			let is_non_zero = proof_bytes.iter().any(|&b| b != 0);
+			// Step 2: Traverse up the tree using siblings
+			let mut index = proof.leaf_index;
+			for sibling in proof.siblings.iter() {
+				// Concatenate in correct order based on path direction
+				let combined = if index & 1 == 0 {
+					// Current is left child, sibling is right
+					let mut buf = [0u8; 64];
+					buf[0..32].copy_from_slice(&current_hash);
+					buf[32..64].copy_from_slice(sibling);
+					buf
+				} else {
+					// Current is right child, sibling is left
+					let mut buf = [0u8; 64];
+					buf[0..32].copy_from_slice(sibling);
+					buf[32..64].copy_from_slice(&current_hash);
+					buf
+				};
 
-			is_non_zero
+				// Hash the combined pair
+				current_hash = T::Hashing::hash(&combined)
+					.as_ref()[0..32]
+					.try_into()
+					.unwrap_or([0u8; 32]);
+
+				// Move up one level
+				index >>= 1;
+			}
+
+			// Step 3: Compare computed root with expected root
+			current_hash == *expected_root
 		}
 
-		/// Get the pallet's account ID for holding deal payments
+		/// Get the pallet's account ID for holding deal payments.
 		///
-		/// For simplicity in this implementation, we use a fixed pallet account.
-		/// In production, this should be derived from PalletInfo::index() to be
-		/// deterministic based on the pallet's position in the runtime.
+		/// Derived from the configured PalletId to ensure deterministic and
+		/// collision-free account generation across the runtime.
 		///
-		/// NOTE: Account ID 999 is reserved for pallet use in this test runtime.
-		/// In a production runtime, use the proper PalletInfo-based derivation.
-		fn pallet_account_id() -> T::AccountId {
-			let account_id: u64 = 999;
-			// This works because in our test runtime, AccountId = u64
-			T::AccountId::decode(&mut &account_id.to_le_bytes()[..])
-				.expect("u64 decodes to AccountId; qed")
+		/// This follows the same pattern used by pallet-treasury and other
+		/// Substrate pallets that hold funds on behalf of the protocol.
+		pub fn pallet_account_id() -> T::AccountId {
+			T::PalletId::get().into_account_truncating()
 		}
 
 		/// Select pinners for a shard using reputation-weighted selection.
@@ -802,7 +856,7 @@ pub mod pallet {
 				.collect();
 
 			ensure!(
-				candidates.len() >= count,
+				candidates.len() >= count as usize,
 				Error::<T>::InsufficientSuperNodes
 			);
 
@@ -823,7 +877,7 @@ pub mod pallet {
 			scored_candidates.sort_by_key(|(_, rep, _)| core::cmp::Reverse(*rep));
 
 			// Select with region diversity (max 2 per region for 5-replica)
-			let mut selected = Vec::new();
+			let mut selected: Vec<T::AccountId> = Vec::new();
 			let mut region_counts: sp_std::collections::btree_map::BTreeMap<
 				pallet_icn_stake::Region,
 				usize,
@@ -839,18 +893,18 @@ pub mod pallet {
 				selected.push(account.clone());
 				*region_counts.entry(*region).or_insert(0) += 1;
 
-				if selected.len() >= count {
+				if selected.len() >= count as usize {
 					break;
 				}
 			}
 
 			// If we couldn't get enough with region constraint, add more
 			// Still bounded by max_candidates
-			if selected.len() < count {
+			if selected.len() < count as usize {
 				for (account, _, _) in scored_candidates.iter().take(max_candidates) {
 					if !selected.contains(account) {
 						selected.push(account.clone());
-						if selected.len() >= count {
+						if selected.len() >= count as usize {
 							break;
 						}
 					}
@@ -886,6 +940,7 @@ pub mod pallet {
 							deal_id,
 							creator: deal.creator.clone(),
 							shards: deal.shards.clone(),
+							merkle_roots: deal.merkle_roots.clone(),
 							created_at: deal.created_at,
 							expires_at: deal.expires_at,
 							total_reward: deal.total_reward,

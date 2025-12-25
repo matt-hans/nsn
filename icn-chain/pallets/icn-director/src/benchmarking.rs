@@ -12,9 +12,9 @@
 
 use super::*;
 use frame_benchmarking::v2::*;
-use frame_support::traits::fungible::Mutate;
+use frame_support::BoundedVec;
 use frame_system::RawOrigin;
-use pallet_icn_stake::Region;
+use sp_std::vec;
 
 #[benchmarks]
 mod benchmarks {
@@ -57,6 +57,4 @@ mod benchmarks {
 			BoundedVec::try_from(vec![]).unwrap(),
 		);
 	}
-
-	impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

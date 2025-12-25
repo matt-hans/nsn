@@ -30,13 +30,13 @@ pallet-icn-pinning = { path = "./pallets/icn-pinning", default-features = false 
 pallet-icn-treasury = { path = "./pallets/icn-treasury", default-features = false }
 
 # Substrate/Polkadot SDK crates (version-aligned for compatibility)
-frame-benchmarking = { version = "41.0.0", default-features = false }
-frame-support = { version = "41.0.0", default-features = false }
-frame-system = { version = "41.0.0", default-features = false }
-pallet-balances = { version = "42.0.0", default-features = false }
-sp-core = { version = "37.0.0", default-features = false }
-sp-io = { version = "41.0.0", default-features = false }
-sp-runtime = { version = "42.0.0", default-features = false }
+frame-benchmarking = { version = "45.0.0", default-features = false }
+frame-support = { version = "45.0.0", default-features = false }
+frame-system = { version = "45.0.0", default-features = false }
+pallet-balances = { version = "46.0.0", default-features = false }
+sp-core = { version = "39.0.0", default-features = false }
+sp-io = { version = "44.0.0", default-features = false }
+sp-runtime = { version = "45.0.0", default-features = false }
 sp-std = { version = "14.0.0", default-features = false }
 parity-scale-codec = { version = "3.7.4", default-features = false }
 
@@ -47,8 +47,8 @@ docify = { version = "0.2.9" }
 futures = { version = "0.3.31" }
 jsonrpsee = { version = "0.24.3" }
 log = { version = "0.4.22", default-features = false }
-polkadot-sdk = { version = "2503.0.1", default-features = false }
-prometheus-endpoint = { version = "0.17.2", default-features = false, package = "substrate-prometheus-endpoint" }
+polkadot-sdk = { version = "2512.0.0", default-features = false }
+prometheus-endpoint = { version = "0.17.7", default-features = false, package = "substrate-prometheus-endpoint" }
 serde = { version = "1.0.214", default-features = false }
 codec = { version = "3.7.4", default-features = false, package = "parity-scale-codec" }
 cumulus-pallet-parachain-system = { version = "0.20.0", default-features = false }
@@ -56,8 +56,8 @@ hex-literal = { version = "0.4.1", default-features = false }
 scale-info = { version = "2.11.6", default-features = false }
 serde_json = { version = "1.0.132", default-features = false }
 smallvec = { version = "1.11.0", default-features = false }
-substrate-wasm-builder = { version = "26.0.1", default-features = false }
-frame = { version = "0.9.1", default-features = false, package = "polkadot-sdk-frame" }
+substrate-wasm-builder = { version = "29.0.0", default-features = false }
+frame = { version = "0.10.0", default-features = false, package = "polkadot-sdk-frame" }
 
 [profile.release]
 opt-level = 3

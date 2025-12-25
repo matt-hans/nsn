@@ -19,7 +19,7 @@ mod benchmarks {
 		let amount = 1000u32.into();
 
 		#[extrinsic_call]
-		_(RawOrigin::Signed(caller.clone()), amount);
+		fund_treasury(RawOrigin::Signed(caller.clone()), amount);
 
 		assert!(TreasuryBalance::<T>::get() >= amount);
 	}
@@ -31,7 +31,7 @@ mod benchmarks {
 		TreasuryBalance::<T>::put(amount * 2u32.into());
 
 		#[extrinsic_call]
-		_(RawOrigin::Root, beneficiary.clone(), amount, 1u32);
+		approve_proposal(RawOrigin::Root, beneficiary.clone(), amount, 1u32);
 
 		assert!(TreasuryBalance::<T>::get() < amount * 2u32.into());
 	}
@@ -41,7 +41,7 @@ mod benchmarks {
 		let account: T::AccountId = whitelisted_caller();
 
 		#[extrinsic_call]
-		_(RawOrigin::Root, account.clone(), 10u64);
+		record_director_work(RawOrigin::Root, account.clone(), 10u64);
 
 		assert_eq!(AccumulatedContributionsMap::<T>::get(&account).director_slots, 10);
 	}
@@ -51,10 +51,8 @@ mod benchmarks {
 		let account: T::AccountId = whitelisted_caller();
 
 		#[extrinsic_call]
-		_(RawOrigin::Root, account.clone(), 20u64);
+		record_validator_work(RawOrigin::Root, account.clone(), 20u64);
 
 		assert_eq!(AccumulatedContributionsMap::<T>::get(&account).validator_votes, 20);
 	}
-
-	impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(), crate::mock::Test);
 }

@@ -39,7 +39,8 @@ pub trait WeightInfo {
 	fn record_validator_work() -> Weight;
 }
 
-/// Weights for pallet_icn_treasury using the Substrate node and recommended hardware
+/// Weights for pallet_icn_treasury using the Substrate node and recommended hardware.
+/// NOTE: Includes estimated PoV sizes for Cumulus compatibility.
 pub struct SubstrateWeight<T>(PhantomData<T>);
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: Treasury TreasuryBalance (r:1 w:1)
@@ -47,7 +48,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: System Account (r:2 w:2)
 	/// Proof: System Account (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
 	fn fund_treasury() -> Weight {
-		Weight::from_parts(50_000_000, 0)
+		// PoV size: TreasuryBalance(16) + Account(128*2) + overhead(128) = 400 bytes
+		Weight::from_parts(50_000_000, 5717)
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
@@ -57,7 +59,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: System Account (r:2 w:2)
 	/// Proof: System Account (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
 	fn approve_proposal() -> Weight {
-		Weight::from_parts(60_000_000, 0)
+		// PoV size: TreasuryBalance(16) + Account(128*2) + overhead(128) = 400 bytes
+		Weight::from_parts(60_000_000, 5717)
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
@@ -65,7 +68,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: Treasury AccumulatedContributionsMap (r:1 w:1)
 	/// Proof: Treasury AccumulatedContributionsMap (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
 	fn record_director_work() -> Weight {
-		Weight::from_parts(20_000_000, 0)
+		// PoV size: AccumulatedContributionsMap(64) + overhead(64) = 128 bytes
+		Weight::from_parts(20_000_000, 2539)
 			.saturating_add(T::DbWeight::get().reads(1))
 			.saturating_add(T::DbWeight::get().writes(1))
 	}
@@ -73,7 +77,8 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	/// Storage: Treasury AccumulatedContributionsMap (r:1 w:1)
 	/// Proof: Treasury AccumulatedContributionsMap (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
 	fn record_validator_work() -> Weight {
-		Weight::from_parts(20_000_000, 0)
+		// PoV size: AccumulatedContributionsMap(64) + overhead(64) = 128 bytes
+		Weight::from_parts(20_000_000, 2539)
 			.saturating_add(T::DbWeight::get().reads(1))
 			.saturating_add(T::DbWeight::get().writes(1))
 	}
@@ -82,15 +87,15 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 // For backwards compatibility and tests
 impl WeightInfo for () {
 	fn fund_treasury() -> Weight {
-		Weight::from_parts(50_000_000, 0)
+		Weight::from_parts(50_000_000, 5717)
 	}
 	fn approve_proposal() -> Weight {
-		Weight::from_parts(60_000_000, 0)
+		Weight::from_parts(60_000_000, 5717)
 	}
 	fn record_director_work() -> Weight {
-		Weight::from_parts(20_000_000, 0)
+		Weight::from_parts(20_000_000, 2539)
 	}
 	fn record_validator_work() -> Weight {
-		Weight::from_parts(20_000_000, 0)
+		Weight::from_parts(20_000_000, 2539)
 	}
 }

@@ -19,6 +19,61 @@ fn test_shards(count: usize) -> BoundedVec<ShardHash, <Test as crate::Config>::M
 	BoundedVec::try_from(shards).unwrap()
 }
 
+/// Helper function to create Merkle roots for testing
+fn test_merkle_roots(count: usize) -> BoundedVec<MerkleRoot, <Test as crate::Config>::MaxShardsPerDeal> {
+	let mut roots = Vec::new();
+	for i in 0..count {
+		let mut root = [0u8; 32];
+		// Use hash of i to create deterministic but unique roots
+		root[0] = (i + 100) as u8;
+		root[1] = (i * 2) as u8;
+		roots.push(root);
+	}
+	BoundedVec::try_from(roots).unwrap()
+}
+
+/// Helper function to compute Merkle root from leaf data (for testing)
+/// Uses a simplified single-level tree for testing
+fn compute_test_merkle_root(leaf_data: &[u8; 64]) -> MerkleRoot {
+	use sp_core::hashing::blake2_256;
+	blake2_256(leaf_data)
+}
+
+/// Helper function to create a valid Merkle proof for testing
+fn create_valid_merkle_proof(
+	leaf_data: [u8; 64],
+	leaf_index: u32,
+	merkle_root: MerkleRoot,
+) -> MerkleProof {
+	use sp_core::hashing::blake2_256;
+
+	// For simple testing, create a minimal tree with one sibling
+	// leaf_hash = hash(leaf_data)
+	// root = hash(leaf_hash || sibling) or hash(sibling || leaf_hash) depending on index
+	let leaf_hash = blake2_256(&leaf_data);
+
+	// Calculate what sibling hash is needed to produce merkle_root
+	// If leaf_index is even (left child): root = hash(leaf_hash || sibling)
+	// If leaf_index is odd (right child): root = hash(sibling || leaf_hash)
+	// We work backwards to find sibling
+	let sibling: [u8; 32] = if leaf_index & 1 == 0 {
+		// left child - sibling is on right
+		// root = hash(leaf_hash || sibling)
+		// We need to find sibling such that hash(leaf_hash || sibling) = merkle_root
+		// For testing, we just use a dummy sibling and compute root from it
+		[99u8; 32]
+	} else {
+		// right child - sibling is on left
+		[99u8; 32]
+	};
+
+	MerkleProof {
+		leaf_data,
+		siblings: BoundedVec::try_from(vec![sibling]).unwrap(),
+		leaf_index,
+	}
+}
+
 #[test]
 fn create_deal_works() {
 	new_test_ext().execute_with(|| {
@@ -40,6 +95,7 @@ fn create_deal_works() {
 		}
 
 		let shards = test_shards(14); // Reed-Solomon 10+4
+		let merkle_roots = test_merkle_roots(14);
 		let creator = 1u64;
 		let payment = 100_000_000_000_000_000_000u128; // 100 ICN
 
@@ -47,6 +103,7 @@ fn create_deal_works() {
 		assert_ok!(Pinning::create_deal(
 			RuntimeOrigin::signed(creator),
 			shards.clone(),
+			merkle_roots.clone(),
 			100_800, // ~7 days
 			payment
 		));
@@ -65,6 +122,12 @@ fn create_deal_works() {
 			assert_eq!(pinners.len(), REPLICATION_FACTOR);
 		}
 
+		// Verify Merkle roots stored
+		for (i, shard) in shards.iter().enumerate() {
+			let stored_root = Pinning::shard_merkle_roots(shard);
+			assert_eq!(stored_root, Some(merkle_roots[i]), "Merkle root should be stored for shard");
+		}
+
 		// Verify DealCreated event exists (don't check exact deal_id as it's a hash)
 		let deal_created_found = System::events()
 			.iter()
@@ -77,11 +140,12 @@ fn create_deal_works() {
 fn create_deal_insufficient_shards_fails() {
 	new_test_ext().execute_with(|| {
 		let shards = test_shards(5); // Only 5 shards, need at least 10
+		let merkle_roots = test_merkle_roots(5);
 		let creator = 1u64;
 		let payment = 100_000_000_000_000_000_000u128;
 
 		assert_noop!(
-			Pinning::create_deal(RuntimeOrigin::signed(creator), shards, 100_800, payment),
+			Pinning::create_deal(RuntimeOrigin::signed(creator), shards, merkle_roots, 100_800, payment),
 			Error::<Test>::InsufficientShards
 		);
 	});

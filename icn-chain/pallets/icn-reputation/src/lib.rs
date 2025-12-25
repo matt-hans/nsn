@@ -83,6 +83,7 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::{Hash, SaturatedConversion, Zero};
 	use sp_runtime::Saturating;
+	use sp_std::vec::Vec;
 
 	/// Pallet for ICN reputation tracking
 	#[pallet::pallet]
@@ -91,9 +92,6 @@ pub mod pallet {
 	/// Configuration trait for the ICN Reputation pallet
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
-		/// The overarching event type
-		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
 		/// Maximum events per block (L0: bounded storage)
 		///
 		/// Prevents unbounded growth of PendingEvents and limits
@@ -479,7 +477,7 @@ pub mod pallet {
 		/// # Events
 		/// * `RetentionPeriodUpdated` - Period successfully updated
 		#[pallet::call_index(2)]
-		#[pallet::weight(10_000)]
+		#[pallet::weight(T::WeightInfo::update_retention())]
 		pub fn update_retention(
 			origin: OriginFor<T>,
 			new_period: BlockNumberFor<T>,

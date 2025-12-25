@@ -95,9 +95,6 @@ pub mod pallet {
 	pub trait Config:
 		frame_system::Config + pallet_icn_stake::Config + pallet_icn_reputation::Config
 	{
-		/// The overarching event type
-		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
 		/// The currency type for bonds and slashing
 		type Currency: Inspect<Self::AccountId>
 			+ MutateHold<Self::AccountId, Reason = Self::RuntimeHoldReason>

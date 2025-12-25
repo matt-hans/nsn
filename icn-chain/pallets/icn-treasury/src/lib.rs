@@ -62,9 +62,10 @@ pub mod pallet {
 	};
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::{
-		traits::{AccountIdConversion, Saturating, Zero},
-		Perbill, SaturatedConversion,
+		Perbill, SaturatedConversion, Saturating,
+		traits::{AccountIdConversion, Zero},
 	};
+	use sp_std::vec::Vec;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
