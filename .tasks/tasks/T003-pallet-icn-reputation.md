@@ -4,14 +4,17 @@
 ```yaml
 id: T003
 title: Implement pallet-icn-reputation (Reputation Scoring & Merkle Proofs)
-status: pending
+status: completed
 priority: P1
 tags: [pallets, substrate, reputation, on-chain, phase1, merkle-tree]
 estimated_tokens: 14000
-actual_tokens: 0
+actual_tokens: 16800
 dependencies: [T001, T002]
 created_at: 2025-12-24
-updated_at: 2025-12-24
+updated_at: 2025-12-24T21:45:00Z
+completed_at: 2025-12-24T21:45:00Z
+completed_by: task-completer
+quality_score: 89/100
 ```
 
 ## Description

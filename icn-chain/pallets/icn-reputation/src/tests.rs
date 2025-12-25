@@ -10,8 +10,9 @@
 
 use super::*;
 use crate::mock::*;
-use frame_support::{assert_err, assert_ok};
-use frame_system::RawOrigin;
+use frame_support::{assert_err, assert_ok, traits::Hooks, BoundedVec};
+use sp_core::H256;
+use sp_runtime::traits::Hash;
 
 // Scenario 1: Weighted Reputation Scoring
 #[test]
@@ -22,25 +23,25 @@ fn test_weighted_reputation_scoring() {
 
 		// WHEN: Record multiple events
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::DirectorSlotAccepted,
 			100u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::DirectorSlotAccepted,
 			101u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::ValidatorVoteCorrect,
 			102u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::SeederChunkServed,
 			103u64,
@@ -52,8 +53,8 @@ fn test_weighted_reputation_scoring() {
 		assert_eq!(score.validator_score, 5);
 		assert_eq!(score.seeder_score, 1);
 
-		// AND total() = (200*50 + 5*30 + 1*20) / 100 = 10070 / 100 = 100
-		assert_eq!(score.total(), 100);
+		// AND total() = (200*50 + 5*30 + 1*20) / 100 = 10170 / 100 = 101
+		assert_eq!(score.total(), 101);
 	});
 }
 
@@ -72,7 +73,7 @@ fn test_negative_delta_score_floor() {
 
 		// WHEN: DirectorSlotRejected event is recorded (-200 director)
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			BOB,
 			ReputationEventType::DirectorSlotRejected,
 			200u64,
@@ -111,7 +112,7 @@ fn test_decay_over_time() {
 		System::set_block_number(current_block as u32);
 
 		// Apply decay
-		IcnReputation::apply_decay(CHARLIE, current_block);
+		IcnReputation::apply_decay(&CHARLIE, current_block);
 
 		// THEN: weeks_inactive = 12
 		// AND decay_factor = 100 - (5 * 12) = 40%
@@ -132,38 +133,38 @@ fn test_merkle_root_publication() {
 		System::set_block_number(block);
 
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::DirectorSlotAccepted,
 			100u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			BOB,
 			ReputationEventType::ValidatorVoteCorrect,
 			101u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			CHARLIE,
 			ReputationEventType::SeederChunkServed,
 			102u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::DirectorSlotAccepted,
 			103u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			DAVE,
 			ReputationEventType::PinningAuditPassed,
 			104u64,
 		));
 
 		// WHEN: on_finalize(100) is called
-		IcnReputation::on_finalize(block);
+		<IcnReputation as Hooks<u32>>::on_finalize(block);
 
 		// THEN: PendingEvents is cleared
 		assert!(IcnReputation::pending_events().is_empty());
@@ -179,6 +180,114 @@ fn test_merkle_root_publication() {
 
 		assert!(merkle_event.is_some());
 	});
+}
+
+// Scenario 8: Merkle Proof Verification
+#[test]
+fn test_merkle_proof_verification() {
+	new_test_ext().execute_with(|| {
+		let block = 1000u32;
+		System::set_block_number(block);
+
+		let events = vec![
+			ReputationEvent {
+				account: ALICE,
+				event_type: ReputationEventType::DirectorSlotAccepted,
+				slot: 500,
+				block,
+			},
+			ReputationEvent {
+				account: BOB,
+				event_type: ReputationEventType::ValidatorVoteCorrect,
+				slot: 501,
+				block,
+			},
+			ReputationEvent {
+				account: CHARLIE,
+				event_type: ReputationEventType::SeederChunkServed,
+				slot: 502,
+				block,
+			},
+			ReputationEvent {
+				account: DAVE,
+				event_type: ReputationEventType::DirectorSlotAccepted,
+				slot: 503,
+				block,
+			},
+			ReputationEvent {
+				account: EVE,
+				event_type: ReputationEventType::PinningAuditPassed,
+				slot: 504,
+				block,
+			},
+		];
+
+		let leaves: Vec<H256> = events
+			.iter()
+			.map(|event| <Test as frame_system::Config>::Hashing::hash_of(event))
+			.collect();
+		let root = IcnReputation::compute_merkle_root(&events);
+
+		let leaf_index = 2usize;
+		let leaf = leaves[leaf_index];
+		let proof = build_merkle_proof(&leaves, leaf_index);
+
+		assert!(IcnReputation::verify_merkle_proof(
+			leaf,
+			leaf_index as u32,
+			leaves.len() as u32,
+			&proof,
+			root
+		));
+
+		// Tamper with the leaf to ensure proof fails
+		let tampered_leaf = H256::random();
+		assert!(!IcnReputation::verify_merkle_proof(
+			tampered_leaf,
+			leaf_index as u32,
+			leaves.len() as u32,
+			&proof,
+			root
+		));
+	});
+}
+
+fn build_merkle_proof(leaves: &[H256], leaf_index: usize) -> Vec<H256> {
+	let mut proof = Vec::new();
+	let mut index = leaf_index;
+	let mut current = leaves.to_vec();
+
+	while current.len() > 1 {
+		let mut next = Vec::new();
+		let mut i = 0usize;
+
+		while i < current.len() {
+			let left = current[i];
+			if i + 1 < current.len() {
+				let right = current[i + 1];
+				let parent = <Test as frame_system::Config>::Hashing::hash_of(&(left, right));
+				next.push(parent);
+
+				if index == i {
+					proof.push(right);
+					index = next.len() - 1;
+				} else if index == i + 1 {
+					proof.push(left);
+					index = next.len() - 1;
+				}
+			} else {
+				next.push(left);
+				if index == i {
+					index = next.len() - 1;
+				}
+			}
+			i += 2;
+		}
+
+		current = next;
+	}
+
+	proof
 }
 
 // Scenario 5: Checkpoint Creation
@@ -201,7 +310,7 @@ fn test_checkpoint_creation() {
 		}
 
 		// WHEN: on_finalize(5000) is called
-		IcnReputation::on_finalize(block);
+		<IcnReputation as Hooks<u32>>::on_finalize(block);
 
 		// THEN: Checkpoints[5000] is created
 		assert!(IcnReputation::checkpoints(block).is_some());
@@ -237,7 +346,7 @@ fn test_event_pruning_beyond_retention() {
 		}
 
 		// WHEN: prune_old_events() is called via on_finalize
-		IcnReputation::on_finalize(current_block);
+		<IcnReputation as Hooks<u32>>::on_finalize(current_block);
 
 		// THEN: MerkleRoots[100], [500], [10000], [400000] are removed
 		// (3000000 - block > 2592000)
@@ -269,30 +378,31 @@ fn test_aggregated_event_batching() {
 		// - DirectorSlotRejected (-200)
 		// - ValidatorVoteCorrect (+5)
 
-		// WHEN: Applying these events individually
-		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+		// WHEN: Applying these events as a single aggregated call
+		let events = BoundedVec::try_from(vec![
+			AggregatedEvent {
+				event_type: ReputationEventType::DirectorSlotAccepted,
+				slot: 100u64,
+			},
+			AggregatedEvent {
+				event_type: ReputationEventType::DirectorSlotAccepted,
+				slot: 101u64,
+			},
+			AggregatedEvent {
+				event_type: ReputationEventType::DirectorSlotRejected,
+				slot: 102u64,
+			},
+			AggregatedEvent {
+				event_type: ReputationEventType::ValidatorVoteCorrect,
+				slot: 103u64,
+			},
+		])
+		.unwrap();
+
+		assert_ok!(IcnReputation::record_aggregated_events(
+			RuntimeOrigin::root(),
 			ALICE,
-			ReputationEventType::DirectorSlotAccepted,
-			100u64,
-		));
-		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
-			ALICE,
-			ReputationEventType::DirectorSlotAccepted,
-			101u64,
-		));
-		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
-			ALICE,
-			ReputationEventType::DirectorSlotRejected,
-			102u64,
-		));
-		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
-			ALICE,
-			ReputationEventType::ValidatorVoteCorrect,
-			103u64,
+			events,
 		));
 
 		// THEN: Alice's scores are:
@@ -303,6 +413,16 @@ fn test_aggregated_event_batching() {
 		assert_eq!(score.director_score, 0);
 		assert_eq!(score.validator_score, 5);
 		assert_eq!(score.seeder_score, 0);
+
+		// AND PendingEvents contains 4 entries
+		assert_eq!(IcnReputation::pending_events().len(), 4);
+
+		// AND AggregatedEvents storage reflects the batch
+		let agg = IcnReputation::aggregated_events(ALICE);
+		assert_eq!(agg.net_director_delta, 0);
+		assert_eq!(agg.net_validator_delta, 5);
+		assert_eq!(agg.net_seeder_delta, 0);
+		assert_eq!(agg.event_count, 4);
 	});
 }
 
@@ -317,7 +437,7 @@ fn test_multiple_events_per_block_per_account() {
 
 		// WHEN: Alice's slot accepted (+100 director)
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::DirectorSlotAccepted,
 			200u64,
@@ -325,19 +445,19 @@ fn test_multiple_events_per_block_per_account() {
 
 		// AND Alice validates 3 slots correctly (+5 validator each)
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::ValidatorVoteCorrect,
 			201u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::ValidatorVoteCorrect,
 			202u64,
 		));
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::ValidatorVoteCorrect,
 			203u64,
@@ -347,7 +467,7 @@ fn test_multiple_events_per_block_per_account() {
 		assert_eq!(IcnReputation::pending_events().len(), 4);
 
 		// AND all 4 are included in Merkle tree for block 2000
-		IcnReputation::on_finalize(block);
+		<IcnReputation as Hooks<u32>>::on_finalize(block);
 		assert!(IcnReputation::merkle_roots(block).is_some());
 
 		// AND Alice's final scores: director=100, validator=15
@@ -362,10 +482,10 @@ fn test_multiple_events_per_block_per_account() {
 fn test_max_events_per_block_exceeded() {
 	new_test_ext().execute_with(|| {
 		// GIVEN: MaxEventsPerBlock = 50
-		// AND 49 events already recorded this block
-		for i in 0..49u64 {
+		// AND 50 events already recorded this block
+		for i in 0..50u64 {
 			assert_ok!(IcnReputation::record_event(
-				RuntimeOrigin::Root,
+				RuntimeOrigin::root(),
 				i,
 				ReputationEventType::SeederChunkServed,
 				0u64,
@@ -374,26 +494,17 @@ fn test_max_events_per_block_exceeded() {
 
 		// WHEN: Attempting to record 51st event
 		let result = IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			100u64,
 			ReputationEventType::SeederChunkServed,
 			0u64,
 		);
 
 		// THEN: Call fails with MaxEventsExceeded
-		assert_err!(
-			result,
-			Error::<Test>::MaxEventsExceeded,
-			"Should fail when max events exceeded"
-		);
+		assert_err!(result, Error::<Test>::MaxEventsExceeded);
 
-		// AND 50th event (exactly at limit) should succeed
-		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
-			99u64,
-			ReputationEventType::SeederChunkServed,
-			0u64,
-		));
+		// AND 50 events remain recorded
+		assert_eq!(IcnReputation::pending_events().len(), 50);
 	});
 }
 
@@ -407,7 +518,7 @@ fn test_governance_adjusts_retention_period() {
 
 		// WHEN: Governance proposes and approves update to 1296000 blocks
 		assert_ok!(IcnReputation::update_retention(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			1_296_000u32,
 		));
 
@@ -433,7 +544,7 @@ fn test_unauthorized_call_fails() {
 		// GIVEN: Regular user (not root)
 		// WHEN: Attempting to record event
 		let result = IcnReputation::record_event(
-			RuntimeOrigin::Signed(ALICE),
+			RuntimeOrigin::signed(ALICE),
 			BOB,
 			ReputationEventType::DirectorSlotAccepted,
 			100u64,
@@ -450,7 +561,7 @@ fn test_zero_slot_allowed() {
 	new_test_ext().execute_with(|| {
 		// WHEN: Recording event with slot=0
 		assert_ok!(IcnReputation::record_event(
-			RuntimeOrigin::Root,
+			RuntimeOrigin::root(),
 			ALICE,
 			ReputationEventType::SeederChunkServed,
 			0u64,
@@ -483,15 +594,21 @@ fn test_checkpoint_truncation_warning() {
 		// WHEN: Checkpoint created at block 1000
 		let block = 1000u32;
 		System::set_block_number(block);
-		IcnReputation::on_finalize(block);
+		<IcnReputation as Hooks<u32>>::on_finalize(block);
 
 		// THEN: Checkpoint created with truncated data
 		let checkpoint = IcnReputation::checkpoints(block);
 		assert!(checkpoint.is_some());
 
-		// Note: Current implementation includes all accounts (not bounded)
-		// Best practice fix would add MAX_CHECKPOINT_ACCOUNTS limit
 		let checkpoint = checkpoint.unwrap();
-		assert_eq!(checkpoint.score_count, 15_000); // All accounts included
+		assert_eq!(checkpoint.score_count, 10_000); // Truncated to MaxCheckpointAccounts
+
+		// AND CheckpointTruncated event emitted
+		let events = events();
+		let truncated_event = events
+			.iter()
+			.find(|e| matches!(e, RuntimeEvent::IcnReputation(crate::Event::CheckpointTruncated { .. })));
+
+		assert!(truncated_event.is_some());
 	});
 }

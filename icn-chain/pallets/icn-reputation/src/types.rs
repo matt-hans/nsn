@@ -102,14 +102,14 @@ impl ReputationEventType {
 /// Decay applied weekly based on inactivity.
 ///
 /// # Example
-/// ```
+/// ```text
 /// let score = ReputationScore {
 ///     director_score: 200,
 ///     validator_score: 5,
 ///     seeder_score: 1,
 ///     last_activity: 1000,
 /// };
-/// // total() = (200*50 + 5*30 + 1*20) / 100 = 100.7
+/// // total() = (200*50 + 5*30 + 1*20) / 100 = 101
 /// ```
 #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, Default, MaxEncodedLen)]
 pub struct ReputationScore {
@@ -134,7 +134,7 @@ impl ReputationScore {
 	///
 	/// # Example
 	/// If director=200, validator=5, seeder=1:
-	/// total = (200*50 + 5*30 + 1*20) / 100 = 10070 / 100 = 100.7
+	/// total = (200*50 + 5*30 + 1*20) / 100 = 10170 / 100 = 101
 	pub fn total(&self) -> u64 {
 		// L2: Saturating arithmetic to prevent overflow
 		let director_weighted = self.director_score.saturating_mul(50);
@@ -178,6 +178,7 @@ impl ReputationScore {
 			self.director_score = self.director_score.saturating_mul(decay_factor).saturating_div(100);
 			self.validator_score = self.validator_score.saturating_mul(decay_factor).saturating_div(100);
 			self.seeder_score = self.seeder_score.saturating_mul(decay_factor).saturating_div(100);
+			self.last_activity = current_block;
 		}
 	}
 
@@ -244,6 +245,17 @@ pub struct CheckpointData<Hash, BlockNumber> {
 	pub score_count: u32,
 	/// Merkle root of all reputation scores at this block
 	pub merkle_root: Hash,
+}
+
+/// Aggregated event item for batched submissions.
+///
+/// Represents a single reputation event in a batch for one account.
+#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct AggregatedEvent {
+	/// Type of event (determines delta)
+	pub event_type: ReputationEventType,
+	/// Slot number (for director events)
+	pub slot: u64,
 }
 
 /// Aggregated reputation events for TPS optimization.
@@ -336,8 +348,8 @@ mod tests {
 			seeder_score: 1,
 			last_activity: 1000,
 		};
-		// (200*50 + 5*30 + 1*20) / 100 = 10070 / 100 = 100.7 → 100 (integer division)
-		assert_eq!(score.total(), 100);
+		// (200*50 + 5*30 + 1*20) / 100 = 10170 / 100 = 101
+		assert_eq!(score.total(), 101);
 	}
 
 	#[test]

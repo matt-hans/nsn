@@ -332,6 +332,16 @@ parameter_types! {
 	pub const MaxDelegatorsPerValidator: u32 = 100;     // L0 constraint: bounded
 }
 
+parameter_types! {
+	// ICN Reputation parameters (from PRD)
+	pub const ReputationMaxEventsPerBlock: u32 = 50;
+	pub const ReputationDefaultRetentionPeriod: BlockNumber = 2_592_000;
+	pub const ReputationCheckpointInterval: BlockNumber = 1_000;
+	pub const ReputationDecayRatePerWeek: u64 = 5;
+	pub const ReputationMaxCheckpointAccounts: u32 = 10_000;
+	pub const ReputationMaxPrunePerBlock: u32 = 10_000;
+}
+
 impl pallet_icn_stake::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
 	type Currency = Balances;
@@ -351,6 +361,13 @@ impl pallet_icn_stake::Config for Runtime {
 
 impl pallet_icn_reputation::Config for Runtime {
 	type RuntimeEvent = RuntimeEvent;
+	type MaxEventsPerBlock = ReputationMaxEventsPerBlock;
+	type DefaultRetentionPeriod = ReputationDefaultRetentionPeriod;
+	type CheckpointInterval = ReputationCheckpointInterval;
+	type DecayRatePerWeek = ReputationDecayRatePerWeek;
+	type MaxCheckpointAccounts = ReputationMaxCheckpointAccounts;
+	type MaxPrunePerBlock = ReputationMaxPrunePerBlock;
+	type WeightInfo = pallet_icn_reputation::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_icn_director::Config for Runtime {

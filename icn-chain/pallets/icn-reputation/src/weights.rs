@@ -19,6 +19,7 @@ use frame_support::weights::Weight;
 /// Weight functions for pallet_icn_reputation.
 pub trait WeightInfo {
 	fn record_event() -> Weight;
+	fn record_aggregated_events(events: u32) -> Weight;
 }
 
 // Placeholder weights - TODO: Replace with actual benchmark results
@@ -30,11 +31,19 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	fn record_event() -> Weight {
 		Weight::from_parts(10_000, 0)
 	}
+
+	fn record_aggregated_events(events: u32) -> Weight {
+		Weight::from_parts(10_000, 0).saturating_mul(events as u64)
+	}
 }
 
 // For tests
 impl WeightInfo for () {
 	fn record_event() -> Weight {
 		Weight::from_parts(10_000, 0)
+	}
+
+	fn record_aggregated_events(events: u32) -> Weight {
+		Weight::from_parts(10_000, 0).saturating_mul(events as u64)
 	}
 }

@@ -17,6 +17,11 @@ parity-scale-codec = { workspace = true, features = [ "derive" ] }
 scale-info = { workspace = true, features = [ "derive" ] }
 sp-runtime = { workspace = true }
 sp-std = { workspace = true }
+sp-core = { workspace = true }
+
+# ICN pallets (coupling for stake/reputation queries)
+pallet-icn-stake = { workspace = true }
+pallet-icn-reputation = { workspace = true }
 
 [dev-dependencies]
 pallet-balances = { workspace = true, features = [ "insecure_zero_ed", "std" ] }
@@ -31,7 +36,11 @@ std = [
 	"frame-system/std",
 	"log/std",
 	"parity-scale-codec/std",
+	"pallet-icn-stake/std",
+	"pallet-icn-reputation/std",
 	"scale-info/std",
+	"serde/std",
+	"sp-core/std",
 	"sp-runtime/std",
 	"sp-std/std",
 ]
@@ -39,8 +48,12 @@ runtime-benchmarks = [
 	"frame-benchmarking/runtime-benchmarks",
 	"frame-support/runtime-benchmarks",
 	"frame-system/runtime-benchmarks",
+	"pallet-icn-stake/runtime-benchmarks",
+	"pallet-icn-reputation/runtime-benchmarks",
 ]
 try-runtime = [
 	"frame-support/try-runtime",
 	"frame-system/try-runtime",
+	"pallet-icn-stake/try-runtime",
+	"pallet-icn-reputation/try-runtime",
 ]

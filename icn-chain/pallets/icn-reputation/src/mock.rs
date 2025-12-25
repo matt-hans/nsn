@@ -9,8 +9,7 @@
 //! Test utilities for pallet-icn-reputation
 
 use crate as pallet_icn_reputation;
-use frame_support::{construct_runtime, parameter_types, traits::ConstU32};
-use frame_system::pallet_prelude::BlockNumberFor;
+use frame_support::{construct_runtime, parameter_types, traits::{ConstU32, Hooks}};
 use sp_core::H256;
 use sp_runtime::{traits::IdentityLookup, BuildStorage};
 
@@ -54,6 +53,12 @@ impl frame_system::Config for Test {
 	type SS58Prefix = ();
 	type OnSetCode = ();
 	type MaxConsumers = ConstU32<16>;
+	type SingleBlockMigrations = ();
+	type MultiBlockMigrator = ();
+	type PreInherents = ();
+	type PostInherents = ();
+	type PostTransactions = ();
+	type ExtensionsWeightInfo = ();
 }
 
 parameter_types! {
@@ -65,6 +70,7 @@ parameter_types! {
 	pub const CheckpointInterval: u32 = 1000;
 	pub const DecayRatePerWeek: u64 = 5; // 5% per week
 	pub const MaxCheckpointAccounts: u32 = 10_000; // L0: bounded checkpoint iteration
+	pub const MaxPrunePerBlock: u32 = 10_000; // L0: bounded pruning per block
 }
 
 impl pallet_icn_reputation::Config for Test {
@@ -74,6 +80,7 @@ impl pallet_icn_reputation::Config for Test {
 	type CheckpointInterval = CheckpointInterval;
 	type DecayRatePerWeek = DecayRatePerWeek;
 	type MaxCheckpointAccounts = MaxCheckpointAccounts;
+	type MaxPrunePerBlock = MaxPrunePerBlock;
 	type WeightInfo = ();
 }
 
@@ -95,7 +102,7 @@ impl Default for ExtBuilder {
 
 impl ExtBuilder {
 	pub fn build(self) -> sp_io::TestExternalities {
-		let mut storage = frame_system::GenesisConfig::<Test>::default()
+		let storage = frame_system::GenesisConfig::<Test>::default()
 			.build_storage()
 			.unwrap();
 
@@ -107,11 +114,16 @@ impl ExtBuilder {
 	}
 }
 
+/// Convenience function to create test externalities
+pub fn new_test_ext() -> sp_io::TestExternalities {
+	ExtBuilder::default().build()
+}
+
 // Helper function to advance blocks
 pub fn roll_to(n: u32) {
 	while System::block_number() < n {
 		let current = System::block_number();
-		IcnReputation::on_finalize(current);
+		<IcnReputation as Hooks<u32>>::on_finalize(current);
 		System::set_block_number(current + 1);
 	}
 }

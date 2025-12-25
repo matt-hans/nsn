@@ -66,7 +66,7 @@
       "id": "T003",
       "title": "Implement pallet-icn-reputation (Reputation Scoring & Merkle Proofs)",
       "file": "tasks/T003-pallet-icn-reputation.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 1,
       "depends_on": [
         "T001",
@@ -81,9 +81,11 @@
         "merkle-tree"
       ],
       "estimated_tokens": 14000,
-      "actual_tokens": 0,
+      "actual_tokens": 16800,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-24T21:45:00Z",
+      "completed_at": "2025-12-24T21:45:00Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T004",
@@ -991,9 +993,9 @@
   ],
   "stats": {
     "total_tasks": 41,
-    "completed": 2,
+    "completed": 3,
     "in_progress": 0,
-    "pending": 39,
+    "pending": 38,
     "blocked": 0
   },
   "dependency_graph": {

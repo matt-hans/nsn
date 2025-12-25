@@ -62,7 +62,8 @@ pub use weights::WeightInfo;
 
 mod types;
 pub use types::{
-	AggregatedReputation, CheckpointData, ReputationEvent, ReputationEventType, ReputationScore,
+	AggregatedEvent, AggregatedReputation, CheckpointData, ReputationEvent, ReputationEventType,
+	ReputationScore,
 };
 
 #[cfg(test)]
@@ -80,7 +81,8 @@ pub mod pallet {
 	use super::*;
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
-	use sp_runtime::traits::{Hash, Saturating, Zero};
+	use sp_runtime::traits::{Hash, SaturatedConversion, Zero};
+	use sp_runtime::Saturating;
 
 	/// Pallet for ICN reputation tracking
 	#[pallet::pallet]
@@ -123,6 +125,12 @@ pub mod pallet {
 		/// Realistic bound: < 10,000 accounts (MVP phase).
 		#[pallet::constant]
 		type MaxCheckpointAccounts: Get<u32>;
+
+		/// Maximum Merkle roots/checkpoints to prune per block.
+		///
+		/// Bounds on_finalize pruning cost.
+		#[pallet::constant]
+		type MaxPrunePerBlock: Get<u32>;
 
 		/// Weight information for extrinsics
 		type WeightInfo: WeightInfo;
@@ -240,6 +248,14 @@ pub mod pallet {
 			event_type: ReputationEventType,
 			slot: u64,
 		},
+		/// Aggregated reputation events recorded
+		AggregatedReputationRecorded {
+			account: T::AccountId,
+			net_director_delta: i64,
+			net_validator_delta: i64,
+			net_seeder_delta: i64,
+			event_count: u32,
+		},
 		/// Merkle root published for block
 		MerkleRootPublished { block: BlockNumberFor<T>, root: T::Hash, event_count: u32 },
 		/// Checkpoint created
@@ -261,6 +277,8 @@ pub mod pallet {
 	pub enum Error<T> {
 		/// Maximum events per block exceeded
 		MaxEventsExceeded,
+		/// Aggregated submission contained no events
+		EmptyAggregation,
 	}
 
 	/// Hooks for block finalization
@@ -328,7 +346,7 @@ pub mod pallet {
 			ensure_root(origin)?;
 
 			let current_block = <frame_system::Pallet<T>>::block_number();
-			let current_block_u64 = TryInto::<u64>::try_into(current_block).unwrap_or(0);
+			let current_block_u64 = current_block.saturated_into::<u64>();
 
 			// Apply score change using helper
 			let delta = event_type.delta();
@@ -342,29 +360,114 @@ pub mod pallet {
 				2
 			};
 
+			// Add to pending events for Merkle tree (L0: bounded)
+			let event = ReputationEvent {
+				account: account.clone(),
+				event_type: event_type.clone(),
+				slot,
+				block: current_block,
+			};
+
+			PendingEvents::<T>::try_mutate(|events| -> DispatchResult {
+				events
+					.try_push(event)
+					.map_err(|_| Error::<T>::MaxEventsExceeded)?;
+				Ok(())
+			})?;
+
 			// Update reputation score (L2: saturating arithmetic)
 			ReputationScores::<T>::mutate(&account, |score| {
 				score.apply_delta(delta, component);
 				score.update_activity(current_block_u64);
 			});
 
-			// Add to pending events for Merkle tree (L0: bounded)
-			PendingEvents::<T>::try_mutate(|events| -> DispatchResult {
-				let event = ReputationEvent {
-					account: account.clone(),
-					event_type: event_type.clone(),
-					slot,
-					block: current_block,
-				};
+			Self::deposit_event(Event::ReputationRecorded { account, event_type, slot });
+			Ok(())
+		}
 
-				events
-					.try_push(event)
-					.map_err(|_| Error::<T>::MaxEventsExceeded)?;
+		/// Record a batch of reputation events for a single account (root only).
+		///
+		/// Applies all deltas atomically and records each event into PendingEvents
+		/// for inclusion in the Merkle root.
+		#[pallet::call_index(1)]
+		#[pallet::weight(T::WeightInfo::record_aggregated_events(events.len() as u32))]
+		pub fn record_aggregated_events(
+			origin: OriginFor<T>,
+			account: T::AccountId,
+			events: BoundedVec<AggregatedEvent, T::MaxEventsPerBlock>,
+		) -> DispatchResult {
+			ensure_root(origin)?;
+			ensure!(!events.is_empty(), Error::<T>::EmptyAggregation);
+
+			let current_block = <frame_system::Pallet<T>>::block_number();
+			let current_block_u64 = current_block.saturated_into::<u64>();
+
+			// Pre-compute net deltas
+			let mut net_director_delta: i64 = 0;
+			let mut net_validator_delta: i64 = 0;
+			let mut net_seeder_delta: i64 = 0;
+
+			for event in events.iter() {
+				let delta = event.event_type.delta();
+				if event.event_type.is_director_event() {
+					net_director_delta = net_director_delta.saturating_add(delta);
+				} else if event.event_type.is_validator_event() {
+					net_validator_delta = net_validator_delta.saturating_add(delta);
+				} else if event.event_type.is_seeder_event() {
+					net_seeder_delta = net_seeder_delta.saturating_add(delta);
+				}
+			}
+
+			// Add all events to pending events (L0: bounded)
+			PendingEvents::<T>::try_mutate(|pending| -> DispatchResult {
+				let new_len = pending.len().saturating_add(events.len());
+				ensure!(
+					new_len <= T::MaxEventsPerBlock::get() as usize,
+					Error::<T>::MaxEventsExceeded
+				);
+
+				for event in events.iter() {
+					let pending_event = ReputationEvent {
+						account: account.clone(),
+						event_type: event.event_type.clone(),
+						slot: event.slot,
+						block: current_block,
+					};
+					pending
+						.try_push(pending_event)
+						.map_err(|_| Error::<T>::MaxEventsExceeded)?;
+				}
 
 				Ok(())
 			})?;
 
-			Self::deposit_event(Event::ReputationRecorded { account, event_type, slot });
+			// Apply aggregated deltas atomically
+			ReputationScores::<T>::mutate(&account, |score| {
+				score.apply_delta(net_director_delta, 0);
+				score.apply_delta(net_validator_delta, 1);
+				score.apply_delta(net_seeder_delta, 2);
+				score.update_activity(current_block_u64);
+			});
+
+			AggregatedEvents::<T>::insert(
+				&account,
+				AggregatedReputation {
+					net_director_delta,
+					net_validator_delta,
+					net_seeder_delta,
+					event_count: events.len() as u32,
+					last_aggregation_block: current_block_u64,
+				},
+			);
+
+			Self::deposit_event(Event::AggregatedReputationRecorded {
+				account,
+				net_director_delta,
+				net_validator_delta,
+				net_seeder_delta,
+				event_count: events.len() as u32,
+			});
+
 			Ok(())
 		}
 
@@ -375,7 +478,7 @@ pub mod pallet {
 		///
 		/// # Events
 		/// * `RetentionPeriodUpdated` - Period successfully updated
-		#[pallet::call_index(1)]
+		#[pallet::call_index(2)]
 		#[pallet::weight(10_000)]
 		pub fn update_retention(
 			origin: OriginFor<T>,
@@ -463,6 +566,56 @@ pub mod pallet {
 			current[0]
 		}
 
+		/// Verify a Merkle proof for a leaf.
+		///
+		/// # Arguments
+		/// * `leaf` - Hash of the leaf
+		/// * `leaf_index` - Index of the leaf in the original list
+		/// * `leaf_count` - Total number of leaves in the original list
+		/// * `proof` - Sibling hashes from leaf to root
+		/// * `root` - Expected Merkle root
+		pub fn verify_merkle_proof(
+			leaf: T::Hash,
+			leaf_index: u32,
+			leaf_count: u32,
+			proof: &[T::Hash],
+			root: T::Hash,
+		) -> bool {
+			if leaf_count == 0 || leaf_index >= leaf_count {
+				return false;
+			}
+
+			let mut hash = leaf;
+			let mut index = leaf_index;
+			let mut count = leaf_count;
+			let mut proof_index = 0usize;
+
+			while count > 1 {
+				let is_last = index == count - 1;
+				let has_sibling = !(is_last && (count % 2 == 1));
+
+				if has_sibling {
+					if proof_index >= proof.len() {
+						return false;
+					}
+
+					let sibling = proof[proof_index];
+					proof_index = proof_index.saturating_add(1);
+
+					hash = if index % 2 == 0 {
+						T::Hashing::hash_of(&(hash, sibling))
+					} else {
+						T::Hashing::hash_of(&(sibling, hash))
+					};
+				}
+
+				index /= 2;
+				count = (count + 1) / 2;
+			}
+
+			proof_index == proof.len() && hash == root
+		}
+
 		/// Create checkpoint for current block
 		///
 		/// # Arguments
@@ -479,12 +632,17 @@ pub mod pallet {
 		fn create_checkpoint(block: BlockNumberFor<T>) {
 			// L0: Bounded iteration to prevent unbounded storage reads
 			let max_accounts = T::MaxCheckpointAccounts::get() as usize;
+			let mut truncated = false;
 
-			let scores: Vec<(T::AccountId, ReputationScore)> = ReputationScores::<T>::iter()
-				.take(max_accounts) // L0: Bounded iteration
+			let mut scores: Vec<(T::AccountId, ReputationScore)> = ReputationScores::<T>::iter()
+				.take(max_accounts + 1) // Peek one past limit
 				.collect();
 
-			let total_accounts = ReputationScores::<T>::count();
+			if scores.len() > max_accounts {
+				truncated = true;
+				scores.truncate(max_accounts);
+			}
+
 			let score_count = scores.len() as u32;
 			let merkle_root = Self::compute_scores_merkle(&scores);
 
@@ -493,10 +651,10 @@ pub mod pallet {
 			Checkpoints::<T>::insert(block, checkpoint);
 
 			// Emit warning if checkpoint was truncated
-			if total_accounts > score_count {
+			if truncated {
 				Self::deposit_event(Event::CheckpointTruncated {
 					block,
-					total: total_accounts,
+					total: score_count.saturating_add(1),
 					included: score_count,
 				});
 			} else {
@@ -541,9 +699,10 @@ pub mod pallet {
 		/// Pruning ensures storage doesn't grow unbounded.
 		fn prune_old_events(before_block: BlockNumberFor<T>) {
 			let mut pruned_roots = 0u32;
+			let max_prune = T::MaxPrunePerBlock::get() as usize;
 
 			// Prune Merkle roots (L0: bounded iteration)
-			for (block, _) in MerkleRoots::<T>::iter() {
+			for (block, _) in MerkleRoots::<T>::iter().take(max_prune) {
 				if block < before_block {
 					MerkleRoots::<T>::remove(block);
 					pruned_roots = pruned_roots.saturating_add(1);
@@ -552,7 +711,7 @@ pub mod pallet {
 
 			// Prune checkpoints (L0: bounded iteration)
 			let mut pruned_checkpoints = 0u32;
-			for (block, _) in Checkpoints::<T>::iter() {
+			for (block, _) in Checkpoints::<T>::iter().take(max_prune) {
 				if block < before_block {
 					Checkpoints::<T>::remove(block);
 					pruned_checkpoints = pruned_checkpoints.saturating_add(1);
