@@ -54,8 +54,10 @@ pub mod pallet {
 	use super::*;
 	use frame_support::{
 		pallet_prelude::*,
-		traits::fungible::{Inspect, InspectHold, Mutate, MutateHold},
-		traits::Randomness,
+		traits::{
+			fungible::{Inspect, InspectHold, Mutate, MutateHold},
+			Randomness, StorageVersion,
+		},
 		BoundedVec, PalletId,
 	};
 	use frame_system::pallet_prelude::*;
@@ -73,7 +75,11 @@ pub mod pallet {
 		<T as frame_system::Config>::AccountId,
 	>>::Balance;
 
+	/// The in-code storage version.
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// Configuration trait for the ICN Pinning pallet
@@ -298,6 +304,18 @@ pub mod pallet {
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+		/// Validate configuration constraints.
+		fn integrity_test() {
+			assert!(
+				T::MaxShardsPerDeal::get() >= 14,
+				"MaxShardsPerDeal must support Reed-Solomon 10+4"
+			);
+			assert!(
+				T::MaxPinnersPerShard::get() >= 5,
+				"MaxPinnersPerShard must support REPLICATION_FACTOR"
+			);
+		}
+
 		/// Block finalization hook
 		///
 		/// # Operations

@@ -131,7 +131,6 @@ parameter_types! {
 }
 
 impl pallet_icn_pinning::Config for Test {
-	type RuntimeEvent = RuntimeEvent;
 	type Currency = Balances;
 	type RuntimeHoldReason = RuntimeHoldReason;
 	type Randomness = TestRandomness;

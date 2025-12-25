@@ -159,7 +159,6 @@ impl frame_support::traits::Randomness<H256, u32> for TestRandomness {
 }
 
 impl pallet_icn_director::Config for Test {
-	type RuntimeEvent = RuntimeEvent;
 	type Currency = Balances;
 	type RuntimeHoldReason = RuntimeHoldReason;
 	type Randomness = TestRandomness;
@@ -229,11 +228,6 @@ impl ExtBuilder {
 		});
 		ext
 	}
-
-	pub fn with_balances(mut self, balances: Vec<(u64, u128)>) -> Self {
-		self.balances = balances;
-		self
-	}
 }
 
 /// Convenience function to create test externalities
@@ -251,15 +245,6 @@ pub fn roll_to(n: u32) {
 	}
 }
 
-// Helper to get last event
-pub fn last_event() -> RuntimeEvent {
-	System::events().pop().expect("Event expected").event
-}
-
-// Helper to get all events
-pub fn events() -> Vec<RuntimeEvent> {
-	System::events().into_iter().map(|e| e.event).collect()
-}
 
 // Helper to stake as Director
 pub fn stake_as_director(who: u64, amount: u128, region: Region) {
@@ -271,11 +256,6 @@ pub fn stake_as_director(who: u64, amount: u128, region: Region) {
 		region,
 	)
 	.expect("Staking should succeed");
-}
-
-// Helper to get stake info
-pub fn get_stake(who: u64) -> pallet_icn_stake::StakeInfo<u128, u32> {
-	pallet_icn_stake::Pallet::<Test>::stakes(who)
 }
 
 // Helper to record reputation event

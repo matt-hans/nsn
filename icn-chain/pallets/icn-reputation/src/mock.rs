@@ -9,7 +9,7 @@
 //! Test utilities for pallet-icn-reputation
 
 use crate as pallet_icn_reputation;
-use frame_support::{construct_runtime, parameter_types, traits::{ConstU32, Hooks}};
+use frame_support::{construct_runtime, parameter_types, traits::ConstU32};
 use sp_core::H256;
 use sp_runtime::{traits::IdentityLookup, BuildStorage};
 
@@ -117,20 +117,6 @@ impl ExtBuilder {
 /// Convenience function to create test externalities
 pub fn new_test_ext() -> sp_io::TestExternalities {
 	ExtBuilder::default().build()
-}
-
-// Helper function to advance blocks
-pub fn roll_to(n: u32) {
-	while System::block_number() < n {
-		let current = System::block_number();
-		<IcnReputation as Hooks<u32>>::on_finalize(current);
-		System::set_block_number(current + 1);
-	}
-}
-
-// Helper to get last event
-pub fn last_event() -> RuntimeEvent {
-	System::events().pop().expect("Event expected").event
 }
 
 // Helper to get all events

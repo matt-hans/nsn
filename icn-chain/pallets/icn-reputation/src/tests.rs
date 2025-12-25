@@ -63,7 +63,7 @@ fn test_weighted_reputation_scoring() {
 fn test_negative_delta_score_floor() {
 	new_test_ext().execute_with(|| {
 		// GIVEN: Bob has reputation: director=50, validator=10, seeder=5
-		let mut score = ReputationScore {
+		let score = ReputationScore {
 			director_score: 50,
 			validator_score: 10,
 			seeder_score: 5,
@@ -96,7 +96,7 @@ fn test_decay_over_time() {
 	new_test_ext().execute_with(|| {
 		// GIVEN: Charlie has reputation: director=1000, validator=500, seeder=100
 		// AND last_activity = block 10000
-		let mut score = ReputationScore {
+		let score = ReputationScore {
 			director_score: 1000,
 			validator_score: 500,
 			seeder_score: 100,

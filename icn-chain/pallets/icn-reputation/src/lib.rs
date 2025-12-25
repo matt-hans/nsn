@@ -80,18 +80,26 @@ pub mod weights;
 pub mod pallet {
 	use super::*;
 	use frame_support::pallet_prelude::*;
+	use frame_support::traits::StorageVersion;
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::{Hash, SaturatedConversion, Zero};
 	use sp_runtime::Saturating;
 	use sp_std::vec::Vec;
 
+	/// The in-code storage version.
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
 	/// Pallet for ICN reputation tracking
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// Configuration trait for the ICN Reputation pallet
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
+		/// The overarching event type.
+		#[allow(deprecated)]
+		type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 		/// Maximum events per block (L0: bounded storage)
 		///
 		/// Prevents unbounded growth of PendingEvents and limits
@@ -282,6 +290,22 @@ pub mod pallet {
 	/// Hooks for block finalization
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+		/// Validate configuration constraints at compile time.
+		fn integrity_test() {
+			assert!(
+				T::MaxEventsPerBlock::get() > 0,
+				"MaxEventsPerBlock must be greater than 0"
+			);
+			assert!(
+				T::CheckpointInterval::get() > Zero::zero(),
+				"CheckpointInterval must be greater than 0"
+			);
+			assert!(
+				T::DecayRatePerWeek::get() <= 100,
+				"DecayRatePerWeek cannot exceed 100%"
+			);
+		}
+
 		/// Block finalization hook
 		///
 		/// # Operations

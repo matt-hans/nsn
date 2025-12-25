@@ -57,6 +57,7 @@ pub mod pallet {
 		traits::{
 			fungible::{Inspect, Mutate},
 			tokens::Preservation,
+			StorageVersion,
 		},
 		PalletId,
 	};
@@ -70,7 +71,11 @@ pub mod pallet {
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
+	/// The in-code storage version.
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// Configuration trait for the ICN Treasury pallet

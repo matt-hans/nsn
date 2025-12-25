@@ -51,7 +51,10 @@ pub mod pallet {
 	use super::*;
 	use frame_support::{
 		pallet_prelude::*,
-		traits::fungible::{Balanced, Inspect, InspectFreeze, Mutate, MutateFreeze},
+		traits::{
+			fungible::{Balanced, Inspect, InspectFreeze, Mutate, MutateFreeze},
+			StorageVersion,
+		},
 	};
 	use frame_system::pallet_prelude::*;
 	use sp_runtime::traits::{CheckedAdd, Saturating, Zero};
@@ -59,7 +62,11 @@ pub mod pallet {
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
+	/// The in-code storage version.
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// Configuration trait for the ICN Stake pallet
@@ -263,7 +270,12 @@ pub mod pallet {
 	}
 
 	#[pallet::hooks]
-	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
+	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+		/// Block initialization - no operations needed.
+		fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+			Weight::zero()
+		}
+	}
 
 	/// Extrinsic calls
 	#[pallet::call]

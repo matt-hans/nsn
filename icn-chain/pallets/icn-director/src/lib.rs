@@ -70,7 +70,7 @@ pub mod pallet {
 		traits::{
 			fungible::{Balanced, Inspect, MutateHold},
 			tokens::{Fortitude, Precision, Preservation},
-			Randomness,
+			Randomness, StorageVersion,
 		},
 	};
 	use frame_system::pallet_prelude::*;
@@ -87,7 +87,11 @@ pub mod pallet {
 		<T as frame_system::Config>::AccountId,
 	>>::Balance;
 
+	/// The in-code storage version.
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// Configuration trait for the ICN Director pallet
@@ -310,9 +314,12 @@ pub mod pallet {
 			// Check if we've entered a new slot
 			if slot > Self::current_slot() {
 				Self::start_new_slot(slot);
+				// Weight for slot transition: reads (CurrentSlot, Stakes) + writes (CurrentSlot, ElectedDirectors, SlotStatuses)
+				return T::DbWeight::get().reads_writes(2, 3);
 			}
 
-			Weight::from_parts(15_000, 0)
+			// Minimal weight for slot check only
+			T::DbWeight::get().reads(1)
 		}
 
 		/// Block finalization hook

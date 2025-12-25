@@ -76,11 +76,15 @@ use alloc::vec::Vec;
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
-    use frame_support::{pallet_prelude::*, BoundedVec};
+    use frame_support::{pallet_prelude::*, traits::StorageVersion, BoundedVec};
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{Saturating, Zero};
 
+    /// The in-code storage version.
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
     #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// Configuration trait for the ICN BFT pallet
@@ -365,6 +369,12 @@ pub mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// Reserve weight for on_finalize operations.
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            // Reserve weight for potential pruning in on_finalize
+            T::DbWeight::get().reads_writes(10, 10)
+        }
+
         /// Auto-prune old consensus data every 10000 blocks.
         ///
         /// Calculates cutoff based on retention period and current block,
