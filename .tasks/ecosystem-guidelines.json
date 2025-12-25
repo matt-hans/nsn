@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "project": "Interdimensional Cable Network (ICN)",
+  "last_updated": "2025-12-25",
+  "quality_baselines": {
+    "rust": {
+      "max_file_size": 300,
+      "max_function_complexity": 15,
+      "max_function_length": 100,
+      "max_class_length": 200,
+      "max_struct_fields": 15,
+      "min_test_coverage": 70,
+      "max_duplication": 10,
+      "max_nesting_depth": 4
+    },
+    "python": {
+      "max_file_size": 300,
+      "max_function_complexity": 15,
+      "max_function_length": 80,
+      "max_class_length": 200,
+      "min_test_coverage": 75,
+      "max_line_length": 100
+    },
+    "javascript": {
+      "max_file_size": 250,
+      "max_function_complexity": 12,
+      "max_function_length": 60,
+      "max_class_length": 200,
+      "max_nesting_depth": 4
+    },
+    "solidity": {
+      "max_file_size": 300,
+      "max_function_complexity": 10,
+      "max_function_length": 50,
+      "max_contract_size": 500
+    },
+    "general": {
+      "solid_required": true,
+      "yagni_required": true,
+      "dry_required": true,
+      "kiss_required": true,
+      "documentation_required": true
+    }
+  },
+  "code_patterns": {
+    "error_handling": "Use Result<T, E> for fallible operations",
+    "logging": "Use structured logging with tracing crate",
+    "testing": "Write unit tests for all business logic",
+    "async": "Use tokio for async runtime",
+    "serialization": "Use serde for JSON/protocol buffers"
+  },
+  "security_guidelines": {
+    "no_hardcoded_secrets": true,
+    "input_validation_required": true,
+    "path_traversal_protection": true,
+    "sql_injection_prevention": true,
+    "xss_prevention": true,
+    "csrf_protection": true
+  },
+  "documentation_standards": {
+    "public_apis": "Must have rustdoc with examples",
+    "complex_functions": "Must explain algorithm and complexity",
+    "security_critical": "Must document threat model",
+    "config_options": "Must document all fields and defaults"
+  }
+}

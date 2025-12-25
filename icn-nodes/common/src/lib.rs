@@ -1,23 +1,16 @@
-//! ICN Common Library
+//! Common libraries shared across ICN off-chain nodes
 //!
-//! Shared components for off-chain nodes:
-//! - P2P networking (libp2p + GossipSub + Kademlia)
-//! - Chain client (subxt connection to Moonbeam)
-//! - Shared types and protocols
-//! - Reputation oracle
+//! Provides shared types, P2P networking, and chain client utilities
 
-pub mod chain;
-pub mod p2p;
-pub mod types;
-
-mod chain {
-    //! Substrate chain client using subxt
+// Placeholder modules - to be implemented in respective tasks
+pub mod chain {
+    //! Chain client utilities (stub)
 }
 
-mod p2p {
-    //! libp2p networking layer
+pub mod p2p {
+    //! P2P networking utilities (stub)
 }
 
-mod types {
-    //! Shared types for ICN protocol
+pub mod types {
+    //! Shared type definitions (stub)
 }
