@@ -251,7 +251,7 @@
       "id": "T010",
       "title": "Validator Node Implementation",
       "file": "tasks/T010-validator-node.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 2,
       "depends_on": [
         "T001",
@@ -269,15 +269,17 @@
         "phase-a"
       ],
       "estimated_tokens": 10000,
-      "actual_tokens": 0,
+      "actual_tokens": 10500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-25T21:55:17Z",
+      "completed_at": "2025-12-25T21:55:17Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T011",
       "title": "Super-Node Implementation (Tier 1 Storage and Relay)",
       "file": "tasks/T011-super-node.md",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 2,
       "depends_on": [
         "T001",
@@ -1003,9 +1005,9 @@
   ],
   "stats": {
     "total_tasks": 41,
-    "completed": 7,
+    "completed": 8,
     "in_progress": 0,
-    "pending": 34,
+    "pending": 33,
     "blocked": 0
   },
   "dependency_graph": {

@@ -4,23 +4,80 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "ICN Validator Node - CLIP-based semantic verification"
+description = "ICN Validator Node - CLIP-based semantic verification with ONNX Runtime"
+
+[lib]
+name = "icn_validator"
+path = "src/lib.rs"
 
 [[bin]]
 name = "icn-validator"
 path = "src/main.rs"
 
 [dependencies]
+# Local crates
 icn-common.workspace = true
+
+# Async runtime
 tokio.workspace = true
 futures.workspace = true
+
+# P2P networking
+libp2p.workspace = true
+
+# Substrate client
+subxt.workspace = true
+
+# ONNX Runtime for CLIP inference
+ort = { version = "2.0.0-rc.10", default-features = false, features = ["copy-dylibs", "load-dynamic"] }
+
+# Image processing
+image = "0.25"
+ndarray = "0.16"
+
+# Video decoding
+ffmpeg-next = "7.0"
+
+# Serialization
 serde.workspace = true
 serde_json.workspace = true
+parity-scale-codec.workspace = true
+
+# Configuration
+toml = "0.8"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
 thiserror.workspace = true
 anyhow.workspace = true
+
+# Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+# Crypto
+ed25519-dalek.workspace = true
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+
+# Metrics
 prometheus.workspace = true
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
+# Utils
+chrono = "0.4"
+ctrlc = "3.4"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3.12"
+mockall = "0.13"
+
+[features]
+default = []
+integration-tests = []
