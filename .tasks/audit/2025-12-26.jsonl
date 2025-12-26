@@ -1,0 +1,22 @@
+{"timestamp":"2025-12-26T00:08:27Z","agent":"verify-dependency","task_id":"T011","stage":1,"result":"PASS","score":100,"duration_ms":150,"issues":0}
+{"timestamp":"2025-12-26T00:15:00Z","agent":"verify-syntax","task_id":"T011","stage":1,"result":"PASS","score":95,"duration_ms":3200,"issues":1}{"timestamp":"2025-12-26T00:10:05Z","agent":"verify-complexity","task_id":"T011","stage":1,"result":"PASS","score":100,"duration_ms":1500,"issues":0}
+{"timestamp":"2025-12-26T16:24:00Z","agent":"verify-execution","task_id":"T011","stage":2,"result":"BLOCK","score":65,"duration_ms":2450,"issues":4}
+{"timestamp":"2025-12-26T00:32:12Z","agent":"verify-business-logic","task_id":"T011","stage":2,"result":"PASS","score":92,"duration_ms":1800,"issues":0}
+{"timestamp":"2025-12-26T17:25:39Z","agent":"verify-test-quality","task_id":"T011","stage":2,"result":"WARN","score":68,"duration_ms":180000,"issues":4}
+{"timestamp":"2025-12-26T00:00:00Z","agent":"verify-complexity","task_id":"T011","stage":1,"result":"PASS","score":95,"duration_ms":1500,"issues":1}
+{"timestamp":"2025-12-26T05:31:51Z","agent":"verify-dependency","task_id":"T011","stage":1,"result":"PASS","score":100,"duration_ms":2943,"issues":0}
+{"timestamp":"2025-12-26T05:33:24Z","agent":"verify-syntax","task_id":"T011","stage":1,"result":"PASS","score":98,"duration_ms":13220,"issues":0}
+{"timestamp":"2025-12-26T05:35:00Z","agent":"verify-execution","task_id":"T011","stage":2,"result":"PASS","score":95,"duration_ms":2780,"issues":1}
+{"timestamp":"2025-12-26T00:00:00Z","agent":"verify-test-quality","task_id":"T011","stage":2,"result":"WARN","score":62,"duration_ms":4500,"issues":3}
+{"timestamp":"2025-12-26T05:38:47Z","agent":"verify-data-privacy","task_id":"T011","stage":3,"result":"PASS","score":92,"duration_ms":125000,"issues":0}
+{"timestamp":"2025-12-26T05:39:34Z","agent":"verify-security","task_id":"T011","stage":3,"result":"PASS","score":87,"duration_ms":180000,"issues":5}
+{"timestamp":"2025-12-26T05:42:47Z","agent":"verify-error-handling","task_id":"T011","stage":4,"result":"PASS","score":88,"duration_ms":0,"issues":0}
+{"timestamp":"2025-12-26T05:43:29Z","agent":"verify-performance","task_id":"T011","stage":4,"result":"WARN","score":72,"duration_ms":4500,"issues":9}
+{"timestamp":"2025-12-26T17:48:01Z","agent":"verify-quality","task_id":"T011","stage":4,"result":"WARN","score":78,"duration_ms":300000,"issues":9}
+{"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","agent":"verify-architecture","task_id":"T011","stage":4,"result":"PASS","score":92,"duration_ms":142,"issues":2}
+{"timestamp":"2025-12-26T05:44:11Z","agent":"verify-architecture","task_id":"T011","stage":4,"result":"PASS","score":92,"duration_ms":142,"issues":2}
+{"timestamp":"2025-12-26T05:46:47Z","agent":"verify-duplication","task_id":"T011","stage":5,"result":"PASS","score":98,"duration_ms":609,"issues":0}
+{"timestamp":"2025-12-26T00:00:00Z","agent":"verify-integration","task_id":"T011","stage":5,"result":"WARN","score":62,"duration_ms":45000,"issues":8}
+{"timestamp":"2025-12-26T00:00:00Z","agent":"verify-integration","task_id":"T011","stage":5,"result":"WARN","score":62,"duration_ms":45000,"issues":8}
+{"timestamp":"2025-12-26T17:50:00Z","agent":"verify-regression","task_id":"T011","stage":5,"result":"PASS","score":98,"duration_ms":180000,"issues":0}
+{"timestamp":"2025-12-26T05:52:30Z","agent":"task-completer","action":"complete","task_id":"T011","outcome":"PASS","validation":{"acceptance_criteria":"17/17","tests":"45/45","clippy":"PASS","format":"PASS","quality_score":"85.8","multi_stage_pass":true}}

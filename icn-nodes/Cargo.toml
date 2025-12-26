@@ -21,7 +21,7 @@ tokio = { version = "1.43", features = ["full"] }
 futures = "0.3"
 
 # P2P networking
-libp2p = { version = "0.53", features = ["tokio", "quic", "gossipsub", "kad", "noise", "yamux", "dns", "tcp", "identify"] }
+libp2p = { version = "0.53", features = ["tokio", "quic", "gossipsub", "kad", "noise", "yamux", "dns", "tcp", "identify", "macros"] }
 
 # Substrate client
 subxt = "0.37"

@@ -6,24 +6,79 @@ authors.workspace = true
 license.workspace = true
 description = "ICN Super-Node - Tier 1 erasure-coded storage and relay"
 
+[lib]
+name = "icn_super_node"
+path = "src/lib.rs"
+
 [[bin]]
 name = "icn-super-node"
 path = "src/main.rs"
 
 [dependencies]
+# Local crates
 icn-common.workspace = true
+
+# Async runtime
 tokio.workspace = true
 futures.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-anyhow.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-prometheus.workspace = true
+
+# P2P networking
+libp2p.workspace = true
+
+# QUIC transport
+quinn = "0.11"
+rustls = { version = "0.23", features = ["ring"] }
+rcgen = "0.13"
+
+# Substrate client
+subxt.workspace = true
 
 # Erasure coding
 reed-solomon-erasure = "6.0"
 
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+parity-scale-codec.workspace = true
+
+# Configuration
+toml = "0.8"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Crypto
+sha2 = "0.10"
+hex = "0.4"
+multihash = "0.19"
+cid = "0.11"
+blake3 = "1.5"
+
+# Metrics
+prometheus.workspace = true
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
+# Utils
+chrono = "0.4"
+ctrlc = "3.4"
+bytes = "1.7"
+lazy_static = "1.5"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3.12"
+mockall = "0.13"
+
+[features]
+default = []
+integration-tests = []
