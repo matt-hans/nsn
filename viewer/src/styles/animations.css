@@ -1,0 +1,85 @@
+/* ICN Viewer Client - Animations */
+
+@keyframes portal-spin {
+	0% {
+		transform: rotate(0deg);
+		filter: hue-rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+		filter: hue-rotate(360deg);
+	}
+}
+
+@keyframes glitch {
+	0%,
+	100% {
+		transform: translate(0);
+		text-shadow: 2px 0 var(--color-primary-500), -2px 0
+			var(--color-secondary-500);
+	}
+	10% {
+		transform: translate(-2px, 1px);
+		text-shadow: -2px 0 var(--color-primary-500), 2px 0
+			var(--color-secondary-500);
+	}
+	20% {
+		transform: translate(2px, -1px);
+		text-shadow: 2px 0 var(--color-accent-static), -2px 0
+			var(--color-primary-500);
+	}
+	30% {
+		transform: translate(0);
+		text-shadow: -2px 0 var(--color-secondary-500), 2px 0
+			var(--color-accent-static);
+	}
+}
+
+@keyframes pulse-glow {
+	0%,
+	100% {
+		box-shadow: 0 0 20px rgba(0, 255, 198, 0.3);
+	}
+	50% {
+		box-shadow: 0 0 40px rgba(0, 255, 198, 0.6);
+	}
+}
+
+@keyframes fade-pulse {
+	0%,
+	100% {
+		opacity: 0.6;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+@keyframes fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes modal-enter {
+	0% {
+		opacity: 0;
+		transform: scale(0.95) translateY(20px);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
+}
+
+@keyframes slide-in-left {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(0);
+	}
+}

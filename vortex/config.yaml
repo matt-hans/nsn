@@ -1,0 +1,56 @@
+# Vortex Configuration
+# VRAM budget for RTX 3060 12GB: 11.8GB total, 11.5GB hard limit (500MB safety margin)
+
+device:
+  # Primary compute device - "cuda:0" for GPU, "cpu" for fallback (testing only)
+  name: "cuda:0"
+  # Enable TF32 for faster matmul on Ampere+ GPUs
+  allow_tf32: true
+
+vram:
+  # Soft limit (11.0GB) - log warning but continue
+  soft_limit_gb: 11.0
+  # Hard limit (11.5GB) - raise error and abort
+  hard_limit_gb: 11.5
+  # Monitoring interval (seconds)
+  monitor_interval_sec: 5.0
+
+models:
+  # Model precision overrides (for debugging or VRAM optimization)
+  # Production values: flux=nf4, liveportrait=fp16, kokoro=fp32, clip=int8
+  precision:
+    flux: "nf4"           # 4-bit NormalFloat quantization
+    liveportrait: "fp16"  # Half precision
+    kokoro: "fp32"        # Full precision (small model, quality matters)
+    clip_b: "int8"        # 8-bit integer quantization
+    clip_l: "int8"        # 8-bit integer quantization
+
+buffers:
+  # Pre-allocated output buffers (prevents fragmentation during generation)
+  # Sizes in pixels/samples - buffers allocated at pipeline initialization
+  actor:
+    height: 512
+    width: 512
+    channels: 3
+  video:
+    frames: 1080          # 45 seconds * 24 fps
+    height: 512
+    width: 512
+    channels: 3
+  audio:
+    sample_rate: 24000
+    duration_sec: 45
+    samples: 1080000      # 24000 * 45
+
+pipeline:
+  # Slot generation timeout (seconds) - abort if exceeded
+  generation_timeout_sec: 20.0
+  # Enable async parallelization for audio + image generation
+  parallel_audio_actor: true
+
+logging:
+  # JSON structured logging for Vector → Loki aggregation
+  format: "json"
+  level: "INFO"
+  # Include VRAM stats in every log message
+  include_vram_stats: true
