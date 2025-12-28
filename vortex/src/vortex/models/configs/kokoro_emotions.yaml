@@ -1,0 +1,78 @@
+# Emotion Parameter Mappings for Kokoro TTS
+#
+# This configuration defines how emotional states map to synthesis parameters.
+# Emotions affect speech characteristics like pitch, tempo, and energy.
+#
+# Format:
+#   emotion_name:
+#     pitch_shift: <Hz shift, positive = higher pitch, negative = lower>
+#     tempo: <speed multiplier, 1.0 = normal>
+#     energy: <amplitude/emphasis, 1.0 = normal>
+#
+# Parameter Ranges:
+# - pitch_shift: -100 to +150 Hz (human speech range ~80-260 Hz)
+# - tempo: 0.8 to 1.3 (slower to faster)
+# - energy: 0.5 to 1.5 (quieter to louder/more emphatic)
+#
+# Note: Kokoro may not natively support all parameters. Currently, tempo is
+# directly supported via speed parameter. Pitch shifting and energy modulation
+# may require post-processing (future enhancement).
+
+# Core emotions (required by acceptance criteria)
+
+neutral:
+  pitch_shift: 0        # No pitch change
+  tempo: 1.0            # Normal speed
+  energy: 1.0           # Normal amplitude
+  description: "Flat, emotionless delivery"
+
+excited:
+  pitch_shift: 50       # Slightly higher pitch
+  tempo: 1.15           # Faster speech (15% increase)
+  energy: 1.3           # More emphasis
+  description: "Enthusiastic, upbeat, higher energy"
+
+sad:
+  pitch_shift: -30      # Lower pitch
+  tempo: 0.9            # Slower speech (10% decrease)
+  energy: 0.7           # Quieter, less emphatic
+  description: "Melancholic, subdued, lower energy"
+
+angry:
+  pitch_shift: 20       # Slightly higher pitch
+  tempo: 1.1            # Faster speech (10% increase)
+  energy: 1.4           # Strong emphasis
+  description: "Aggressive, forceful, intense"
+
+manic:
+  pitch_shift: 100      # Much higher pitch
+  tempo: 1.25           # Very fast speech (25% increase)
+  energy: 1.5           # Maximum emphasis
+  description: "Frenzied, erratic, hyperactive (Rick's signature emotion)"
+
+# Additional emotions (optional, for future expansion)
+
+calm:
+  pitch_shift: -10      # Slightly lower pitch
+  tempo: 0.95           # Slightly slower
+  energy: 0.9           # Relaxed amplitude
+  description: "Soothing, peaceful, composed"
+
+sarcastic:
+  pitch_shift: 30       # Exaggerated pitch variance
+  tempo: 1.05           # Slightly faster
+  energy: 1.2           # Emphasized delivery
+  description: "Ironic, mocking, exaggerated intonation"
+
+fearful:
+  pitch_shift: 60       # Higher pitch (stress response)
+  tempo: 1.2            # Faster (anxious)
+  energy: 1.1           # Tense
+  description: "Anxious, nervous, stressed"
+
+# Implementation Notes:
+# 1. Tempo is directly applied via Kokoro's speed parameter
+# 2. Pitch_shift and energy require post-processing or voice blending
+# 3. For MVP, tempo is the primary emotion control
+# 4. Future: Implement pitch shifting using librosa or torch audio transforms
+# 5. Future: Energy can be applied via amplitude envelope modulation

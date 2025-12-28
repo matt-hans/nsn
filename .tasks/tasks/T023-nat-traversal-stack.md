@@ -148,6 +148,11 @@ Implement a comprehensive NAT traversal stack to enable P2P connectivity for ICN
   - Moves to next strategy (Circuit Relay)
   - Total connection time < 40s (4 strategies × 10s)
 
+## Reference Documentation
+- [rust-libp2p DCUTR Example](https://github.com/libp2p/rust-libp2p/blob/master/examples/dcutr/README.md)
+- [rust-libp2p Relay Example](https://github.com/libp2p/rust-libp2p/blob/master/examples/relay/README.md)
+- [rust-libp2p AutoNAT](https://docs.rs/libp2p/latest/libp2p/autonat/index.html)
+
 ## Technical Implementation
 
 **Required Components:**

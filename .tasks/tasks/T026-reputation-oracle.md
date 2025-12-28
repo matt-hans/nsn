@@ -138,6 +138,10 @@ Implement ReputationOracle service that synchronizes on-chain reputation scores 
   - Cache updated with latest scores
   - Metrics show sync_success +1
 
+## Reference Documentation
+- [Subxt Documentation](https://docs.rs/subxt/latest/subxt/)
+- [Substrate Storage Queries](https://docs.substrate.io/reference/command-line-tools/subkey/#inspect-storage)
+
 ## Technical Implementation
 
 **Required Components:**

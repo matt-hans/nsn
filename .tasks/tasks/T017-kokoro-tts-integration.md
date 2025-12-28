@@ -332,6 +332,80 @@ def load_kokoro(device: str = "cuda") -> KokoroModel:
 | Kokoro model unavailable | High (pipeline broken) | Low (cache weights) | Local weight caching, provide download script, document model source |
 | VRAM usage exceeds 0.5GB | Low (within budget) | Low (small model) | Monitor VRAM, log spikes, verify FP32 precision |
 
+## Context7 Enrichment
+
+> **Source**: Context7 `/nikkoxgonzales/streaming-tts` - Kokoro-based TTS
+
+### streaming-tts TTSStream API
+
+**Basic Configuration**:
+```python
+from streaming_tts import TTSStream, TTSConfig
+
+config = TTSConfig(
+    voice="af_heart",           # Voice name or blend formula
+    speed=1.0,                  # Speech speed (1.0 = normal)
+    device=None,                # "cuda", "mps", "cpu", or None (auto-detect)
+    trim_silence=True,          # Trim leading/trailing silence
+    silence_threshold=0.005,
+    memory_threshold_gb=2.0,    # GPU memory threshold for auto-clearing
+)
+
+stream = TTSStream(config=config)
+```
+
+### Voice Blending Syntax
+
+**Equal Blend** (recommended syntax):
+```python
+config = TTSConfig(voice="af_sarah+af_jessica")
+```
+
+**Weighted Blend**:
+```python
+# 30% sarah, 70% jessica
+config = TTSConfig(voice="af_sarah(0.3)+af_jessica(0.7)")
+```
+
+**Multi-Voice Blend**:
+```python
+config = TTSConfig(voice="af_sarah(0.4)+af_jessica(0.4)+af_daniel(0.2)")
+```
+
+**Dynamic Voice Setting**:
+```python
+stream = TTS()
+stream.set_voice("af_heart+am_adam")
+stream.feed("Dynamic voice text.").play(output_path="output.wav")
+```
+
+### Concurrent Synthesis with asyncio
+
+```python
+import asyncio
+from streaming_tts import TTSStream, TTSConfig
+
+async def synthesize_text(text: str, voice: str):
+    config = TTSConfig(voice=voice)
+    stream = TTSStream(config=config)
+    stream.feed(text)
+    
+    chunks = []
+    async for chunk in stream.stream_async():
+        chunks.append(chunk)
+    
+    stream.shutdown()
+    return voice, len(chunks)
+
+async def generate_multiple():
+    tasks = [
+        synthesize_text("Hello from voice one", "af_heart"),
+        synthesize_text("Greetings from voice two", "am_adam"),
+    ]
+    results = await asyncio.gather(*tasks)
+    return results
+```
+
 ## Progress Log
 
 ### [2025-12-24T00:00:00Z] - Task Created

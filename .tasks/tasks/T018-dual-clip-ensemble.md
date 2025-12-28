@@ -374,6 +374,81 @@ def load_clip_ensemble(device: str = "cuda") -> ClipEnsemble:
 | VRAM usage exceeds 1.0GB | Low (within budget) | Low (well-tested) | Monitor VRAM per verification, log spikes |
 | CLIP model download timeout | Medium (startup fails) | Medium (network issues) | Cache models locally, provide offline fallback, retry with exponential backoff |
 
+## Context7 Enrichment
+
+> **Sources**: Context7 `/mlfoundations/open_clip`, `/llmstxt/huggingface-projects...transformers-llms.txt`
+
+### OpenCLIP Model API
+
+**Load and Use OpenCLIP Model**:
+```python
+import torch
+from PIL import Image
+import open_clip
+
+# Create model and transforms
+model, _, preprocess = open_clip.create_model_and_transforms(
+    'ViT-B-32', 
+    pretrained='laion2b_s34b_b79k'
+)
+model.eval()
+tokenizer = open_clip.get_tokenizer('ViT-B-32')
+
+# Preprocess image and tokenize text
+image = preprocess(Image.open("image.png")).unsqueeze(0)
+text = tokenizer(["a scientist", "a robot", "an animal"])
+```
+
+**Encode Image and Text Features**:
+```python
+with torch.no_grad(), torch.autocast("cuda"):
+    image_features = model.encode_image(image)
+    text_features = model.encode_text(text)
+    
+    # L2 normalize for cosine similarity
+    image_features /= image_features.norm(dim=-1, keepdim=True)
+    text_features /= text_features.norm(dim=-1, keepdim=True)
+    
+    # Compute similarity scores
+    text_probs = (100.0 * image_features @ text_features.T).softmax(dim=-1)
+```
+
+**Keyframe Feature Extraction**:
+```python
+# For video verification - encode multiple keyframes
+image_input = torch.tensor(np.stack(keyframes))  # [N, C, H, W]
+
+with torch.no_grad():
+    image_features = model.encode_image(image_input).float()
+    # Average keyframe features for video-level representation
+    video_feature = image_features.mean(dim=0)
+```
+
+### Hugging Face Transformers CLIP
+
+**Load CLIP Vision Model**:
+```python
+from transformers import AutoProcessor, CLIPVisionModel
+
+model = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14")
+processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14")
+
+inputs = processor(images=image, return_tensors="pt")
+outputs = model(**inputs)
+pooled_output = outputs.pooler_output  # [batch, 768]
+```
+
+**VisionTextDualEncoderModel**:
+```python
+from transformers import VisionTextDualEncoderModel
+
+# Combined vision-text encoder
+model = VisionTextDualEncoderModel.from_vision_and_text_encoder(
+    "openai/clip-vit-base-patch32",
+    "openai/clip-vit-base-patch32"
+)
+```
+
 ## Progress Log
 
 ### [2025-12-24T00:00:00Z] - Task Created

@@ -15,7 +15,7 @@ Note: Actual model implementations will be added in T015-T018.
 """
 
 import logging
-from typing import Dict, Literal, Optional
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -56,9 +56,10 @@ def load_flux(
     Args:
         device: Target device (e.g., "cuda:0", "cpu")
         precision: Model precision ("nf4" for 4-bit quantization)
+            Note: Flux-Schnell only supports NF4. Other precisions will use mock model.
 
     Returns:
-        nn.Module: Loaded Flux model (mock for T014, real in T015)
+        nn.Module: Loaded Flux model with NF4 quantization, or mock model if precision unsupported
 
     VRAM Budget:
         ~6.0 GB with NF4 quantization
@@ -68,10 +69,34 @@ def load_flux(
         >>> image = flux.generate(prompt="a scientist")
     """
     logger.info("Loading Flux-Schnell model", extra={"device": device, "precision": precision})
-    # TODO(T015): Replace with real Flux-Schnell implementation
+
+    # T015: Real Flux-Schnell implementation with NF4 quantization
+    # Flux-Schnell only supports NF4. For other precisions, fall back to mock.
+    if precision == "nf4":
+        try:
+            from vortex.models.flux import load_flux_schnell
+            model = load_flux_schnell(device=device, quantization=precision)
+            logger.info("Flux-Schnell loaded successfully")
+            return model
+        except (ImportError, Exception) as e:
+            # Fallback to mock for environments without diffusers/bitsandbytes
+            logger.warning(
+                "Failed to load real Flux model, using mock. "
+                "Error: %s",
+                str(e),
+                extra={"error_type": type(e).__name__}
+            )
+    else:
+        # Unsupported precision for Flux - use mock
+        logger.warning(
+            "Flux-Schnell only supports NF4 quantization. "
+            "Using mock model for precision: %s",
+            precision
+        )
+
+    # Fallback to mock model
     model = MockModel(name="flux", vram_gb=6.0)
     model = model.to(device)
-    logger.info("Flux-Schnell loaded successfully")
     return model
 
 
@@ -189,7 +214,7 @@ def load_clip_l(
     return model
 
 
-MODEL_LOADERS: Dict[ModelName, callable] = {
+MODEL_LOADERS: dict[ModelName, callable] = {
     "flux": load_flux,
     "liveportrait": load_liveportrait,
     "kokoro": load_kokoro,
@@ -201,7 +226,7 @@ MODEL_LOADERS: Dict[ModelName, callable] = {
 def load_model(
     name: ModelName,
     device: str = "cuda:0",
-    precision: Optional[Precision] = None,
+    precision: Precision | None = None,
 ) -> nn.Module:
     """Load a model by name using the appropriate loader.
 

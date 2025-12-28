@@ -1,15 +1,15 @@
 """Unit tests for vortex.utils.memory VRAM utilities."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-import torch
-from unittest.mock import patch, MagicMock
 
 from vortex.utils.memory import (
+    clear_cuda_cache,
+    format_bytes,
     get_current_vram_usage,
     get_vram_stats,
     log_vram_snapshot,
-    clear_cuda_cache,
-    format_bytes,
 )
 
 

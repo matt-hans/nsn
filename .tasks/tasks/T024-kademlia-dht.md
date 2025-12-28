@@ -139,6 +139,10 @@ Implement Kademlia Distributed Hash Table (DHT) for decentralized peer discovery
   - If stale peer unresponsive, replaced by new peer
   - k-bucket size remains 20
 
+## Reference Documentation
+- [Rust Libp2p Kademlia Example](https://github.com/libp2p/rust-libp2p/blob/master/examples/kademlia/README.md)
+- [libp2p Kademlia Specs](https://github.com/libp2p/specs/tree/master/kad-dht)
+
 ## Technical Implementation
 
 **Required Components:**

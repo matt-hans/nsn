@@ -256,15 +256,12 @@ impl P2pService {
         let peer_id = PeerId::from(keypair.public());
         tracing::info!("Local PeerId: {}", peer_id);
 
-        let transport = build_transport(&keypair)?;
-
-        let behaviour = Behaviour::new();
-
-        let swarm = SwarmBuilder::with_tokio_executor(
-            transport,
-            behaviour,
-            peer_id,
-        ).build();
+        let mut swarm = libp2p::SwarmBuilder::with_existing_identity(keypair)
+            .with_tokio()
+            .with_quic() // or .with_tcp(...) based on config
+            .with_behaviour(|_| Behaviour::new())?
+            .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
+            .build();
 
         Ok(Self {
             swarm,

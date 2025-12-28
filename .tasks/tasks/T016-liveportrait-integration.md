@@ -301,6 +301,71 @@ class LivePortraitModel:
 | VRAM usage exceeds 4.0GB | High (OOM crashes) | Low (well-tested) | Monitor VRAM per frame, log spikes, cap buffer size |
 | LivePortrait model unavailable | High (pipeline broken) | Low (cache weights) | Local weight caching, provide download script, fallback to simpler warping |
 
+## Context7 Enrichment
+
+> **Sources**: Context7 `/kwaivgi/liveportrait`, `/nvidia/tensorrt`, `/librosa/librosa`
+
+### LivePortrait CLI & API
+
+**Download Pretrained Weights**:
+```bash
+huggingface-cli download KwaiVGI/LivePortrait --local-dir pretrained_weights --exclude "*.git*" "README.md" "docs"
+```
+
+**Basic Portrait Animation**:
+```bash
+# Image source with video driving
+python inference.py -s assets/examples/source/s9.jpg -d assets/examples/driving/d0.mp4
+
+# Video source with video driving
+python inference.py -s assets/examples/source/s13.mp4 -d assets/examples/driving/d0.mp4
+```
+
+**Regional Control (Lip-Only Animation)**:
+```bash
+# Only drive the lip region for audio-sync
+python inference.py -s source.jpg -d driving.mp4 --animation_region lip
+```
+
+**Motion Templates for Faster Inference**:
+```bash
+# Use pre-computed .pkl motion templates
+python inference.py -s source.jpg -d motion_template.pkl
+```
+
+### TensorRT FP16 Optimization
+
+**FP16 Inference Configuration**:
+```python
+import numpy as np
+
+USE_FP16 = True
+target_dtype = np.float16 if USE_FP16 else np.float32
+BATCH_SIZE = 1  # Single-image inference for video frames
+```
+
+**Build TensorRT FP16 Engine**:
+```bash
+python builder.py -m model.ckpt -o engine.engine -b 1 -s 384 --fp16
+```
+
+### librosa Audio Feature Extraction
+
+**Extract Audio Features for Viseme Mapping**:
+```python
+import librosa
+
+y, sr = librosa.load('audio.wav', sr=24000)  # 24kHz for LivePortrait
+
+# Spectral features for phoneme detection
+spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)
+rms = librosa.feature.rms(y=y)  # Energy for emphasis detection
+
+# Beat/tempo for expression timing
+tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
+beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+```
+
 ## Progress Log
 
 ### [2025-12-24T00:00:00Z] - Task Created

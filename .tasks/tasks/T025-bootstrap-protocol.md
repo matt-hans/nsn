@@ -141,6 +141,11 @@ Implement a multi-layer bootstrap protocol with trust-tiered peer discovery: har
   - Node retries after exponential backoff (2s, 4s, 8s, ...)
   - Continues retrying until at least 1 peer discovered
 
+## Reference Documentation
+- [Rust Libp2p Identify Spec](https://github.com/libp2p/specs/tree/master/identify)
+- [Trust-DNS Resolver](https://docs.rs/trust-dns-resolver/latest/trust_dns_resolver/)
+- [Reqwest HTTP Client](https://docs.rs/reqwest/latest/reqwest/)
+
 ## Technical Implementation
 
 **Required Components:**

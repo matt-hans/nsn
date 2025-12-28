@@ -469,6 +469,102 @@ class DeadlineMissError(RuntimeError):
 | CUDA async stream errors | High (corrupted state) | Low (PyTorch handles) | Synchronize CUDA before stage transitions, verify tensor validity, catch CUDA errors |
 | Progress logging overhead | Low (performance) | Low (structured logging fast) | Use async logging, batch logs, disable debug logs in production |
 
+## Context7 Enrichment
+
+> **Sources**: Context7 `/huggingface/diffusers`, Python asyncio documentation
+
+### Python asyncio Parallel Execution
+
+**Parallel Audio + Image Generation**:
+```python
+import asyncio
+
+async def execute_parallel_generation(recipe):
+    # Create concurrent tasks
+    audio_task = asyncio.create_task(generate_audio(recipe))
+    image_task = asyncio.create_task(generate_image(recipe))
+    
+    # Wait for both to complete
+    audio_result, image_result = await asyncio.gather(
+        audio_task, 
+        image_task
+    )
+    
+    return audio_result, image_result
+```
+
+**Timeout Enforcement**:
+```python
+async def generate_with_timeout(recipe, timeout_s):
+    try:
+        result = await asyncio.wait_for(
+            pipeline.generate(recipe),
+            timeout=timeout_s
+        )
+        return result
+    except asyncio.TimeoutError:
+        logging.error(f"Generation timeout after {timeout_s}s")
+        raise DeadlineMissError(f"Timeout exceeded: {timeout_s}s")
+```
+
+**Exponential Backoff Retry**:
+```python
+async def with_retry(coro, retries=1):
+    for attempt in range(retries + 1):
+        try:
+            return await coro
+        except Exception as e:
+            if attempt < retries:
+                await asyncio.sleep(0.5 * (2 ** attempt))
+            else:
+                raise
+```
+
+### Diffusers Memory Optimization for Orchestration
+
+**Sequential CPU Offload** (for memory-constrained environments):
+```python
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "black-forest-labs/FLUX.1-schnell",
+    torch_dtype=torch.bfloat16
+)
+# Moves submodules between CPU/GPU during inference
+pipeline.enable_sequential_cpu_offload()
+```
+
+**Group Offloading** (advanced memory management):
+```python
+from diffusers.utils import apply_group_offloading
+
+onload_device = torch.device("cuda")
+offload_device = torch.device("cpu")
+
+# Leaf-level offloading for transformer
+pipeline.transformer.enable_group_offload(
+    onload_device=onload_device,
+    offload_device=offload_device,
+    offload_type="leaf_level",
+    use_stream=True
+)
+
+# Block-level offloading for text encoder
+apply_group_offloading(
+    pipeline.text_encoder,
+    onload_device=onload_device,
+    offload_type="block_level",
+    num_blocks_per_group=2
+)
+```
+
+**Deadline Check Pattern**:
+```python
+def check_deadline(current_time, deadline, remaining_work_s, buffer_s=5):
+    time_remaining = deadline - current_time
+    return (time_remaining - buffer_s) >= remaining_work_s
+```
+
 ## Progress Log
 
 ### [2025-12-24T00:00:00Z] - Task Created

@@ -397,6 +397,87 @@ class MemoryPressureError(RuntimeError):
 | Per-model tracking overhead | Low (CPU/VRAM) | Low (simple dict) | Use weak references, only track on snapshot (not per-call) |
 | VRAM monitor itself leaks memory | Medium (ironic) | Very low | Unit test VRAM monitor in isolation, verify no delta after 1000 calls |
 
+## Context7 Enrichment
+
+> **Source**: Context7 `/pytorch/pytorch` - CUDA Memory Management
+
+### Complete PyTorch CUDA Memory API Reference
+
+**Memory Monitoring Functions**:
+```python
+import torch
+
+# Current VRAM usage
+current_bytes = torch.cuda.memory_allocated(device=None)
+current_gb = current_bytes / 1e9
+
+# Peak VRAM usage (since last reset)
+peak_bytes = torch.cuda.max_memory_allocated(device=None)
+
+# Reserved by caching allocator (includes unused cached)
+reserved_bytes = torch.cuda.memory_reserved(device=None)
+max_reserved = torch.cuda.max_memory_reserved(device=None)
+
+# Reset peak tracking
+torch.cuda.reset_peak_memory_stats(device=None)
+
+# Human-readable summary
+summary = torch.cuda.memory_summary(device=None, abbreviated=False)
+
+# Detailed allocator state (for debugging fragmentation)
+snapshot = torch.cuda.memory_snapshot()
+```
+
+**Memory Management**:
+```python
+# Emergency cleanup - release unused cached memory
+torch.cuda.empty_cache()
+
+# Synchronize CUDA operations before measuring
+torch.cuda.synchronize()
+```
+
+**VRAMMonitor Class Pattern**:
+```python
+class VRAMMonitor:
+    def __init__(self, soft_limit_gb=11.0, hard_limit_gb=11.5):
+        self.soft_limit = int(soft_limit_gb * 1e9)
+        self.hard_limit = int(hard_limit_gb * 1e9)
+        self.baseline = None
+        
+    def check(self, context=""):
+        current = torch.cuda.memory_allocated()
+        
+        if current > self.hard_limit:
+            raise MemoryPressureError(f"Hard limit exceeded: {current/1e9:.2f}GB")
+        elif current > self.soft_limit:
+            torch.cuda.empty_cache()  # Emergency cleanup
+            logging.warning(f"Soft limit exceeded: {current/1e9:.2f}GB")
+    
+    def snapshot(self):
+        return {
+            "allocated_gb": torch.cuda.memory_allocated() / 1e9,
+            "reserved_gb": torch.cuda.memory_reserved() / 1e9,
+            "peak_gb": torch.cuda.max_memory_allocated() / 1e9,
+        }
+```
+
+**Memory Leak Detection Pattern**:
+```python
+def detect_leak(self, threshold_mb=100):
+    if self.baseline is None:
+        self.baseline = torch.cuda.memory_allocated()
+        return False
+    
+    current = torch.cuda.memory_allocated()
+    delta_mb = (current - self.baseline) / 1e6
+    
+    if delta_mb > threshold_mb:
+        logging.warning(f"Memory leak detected: +{delta_mb:.1f}MB")
+        return True
+    return False
+```
+
 ## Progress Log
 
 ### [2025-12-24T00:00:00Z] - Task Created

@@ -1,19 +1,19 @@
 """Unit tests for vortex.pipeline core orchestration."""
 
 import asyncio
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
-from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
 
 from vortex.pipeline import (
-    VortexPipeline,
-    ModelRegistry,
-    VRAMMonitor,
     GenerationResult,
-    MemoryPressureWarning,
     MemoryPressureError,
+    ModelRegistry,
     VortexInitializationError,
+    VortexPipeline,
+    VRAMMonitor,
 )
 
 
@@ -131,7 +131,7 @@ class TestModelRegistry:
         mock_load.return_value = MagicMock()
         overrides = {"flux": "fp16", "clip_b": "fp32"}
 
-        registry = ModelRegistry(device="cpu", precision_overrides=overrides)
+        _ = ModelRegistry(device="cpu", precision_overrides=overrides)
 
         # Check that load_model was called with precision for flux
         flux_call = [c for c in mock_load.call_args_list if c[0][0] == "flux"][0]

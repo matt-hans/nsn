@@ -378,11 +378,12 @@ impl P2pService {
             // ... other behaviors
         };
 
-        let swarm = SwarmBuilder::with_tokio_executor(
-            transport,
-            behaviour,
-            PeerId::from(keypair.public()),
-        ).build();
+        let swarm = libp2p::SwarmBuilder::with_existing_identity(keypair)
+            .with_tokio()
+            .with_quic()
+            .with_behaviour(|_| behaviour)?
+            .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
+            .build();
 
         Ok(Self { swarm, config, reputation_oracle })
     }

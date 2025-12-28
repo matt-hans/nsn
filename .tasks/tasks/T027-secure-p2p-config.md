@@ -143,6 +143,11 @@ Implement comprehensive security configuration for P2P networking layer includin
   - Temporary global rate limit applied (50% reduction)
   - Metrics show dos_attacks_detected +1
 
+## Reference Documentation
+- [rustls Documentation](https://docs.rs/rustls/latest/rustls/)
+- [libp2p Connection Limits](https://docs.rs/libp2p/latest/libp2p/swarm/struct.SwarmBuilder.html#method.with_connection_limits)
+- [Governor Rate Limiter](https://docs.rs/governor/latest/governor/)
+
 ## Technical Implementation
 
 **Required Components:**

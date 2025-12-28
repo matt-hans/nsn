@@ -8,7 +8,6 @@ Provides functions for:
 """
 
 import logging
-from typing import Dict, Optional
 
 import torch
 
@@ -31,7 +30,7 @@ def get_current_vram_usage() -> int:
     return torch.cuda.memory_allocated()
 
 
-def get_vram_stats() -> Dict[str, float]:
+def get_vram_stats() -> dict[str, float]:
     """Get detailed VRAM statistics in GB.
 
     Returns:

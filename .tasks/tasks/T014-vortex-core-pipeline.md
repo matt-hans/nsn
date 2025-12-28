@@ -249,6 +249,62 @@ class VortexPipeline:
 | PyTorch version incompatibility | Medium (crashes) | Low (pinned versions) | CI matrix tests PyTorch 2.1.0, 2.1.1, 2.1.2, 2.2.0 |
 | NVIDIA driver regressions | Medium (crashes) | Low (production drivers) | Document minimum driver version (535+), test on multiple driver versions in CI |
 
+## Context7 Enrichment
+
+> **Source**: Context7 `/pytorch/pytorch` - PyTorch CUDA Memory Management
+
+### PyTorch CUDA Memory Management API
+
+**Core Memory Functions**:
+```python
+# Memory monitoring
+torch.cuda.memory_allocated(device=None)      # Current GPU memory usage (bytes)
+torch.cuda.max_memory_allocated(device=None)  # Peak GPU memory usage (bytes)
+torch.cuda.memory_reserved(device=None)       # Memory reserved by caching allocator (bytes)
+torch.cuda.reset_peak_memory_stats(device=None)  # Reset peak tracking
+torch.cuda.memory_summary(device=None)        # Human-readable memory summary
+torch.cuda.memory_snapshot()                  # Detailed allocator state snapshot
+
+# Memory management
+torch.cuda.empty_cache()                      # Release unused cached memory
+```
+
+**Memory Pool Context Managers** (for static VRAM residency):
+```python
+# Share memory pool between CUDA graphs for sequential replay
+g1 = torch.cuda.CUDAGraph()
+g2 = torch.cuda.CUDAGraph()
+
+with torch.cuda.graph(g1):
+    static_out_1 = workload_1(static_in_1)
+
+# g2 shares pool with g1 - conserves memory when replayed sequentially
+with torch.cuda.graph(g2, pool=g1.pool()):
+    static_out_2 = workload_2(static_in_2)
+```
+
+**Explicit Tensor Deletion Pattern** (prevents retention in loops):
+```python
+for i in range(num_slots):
+    intermediate = f(input[i])
+    result += g(intermediate)
+    del intermediate  # Free GPU memory before scope ends
+```
+
+**Memory Reclamation**:
+```python
+# Reclaim memory by deleting pool and tensors
+del tensor
+del pool  # Triggers empty_cache internally
+```
+
+### Best Practices for VRAM Manager
+- Use `memory_allocated()` for tracking actual tensor usage
+- Use `memory_reserved()` for tracking allocator overhead
+- Call `empty_cache()` for emergency cleanup (frees ~50-200MB fragmented memory)
+- Implement CUDA graphs with shared pools for static model residency
+- Delete intermediate tensors explicitly in generation loops
+
 ## Progress Log
 
 ### [2025-12-24T00:00:00Z] - Task Created

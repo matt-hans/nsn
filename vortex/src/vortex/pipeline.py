@@ -16,7 +16,6 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -66,7 +65,7 @@ class GenerationResult:
     generation_time_ms: float
     slot_id: int
     success: bool = True
-    error_msg: Optional[str] = None
+    error_msg: str | None = None
 
 
 class ModelRegistry:
@@ -81,7 +80,7 @@ class ModelRegistry:
         >>> clip_b = registry.get_model("clip_b")
     """
 
-    def __init__(self, device: str, precision_overrides: Optional[Dict[ModelName, str]] = None):
+    def __init__(self, device: str, precision_overrides: dict[ModelName, str] | None = None):
         """Initialize model registry.
 
         Args:
@@ -90,7 +89,7 @@ class ModelRegistry:
         """
         self.device = device
         self.precision_overrides = precision_overrides or {}
-        self._models: Dict[ModelName, nn.Module] = {}
+        self._models: dict[ModelName, nn.Module] = {}
         self._load_all_models()
 
     def _load_all_models(self) -> None:
@@ -114,7 +113,10 @@ class ModelRegistry:
 
             logger.info(
                 "All models loaded successfully",
-                extra={"total_models": len(self._models), "vram_gb": get_vram_stats()["allocated_gb"]},
+                extra={
+                    "total_models": len(self._models),
+                    "vram_gb": get_vram_stats()["allocated_gb"],
+                },
             )
 
         except torch.cuda.OutOfMemoryError as e:
@@ -241,7 +243,7 @@ class VortexPipeline:
         >>> print(f"Generated in {result.generation_time_ms}ms")
     """
 
-    def __init__(self, config_path: Optional[str] = None, device: Optional[str] = None):
+    def __init__(self, config_path: str | None = None, device: str | None = None):
         """Initialize Vortex pipeline.
 
         Args:
@@ -335,7 +337,7 @@ class VortexPipeline:
             },
         )
 
-    async def generate_slot(self, recipe: Dict, slot_id: int) -> GenerationResult:
+    async def generate_slot(self, recipe: dict, slot_id: int) -> GenerationResult:
         """Generate a single slot (45-second video) from recipe.
 
         Orchestration:
@@ -414,7 +416,7 @@ class VortexPipeline:
                 error_msg=str(e),
             )
 
-    async def _generate_audio(self, recipe: Dict) -> torch.Tensor:
+    async def _generate_audio(self, recipe: dict) -> torch.Tensor:
         """Generate audio waveform using Kokoro TTS.
 
         Args:
@@ -424,10 +426,11 @@ class VortexPipeline:
             Audio waveform tensor (reuses self.audio_buffer)
         """
         # TODO(T017): Replace with real Kokoro TTS implementation
+        # In real implementation, Kokoro will write directly to self.audio_buffer
         await asyncio.sleep(0.1)  # Simulate 100ms generation
-        return self.audio_buffer.clone()
+        return self.audio_buffer
 
-    async def _generate_actor(self, recipe: Dict) -> torch.Tensor:
+    async def _generate_actor(self, recipe: dict) -> torch.Tensor:
         """Generate actor image using Flux-Schnell.
 
         Args:
@@ -437,8 +440,9 @@ class VortexPipeline:
             Actor image tensor (reuses self.actor_buffer)
         """
         # TODO(T015): Replace with real Flux-Schnell implementation
+        # In real implementation, Flux will write directly to self.actor_buffer
         await asyncio.sleep(0.1)  # Simulate 100ms generation
-        return self.actor_buffer.clone()
+        return self.actor_buffer
 
     async def _generate_video(self, actor_img: torch.Tensor, audio: torch.Tensor) -> torch.Tensor:
         """Generate video using LivePortrait warping.
@@ -451,10 +455,11 @@ class VortexPipeline:
             Video frames tensor (reuses self.video_buffer)
         """
         # TODO(T016): Replace with real LivePortrait implementation
+        # In real implementation, LivePortrait will write directly to self.video_buffer
         await asyncio.sleep(0.1)  # Simulate 100ms generation
-        return self.video_buffer.clone()
+        return self.video_buffer
 
-    async def _verify_semantic(self, video: torch.Tensor, recipe: Dict) -> torch.Tensor:
+    async def _verify_semantic(self, video: torch.Tensor, recipe: dict) -> torch.Tensor:
         """Dual CLIP semantic verification.
 
         Args:
