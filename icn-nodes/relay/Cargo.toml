@@ -6,21 +6,85 @@ authors.workspace = true
 license.workspace = true
 description = "ICN Regional Relay Node - Tier 2 content distribution"
 
+[lib]
+name = "icn_relay"
+path = "src/lib.rs"
+
 [[bin]]
 name = "icn-relay"
 path = "src/main.rs"
 
 [dependencies]
+# Local crates
 icn-common.workspace = true
+
+# Async runtime
 tokio.workspace = true
 futures.workspace = true
+
+# P2P networking
+libp2p.workspace = true
+
+# QUIC transport
+quinn = "0.11"
+rustls = { version = "0.23", features = ["ring"] }
+rustls-webpki = "0.102"
+webpki-roots = "0.26"
+rcgen = "0.13"
+
+# Substrate client (minimal usage)
+subxt.workspace = true
+
+# LRU cache
+lru = "0.12"
+
+# Serialization
 serde.workspace = true
 serde_json.workspace = true
+parity-scale-codec.workspace = true
+
+# Configuration
+toml = "0.8"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
 thiserror.workspace = true
 anyhow.workspace = true
+
+# Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+# Crypto
+blake3 = "1.5"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+
+# Rate limiting
+governor = "0.6"
+
+# Metrics
 prometheus.workspace = true
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+
+# Utils
+chrono = "0.4"
+bytes = "1.7"
+lazy_static = "1.5"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+tempfile = "3.12"
+mockall = "0.13"
+rand = "0.8"
+
+[features]
+default = []
+integration-tests = []
+dev-mode = [] # Enable dev-mode features (TLS certificate skip, etc.) - INSECURE

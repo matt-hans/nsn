@@ -1,0 +1,5 @@
+{"timestamp":"2025-12-28T01:51:50-05:00","agent":"verify-execution","task_id":"T012","stage":2,"result":"PASS","score":92,"duration_ms":2200,"issues":1}
+{"timestamp":"2025-12-28T01:51:53-05:00","agent":"verify-business-logic","task_id":"T012","stage":2,"result":"PASS","score":88,"duration_ms":2340,"issues":4}
+{"timestamp":"2025-12-28T01:59:30-05:00","agent":"verify-performance","task_id":"T012","stage":4,"result":"WARN","score":72,"duration_ms":18000,"issues":7}
+2025-12-28T02:00:12-05:00
+{"timestamp":"2025-12-28T02:00:12-05:00","agent":"verify-architecture","task_id":"T012","stage":4,"result":"PASS","score":98,"duration_ms":180000,"issues":0}

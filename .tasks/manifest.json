@@ -307,7 +307,7 @@
       "id": "T012",
       "title": "Regional Relay Node Implementation (Tier 2 Distribution)",
       "file": "tasks/T012-regional-relay-node.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 3,
       "depends_on": [
         "T001",
@@ -322,15 +322,18 @@
         "phase-b"
       ],
       "estimated_tokens": 8000,
-      "actual_tokens": 0,
+      "actual_tokens": 9500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-28T02:59:33Z",
+      "started_at": "2025-12-27T00:00:00Z",
+      "completed_at": "2025-12-28T02:59:33Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T013",
       "title": "Viewer Client Application (Tauri Desktop App)",
       "file": "tasks/T013-viewer-client.md",
-      "status": "pending",
+      "status": "ready",
       "priority": 2,
       "depends_on": [
         "T009",
@@ -348,7 +351,8 @@
       "estimated_tokens": 14000,
       "actual_tokens": 0,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-28T02:59:33Z",
+      "unblocked_at": "2025-12-28T02:59:33Z"
     },
     {
       "id": "T014",
@@ -1007,9 +1011,9 @@
   ],
   "stats": {
     "total_tasks": 41,
-    "completed": 9,
+    "completed": 10,
     "in_progress": 0,
-    "pending": 32,
+    "pending": 31,
     "blocked": 0
   },
   "dependency_graph": {
