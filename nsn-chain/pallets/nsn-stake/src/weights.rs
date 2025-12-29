@@ -29,6 +29,7 @@ pub trait WeightInfo {
 	fn withdraw_stake() -> Weight;
 	fn revoke_delegation() -> Weight;
 	fn slash() -> Weight;
+	fn set_node_mode() -> Weight;
 }
 
 /// Weights for pallet_nsn_stake using the Substrate node and recommended hardware.
@@ -94,6 +95,17 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(3))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
+
+	/// Storage: NsnStake Stakes (r:1 w:0)
+	/// Proof: NsnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	/// Storage: NsnStake NodeModes (r:0 w:1)
+	/// Proof: NsnStake NodeModes (max_values: None, max_size: Some(8), added: 2483, mode: MaxEncodedLen)
+	fn set_node_mode() -> Weight {
+		// PoV size: Stakes(128) + NodeModes(8) + overhead(128) = 264 bytes
+		Weight::from_parts(25_000_000, 5086)
+			.saturating_add(T::DbWeight::get().reads(1))
+			.saturating_add(T::DbWeight::get().writes(1))
+	}
 }
 
 // For backwards compatibility and tests
@@ -112,5 +124,8 @@ impl WeightInfo for () {
 	}
 	fn slash() -> Weight {
 		Weight::from_parts(50_000_000, 5621)
+	}
+	fn set_node_mode() -> Weight {
+		Weight::from_parts(25_000_000, 5086)
 	}
 }
