@@ -513,7 +513,7 @@
       "id": "T020",
       "title": "Slot Timing Orchestration - 45-Second Pipeline Scheduler",
       "file": "tasks/T020-slot-timing-orchestration.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 1,
       "depends_on": [
         "T014",
@@ -531,9 +531,12 @@
         "phase-a"
       ],
       "estimated_tokens": 13000,
-      "actual_tokens": 0,
+      "actual_tokens": 13500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-29T13:37:01Z",
+      "started_at": "2025-12-29T01:20:00Z",
+      "completed_at": "2025-12-29T13:37:01Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T021",
@@ -1027,9 +1030,9 @@
   ],
   "stats": {
     "total_tasks": 41,
-    "completed": 17,
+    "completed": 18,
     "in_progress": 0,
-    "pending": 24,
+    "pending": 23,
     "blocked": 0
   },
   "dependency_graph": {

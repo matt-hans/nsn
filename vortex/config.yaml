@@ -48,6 +48,27 @@ pipeline:
   # Enable async parallelization for audio + image generation
   parallel_audio_actor: true
 
+# Slot timing orchestration (T020)
+orchestration:
+  # Per-stage timeouts (seconds) - prevent infinite hangs
+  timeouts:
+    audio_s: 3     # Kokoro TTS timeout (2s target)
+    image_s: 15    # Flux-Schnell timeout (12s target)
+    video_s: 10    # LivePortrait timeout (8s target)
+    clip_s: 2      # Dual CLIP ensemble timeout (1s target)
+
+  # Retry policy per stage (0 = no retry)
+  retry_policy:
+    audio: 1   # Retry audio once (recovers from transient CUDA errors)
+    image: 0   # No image retry (too expensive time-wise)
+    video: 0   # No video retry (too expensive time-wise)
+    clip: 0    # No CLIP retry (fast, rarely fails)
+
+  # Deadline buffer (seconds) - safety margin for deadline tracking
+  # Larger buffer = more conservative abort (fewer false positives)
+  # Smaller buffer = more aggressive (risk missing deadline)
+  deadline_buffer_s: 5
+
 logging:
   # JSON structured logging for Vector → Loki aggregation
   format: "json"
