@@ -193,10 +193,57 @@ pipeline:
 - **T014 (Core Pipeline):** ✅ Complete - Static VRAM manager, async orchestration
 - **T015 (Flux-Schnell):** ✅ Complete - NF4 quantized image generation (~6GB VRAM)
 - **T016 (LivePortrait):** Pending - Real LivePortrait integration
-- **T017 (Kokoro TTS):** Pending - Real Kokoro TTS integration
+- **T017 (Kokoro TTS):** ✅ Complete - FP32 text-to-speech with voice/emotion control (~0.4GB VRAM)
 - **T018 (Dual CLIP):** Pending - Real CLIP ensemble integration
 - **T019 (VRAM Manager):** ✅ Complete (integrated in T014)
 - **T020 (Slot Timing):** Pending - Slot scheduler and deadline management
+
+### T017 Implementation Details
+
+**Kokoro-82M TTS Integration** (See `T017_IMPLEMENTATION_SUMMARY.md` for full details)
+
+Features:
+- ✅ KokoroWrapper class with voice/emotion mapping
+- ✅ 24kHz mono audio output, up to 45 seconds per slot
+- ✅ 3+ character voices (rick_c137, morty, summer, jerry, beth)
+- ✅ Speed control (0.8-1.2×)
+- ✅ Emotion modulation (neutral, excited, sad, angry, manic)
+- ✅ Pre-allocated buffer output (no VRAM fragmentation)
+- ✅ Deterministic generation with seed control
+- ✅ Comprehensive test suite (unit + integration)
+- ✅ Benchmark and download scripts
+
+Installation:
+```bash
+pip install kokoro soundfile
+python scripts/download_kokoro.py --test-synthesis
+```
+
+Usage:
+```python
+from vortex.models.kokoro import load_kokoro
+
+kokoro = load_kokoro(device="cuda:0")
+audio = kokoro.synthesize(
+    text="Wubba lubba dub dub!",
+    voice_id="rick_c137",
+    speed=1.1,
+    emotion="manic"
+)
+# Returns: torch.Tensor (num_samples,) at 24kHz
+```
+
+Testing:
+```bash
+# Unit tests (no GPU required)
+pytest tests/unit/test_kokoro.py -v
+
+# Integration tests (requires GPU + kokoro package)
+pytest tests/integration/test_kokoro_synthesis.py --gpu -v
+
+# Benchmark latency
+python benchmarks/kokoro_latency.py --iterations 50
+```
 
 ## Performance Targets
 

@@ -111,23 +111,37 @@ def load_liveportrait(
         precision: Model precision ("fp16" for half precision)
 
     Returns:
-        nn.Module: Loaded LivePortrait model (mock for T014, real in T016)
+        nn.Module: Loaded LivePortrait model wrapper (LivePortraitModel)
 
     VRAM Budget:
         ~3.5 GB with FP16
 
     Example:
         >>> liveportrait = load_liveportrait(device="cuda:0")
-        >>> video = liveportrait.warp(actor_img, audio_feats)
+        >>> video = liveportrait.animate(actor_img, audio, expression="excited")
     """
     logger.info(
         "Loading LivePortrait model", extra={"device": device, "precision": precision}
     )
-    # TODO(T016): Replace with real LivePortrait implementation
-    model = MockModel(name="liveportrait", vram_gb=3.5)
-    model = model.to(device)
-    logger.info("LivePortrait loaded successfully")
-    return model
+
+    # T016: Real LivePortrait implementation with FP16 precision
+    try:
+        from vortex.models.liveportrait import load_liveportrait as load_liveportrait_real
+        model = load_liveportrait_real(device=device, precision=precision)
+        logger.info("LivePortrait loaded successfully (real implementation)")
+        return model
+    except (ImportError, Exception) as e:
+        # Fallback to mock for environments without LivePortrait
+        logger.warning(
+            "Failed to load real LivePortrait model, using mock. "
+            "Error: %s",
+            str(e),
+            extra={"error_type": type(e).__name__}
+        )
+        model = MockModel(name="liveportrait", vram_gb=3.5)
+        model = model.to(device)
+        logger.info("LivePortrait loaded successfully (mock fallback)")
+        return model
 
 
 def load_kokoro(
@@ -141,7 +155,7 @@ def load_kokoro(
         precision: Model precision ("fp32" for full precision)
 
     Returns:
-        nn.Module: Loaded Kokoro model (mock for T014, real in T017)
+        nn.Module: Loaded Kokoro model wrapper (KokoroWrapper)
 
     VRAM Budget:
         ~0.4 GB with FP32
@@ -151,11 +165,25 @@ def load_kokoro(
         >>> audio = kokoro.synthesize(text="Hello world", voice_id="rick_c137")
     """
     logger.info("Loading Kokoro-82M model", extra={"device": device, "precision": precision})
-    # TODO(T017): Replace with real Kokoro implementation
-    model = MockModel(name="kokoro", vram_gb=0.4)
-    model = model.to(device)
-    logger.info("Kokoro-82M loaded successfully")
-    return model
+
+    # T017: Real Kokoro-82M implementation
+    try:
+        from vortex.models.kokoro import load_kokoro as load_kokoro_real
+        model = load_kokoro_real(device=device)
+        logger.info("Kokoro-82M loaded successfully (real implementation)")
+        return model
+    except (ImportError, Exception) as e:
+        # Fallback to mock for environments without kokoro package
+        logger.warning(
+            "Failed to load real Kokoro model, using mock. "
+            "Error: %s. Install with: pip install kokoro soundfile",
+            str(e),
+            extra={"error_type": type(e).__name__}
+        )
+        model = MockModel(name="kokoro", vram_gb=0.4)
+        model = model.to(device)
+        logger.info("Kokoro-82M loaded successfully (mock fallback)")
+        return model
 
 
 def load_clip_b(

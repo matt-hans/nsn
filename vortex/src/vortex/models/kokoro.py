@@ -120,7 +120,33 @@ class KokoroWrapper(nn.Module):
             ... )
             >>> print(audio.shape)  # (num_samples,)
         """
-        # Validate inputs
+        # Validate and prepare inputs
+        self._validate_synthesis_inputs(text, voice_id)
+        if seed is not None:
+            torch.manual_seed(seed)
+
+        kokoro_voice = self.voice_config[voice_id]
+        emotion_params = self._get_emotion_params(emotion)
+        text = self._truncate_text_if_needed(text, speed)
+        effective_speed = emotion_params["tempo"] * speed
+
+        # Generate and process waveform
+        waveform = self._generate_audio(text, kokoro_voice, effective_speed)
+        waveform = self._process_waveform(waveform, emotion_params)
+
+        # Write to output buffer if provided
+        return self._write_to_buffer(waveform, output)
+
+    def _validate_synthesis_inputs(self, text: str, voice_id: str) -> None:
+        """Validate synthesis input parameters.
+
+        Args:
+            text: Input text
+            voice_id: Voice identifier
+
+        Raises:
+            ValueError: If validation fails
+        """
         if not text or text.strip() == "":
             raise ValueError("Text cannot be empty")
 
@@ -130,36 +156,59 @@ class KokoroWrapper(nn.Module):
                 f"Available: {list(self.voice_config.keys())}"
             )
 
-        # Set random seed for determinism
-        if seed is not None:
-            torch.manual_seed(seed)
+    def _generate_audio(
+        self, text: str, voice: str, speed: float
+    ) -> torch.Tensor:
+        """Generate audio using Kokoro model.
 
-        # Get Kokoro voice ID
-        kokoro_voice = self.voice_config[voice_id]
+        Args:
+            text: Input text
+            voice: Kokoro voice ID
+            speed: Effective speed multiplier
 
-        # Get emotion parameters
-        emotion_params = self._get_emotion_params(emotion)
+        Returns:
+            torch.Tensor: Generated audio waveform
 
-        # Estimate output duration and truncate if needed
-        text = self._truncate_text_if_needed(text, speed)
-
-        # Combine emotion tempo with speed
-        effective_speed = emotion_params["tempo"] * speed
-
-        # Generate audio using Kokoro model
-        # The real Kokoro API may vary - this is based on typical TTS interfaces
+        Raises:
+            Exception: If generation fails
+        """
         try:
-            waveform = self.model.generate(
-                text=text,
-                voice=kokoro_voice,
-                speed=effective_speed,
-                # Additional emotion params could be passed here if Kokoro supports
-                # For now, we apply them post-generation if needed
-            )
+            # KPipeline returns generator yielding (graphemes, phonemes, audio)
+            # We only need the audio from the final output
+            generator = self.model(text, voice=voice, speed=speed)
+
+            # Collect all audio chunks from generator
+            audio_chunks = []
+            for _, _, audio_chunk in generator:
+                audio_chunks.append(audio_chunk)
+
+            # Concatenate all chunks if multiple
+            if len(audio_chunks) == 0:
+                raise RuntimeError("No audio generated from Kokoro pipeline")
+            elif len(audio_chunks) == 1:
+                waveform = audio_chunks[0]
+            else:
+                # Stack and flatten if multiple chunks
+                import numpy as np
+                waveform = np.concatenate(audio_chunks, axis=0)
+
+            return waveform
         except Exception as e:
             logger.error(f"Kokoro generation failed: {e}", exc_info=True)
             raise
 
+    def _process_waveform(
+        self, waveform: torch.Tensor, emotion_params: dict
+    ) -> torch.Tensor:
+        """Process raw waveform: convert to tensor, normalize, apply effects.
+
+        Args:
+            waveform: Raw waveform from Kokoro
+            emotion_params: Emotion parameters
+
+        Returns:
+            torch.Tensor: Processed waveform
+        """
         # Ensure tensor on correct device
         if not isinstance(waveform, torch.Tensor):
             waveform = torch.tensor(waveform, dtype=torch.float32, device=self.device)
@@ -176,12 +225,24 @@ class KokoroWrapper(nn.Module):
         # Apply emotion modulation if not natively supported
         waveform = self._apply_emotion_modulation(waveform, emotion_params)
 
-        # Write to pre-allocated buffer if provided
+        return waveform
+
+    def _write_to_buffer(
+        self, waveform: torch.Tensor, output: Optional[torch.Tensor]
+    ) -> torch.Tensor:
+        """Write waveform to pre-allocated buffer or return directly.
+
+        Args:
+            waveform: Processed waveform
+            output: Optional pre-allocated buffer
+
+        Returns:
+            torch.Tensor: Waveform or buffer slice
+        """
         if output is not None:
             num_samples = waveform.shape[0]
             output[:num_samples].copy_(waveform)
             return output[:num_samples]
-
         return waveform
 
     def _get_emotion_params(self, emotion: str) -> dict:
@@ -297,7 +358,7 @@ def load_kokoro(
     """Load Kokoro-82M model with ICN voice and emotion configurations.
 
     This factory function:
-    1. Loads the Kokoro TTS model from Hugging Face
+    1. Loads the Kokoro TTS model (KPipeline)
     2. Loads voice ID mappings from config
     3. Loads emotion parameter mappings from config
     4. Returns a wrapped KokoroWrapper instance
@@ -323,9 +384,29 @@ def load_kokoro(
     """
     logger.info(f"Loading Kokoro-82M model on device: {device}")
 
-    # Import Kokoro (this will fail if package not installed)
+    # Import and initialize model
+    model = _import_and_create_kokoro_model()
+
+    # Load configuration files
+    voice_config, emotion_config = _load_configs(
+        voices_config_path, emotions_config_path
+    )
+
+    # Create and return wrapper
+    return _create_wrapper(model, voice_config, emotion_config, device)
+
+
+def _import_and_create_kokoro_model():
+    """Import Kokoro package and create KPipeline instance.
+
+    Returns:
+        KPipeline instance
+
+    Raises:
+        ImportError: If kokoro package is not installed
+    """
     try:
-        from kokoro import Kokoro
+        from kokoro import KPipeline
     except ImportError as e:
         logger.error(
             "Failed to import 'kokoro' package. "
@@ -336,6 +417,32 @@ def load_kokoro(
             "Kokoro package not found. Install with: pip install kokoro soundfile"
         ) from e
 
+    # Create KPipeline with American English (lang_code='a')
+    # KPipeline handles model loading internally
+    try:
+        pipeline = KPipeline(lang_code='a')
+        logger.info("KPipeline initialized for American English")
+        return pipeline
+    except Exception as e:
+        logger.error(f"Failed to create KPipeline: {e}", exc_info=True)
+        raise
+
+
+def _load_configs(
+    voices_config_path: Optional[str], emotions_config_path: Optional[str]
+) -> tuple[dict, dict]:
+    """Load voice and emotion configuration files.
+
+    Args:
+        voices_config_path: Path to voices config YAML (optional)
+        emotions_config_path: Path to emotions config YAML (optional)
+
+    Returns:
+        tuple: (voice_config dict, emotion_config dict)
+
+    Raises:
+        FileNotFoundError: If config files are missing
+    """
     # Default config paths
     if voices_config_path is None:
         voices_config_path = str(
@@ -347,7 +454,7 @@ def load_kokoro(
             Path(__file__).parent / "configs" / "kokoro_emotions.yaml"
         )
 
-    # Load configuration files
+    # Load voice config
     try:
         with open(voices_config_path) as f:
             voice_config = yaml.safe_load(f)
@@ -356,6 +463,7 @@ def load_kokoro(
         logger.error(f"Voice config not found: {voices_config_path}")
         raise
 
+    # Load emotion config
     try:
         with open(emotions_config_path) as f:
             emotion_config = yaml.safe_load(f)
@@ -364,26 +472,23 @@ def load_kokoro(
         logger.error(f"Emotion config not found: {emotions_config_path}")
         raise
 
-    # Load Kokoro model
-    # The actual API may differ - this is based on typical usage
-    try:
-        model = Kokoro()  # Loads default Kokoro-82M model
-        model = model.float()  # Ensure FP32 precision
+    return voice_config, emotion_config
 
-        # Move to device if CUDA
-        if device.startswith("cuda"):
-            model = model.to(device)
 
-        logger.info(
-            "Kokoro-82M model loaded successfully",
-            extra={"device": device, "precision": "fp32"},
-        )
+def _create_wrapper(
+    model, voice_config: dict, emotion_config: dict, device: str
+) -> KokoroWrapper:
+    """Create KokoroWrapper instance with loaded model and configs.
 
-    except Exception as e:
-        logger.error(f"Failed to load Kokoro model: {e}", exc_info=True)
-        raise
+    Args:
+        model: KPipeline instance
+        voice_config: Voice ID mapping
+        emotion_config: Emotion parameter mapping
+        device: Target device
 
-    # Create wrapper
+    Returns:
+        KokoroWrapper: Initialized wrapper
+    """
     wrapper = KokoroWrapper(
         model=model,
         voice_config=voice_config,

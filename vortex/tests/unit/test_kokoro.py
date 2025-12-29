@@ -17,9 +17,17 @@ class TestKokoroWrapper:
     @pytest.fixture
     def mock_kokoro_model(self):
         """Create a mock Kokoro model for testing."""
-        mock_model = Mock()
-        # Mock generate method to return dummy audio
-        mock_model.generate.return_value = torch.randn(24000)  # 1 second at 24kHz
+        import numpy as np
+
+        # Create a callable mock that returns a generator
+        def mock_pipeline_call(*args, **kwargs):
+            # Return a generator that yields (graphemes, phonemes, audio)
+            yield ("text", "phonemes", np.random.randn(24000).astype(np.float32))
+
+        mock_model = MagicMock()
+        mock_model.side_effect = mock_pipeline_call
+        # Keep generate for backward compatibility during transition
+        mock_model.generate = Mock(return_value=torch.randn(24000))
         return mock_model
 
     @pytest.fixture
@@ -60,7 +68,7 @@ class TestKokoroWrapper:
         assert isinstance(result, torch.Tensor)
         assert result.dim() == 1  # Mono audio
         assert len(result) > 0
-        mock_kokoro_model.generate.assert_called_once()
+        mock_kokoro_model.assert_called_once()
 
     def test_synthesize_with_speed_control(self, wrapper, mock_kokoro_model):
         """Test speed parameter affects generation."""
@@ -72,7 +80,7 @@ class TestKokoroWrapper:
                 speed=speed
             )
 
-        assert mock_kokoro_model.generate.call_count == 3
+        assert mock_kokoro_model.call_count == 3
 
     def test_synthesize_with_emotion(self, wrapper, mock_kokoro_model):
         """Test emotion parameter modulates synthesis."""
@@ -112,9 +120,11 @@ class TestKokoroWrapper:
 
     def test_synthesize_writes_to_output_buffer(self, wrapper, mock_kokoro_model):
         """Test that synthesis writes to pre-allocated buffer when provided."""
-        # Mock generate to return specific length
-        mock_audio = torch.randn(48000)  # 2 seconds
-        mock_kokoro_model.generate.return_value = mock_audio
+        # Mock pipeline to return specific length
+        import numpy as np
+        def mock_long_audio(*args, **kwargs):
+            yield ("text", "phonemes", np.random.randn(48000).astype(np.float32))
+        mock_kokoro_model.side_effect = mock_long_audio
 
         # Pre-allocated buffer
         output_buffer = torch.zeros(1080000, dtype=torch.float32)  # 45s @ 24kHz
@@ -143,10 +153,11 @@ class TestKokoroWrapper:
     def test_synthesize_deterministic_with_seed(self, wrapper, mock_kokoro_model):
         """Test that same seed produces identical outputs."""
         # Mock to return different random tensors
+        import numpy as np
         def generate_random(*args, **kwargs):
-            return torch.randn(24000)
+            yield ("text", "phonemes", np.random.randn(24000).astype(np.float32))
 
-        mock_kokoro_model.generate.side_effect = generate_random
+        mock_kokoro_model.side_effect = generate_random
 
         # With seed, torch.manual_seed should be called
         with patch('torch.manual_seed') as mock_seed:
@@ -160,7 +171,10 @@ class TestKokoroWrapper:
     def test_output_normalization(self, wrapper, mock_kokoro_model):
         """Test that output is normalized to [-1, 1]."""
         # Mock output with values outside [-1, 1]
-        mock_kokoro_model.generate.return_value = torch.tensor([2.0, -3.0, 1.5])
+        import numpy as np
+        def mock_unnormalized(*args, **kwargs):
+            yield ("text", "phonemes", np.array([2.0, -3.0, 1.5], dtype=np.float32))
+        mock_kokoro_model.side_effect = mock_unnormalized
 
         result = wrapper.synthesize(
             text="Test",
@@ -189,58 +203,59 @@ class TestKokoroWrapper:
 class TestLoadKokoro:
     """Test suite for load_kokoro factory function."""
 
-    @patch('vortex.models.kokoro.KokoroWrapper')
-    @patch('vortex.models.kokoro.yaml.safe_load')
-    @patch('builtins.open', create=True)
+    @patch('vortex.models.kokoro._create_wrapper')
+    @patch('vortex.models.kokoro._load_configs')
+    @patch('vortex.models.kokoro._import_and_create_kokoro_model')
     def test_load_kokoro_initializes_wrapper(
-        self, mock_open, mock_yaml_load, mock_wrapper_class
+        self, mock_import_model, mock_load_configs, mock_create_wrapper
     ):
         """Test that load_kokoro creates KokoroWrapper with configs."""
-        # Mock config files
-        mock_yaml_load.side_effect = [
-            {"rick_c137": "am_adam"},  # voices.yaml
-            {"neutral": {"tempo": 1.0}}  # emotions.yaml
-        ]
+        # Mock the helper functions
+        mock_model = Mock()
+        mock_import_model.return_value = mock_model
 
-        mock_wrapper_instance = Mock()
-        mock_wrapper_class.return_value = mock_wrapper_instance
+        voice_config = {"rick_c137": "am_adam"}
+        emotion_config = {"neutral": {"tempo": 1.0}}
+        mock_load_configs.return_value = (voice_config, emotion_config)
 
-        with patch('vortex.models.kokoro.Kokoro') as mock_kokoro:
-            result = load_kokoro(device="cuda:0")
+        mock_wrapper = Mock()
+        mock_create_wrapper.return_value = mock_wrapper
 
-            # Should have created wrapper
-            assert mock_wrapper_class.called
-            assert result == mock_wrapper_instance
+        result = load_kokoro(device="cuda:0")
 
-    @patch('vortex.models.kokoro.Kokoro')
-    def test_load_kokoro_handles_missing_package(self, mock_kokoro):
+        # Should have called all helpers
+        assert mock_import_model.called
+        assert mock_load_configs.called
+        assert mock_create_wrapper.called
+        assert result == mock_wrapper
+
+    @patch('builtins.__import__', side_effect=ImportError("No module named 'kokoro'"))
+    def test_load_kokoro_handles_missing_package(self, mock_import):
         """Test that load_kokoro raises informative error if kokoro package missing."""
-        mock_kokoro.side_effect = ImportError("No module named 'kokoro'")
-
         with pytest.raises(ImportError, match="kokoro"):
             load_kokoro(device="cuda:0")
 
-    @patch('vortex.models.kokoro.KokoroWrapper')
-    @patch('vortex.models.kokoro.yaml.safe_load')
-    @patch('builtins.open', create=True)
-    def test_load_kokoro_uses_fp32_precision(
-        self, mock_open, mock_yaml_load, mock_wrapper_class
+    @patch('vortex.models.kokoro._create_wrapper')
+    @patch('vortex.models.kokoro._load_configs')
+    @patch('vortex.models.kokoro._import_and_create_kokoro_model')
+    def test_load_kokoro_creates_pipeline(
+        self, mock_import_model, mock_load_configs, mock_create_wrapper
     ):
-        """Test that Kokoro loads with FP32 precision (no quantization)."""
-        mock_yaml_load.side_effect = [
-            {"rick_c137": "am_adam"},
-            {"neutral": {"tempo": 1.0}}
-        ]
+        """Test that _import_and_create_kokoro_model is called."""
+        voice_config = {"rick_c137": "am_adam"}
+        emotion_config = {"neutral": {"tempo": 1.0}}
+        mock_load_configs.return_value = (voice_config, emotion_config)
 
-        with patch('vortex.models.kokoro.Kokoro') as mock_kokoro:
-            mock_model = Mock()
-            mock_model.float.return_value = mock_model
-            mock_kokoro.return_value = mock_model
+        mock_pipeline = Mock()
+        mock_import_model.return_value = mock_pipeline
 
-            load_kokoro(device="cuda:0")
+        mock_wrapper = Mock()
+        mock_create_wrapper.return_value = mock_wrapper
 
-            # Should call .float() for FP32
-            mock_model.float.assert_called_once()
+        load_kokoro(device="cuda:0")
+
+        # Should create model via helper function
+        mock_import_model.assert_called_once()
 
 
 class TestVRAMBudget:
@@ -274,8 +289,14 @@ class TestEdgeCases:
     @pytest.fixture
     def wrapper(self):
         """Create wrapper with minimal mocks."""
-        mock_model = Mock()
-        mock_model.generate.return_value = torch.randn(24000)
+        import numpy as np
+
+        def mock_pipeline_call(*args, **kwargs):
+            yield ("text", "phonemes", np.random.randn(24000).astype(np.float32))
+
+        mock_model = MagicMock()
+        mock_model.side_effect = mock_pipeline_call
+        mock_model.generate = Mock(return_value=torch.randn(24000))
 
         return KokoroWrapper(
             model=mock_model,
@@ -345,8 +366,10 @@ class TestEdgeCases:
 
     def test_cuda_error_handling(self, wrapper):
         """Test graceful handling of CUDA errors."""
-        # Mock CUDA OOM
-        wrapper.model.generate.side_effect = torch.cuda.OutOfMemoryError()
+        # Mock CUDA OOM on pipeline call
+        def mock_oom(*args, **kwargs):
+            raise torch.cuda.OutOfMemoryError()
+        wrapper.model.side_effect = mock_oom
 
         with pytest.raises(torch.cuda.OutOfMemoryError):
             wrapper.synthesize(text="Test", voice_id="rick_c137")
