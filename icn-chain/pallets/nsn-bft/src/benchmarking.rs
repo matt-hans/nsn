@@ -6,7 +6,7 @@
 use super::*;
 
 #[allow(unused)]
-use crate::Pallet as IcnBft;
+use crate::Pallet as NsnBft;
 use frame_benchmarking::v2::*;
 use frame_system::RawOrigin;
 use sp_std::vec;
@@ -37,7 +37,7 @@ mod benchmarks {
     fn prune_old_consensus() {
         // Setup: Store 10 old consensus rounds
         for i in 0..10u64 {
-            let _ = IcnBft::<T>::store_embeddings_hash(
+            let _ = NsnBft::<T>::store_embeddings_hash(
                 RawOrigin::Root.into(),
                 i,
                 T::Hash::default(),

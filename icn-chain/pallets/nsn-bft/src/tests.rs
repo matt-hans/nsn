@@ -22,7 +22,7 @@ fn test_store_finalized_bft_result() {
         let directors = vec![1u64, 2u64, 3u64];
 
         // Execute
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             slot,
             embeddings_hash,
@@ -31,9 +31,9 @@ fn test_store_finalized_bft_result() {
         ));
 
         // Verify storage
-        assert_eq!(IcnBft::embeddings_hashes(slot), Some(embeddings_hash));
+        assert_eq!(NsnBft::embeddings_hashes(slot), Some(embeddings_hash));
 
-        let round = IcnBft::consensus_rounds(slot).unwrap();
+        let round = NsnBft::consensus_rounds(slot).unwrap();
         assert_eq!(round.slot, slot);
         assert_eq!(round.embeddings_hash, embeddings_hash);
         assert_eq!(round.directors, directors);
@@ -51,7 +51,7 @@ fn test_store_finalized_bft_result() {
         );
 
         // Verify statistics updated
-        let stats = IcnBft::consensus_stats();
+        let stats = NsnBft::consensus_stats();
         assert_eq!(stats.total_rounds, 1);
         assert_eq!(stats.successful_rounds, 1);
         assert_eq!(stats.failed_rounds, 0);
@@ -70,7 +70,7 @@ fn test_query_historical_slot_result() {
         let slots = vec![50u64, 51u64, 52u64];
         for slot in &slots {
             let hash = H256::from_low_u64_be(*slot);
-            assert_ok!(IcnBft::store_embeddings_hash(
+            assert_ok!(NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 *slot,
                 hash,
@@ -80,7 +80,7 @@ fn test_query_historical_slot_result() {
         }
 
         // Query slot 51
-        let result = IcnBft::get_slot_result(51);
+        let result = NsnBft::get_slot_result(51);
         assert!(result.is_some());
 
         let round = result.unwrap();
@@ -90,7 +90,7 @@ fn test_query_historical_slot_result() {
         assert!(round.success);
 
         // Query non-existent slot
-        assert!(IcnBft::get_slot_result(999).is_none());
+        assert!(NsnBft::get_slot_result(999).is_none());
     });
 }
 
@@ -103,7 +103,7 @@ fn test_consensus_statistics_tracking() {
     new_test_ext().execute_with(|| {
         // Simulate 100 rounds: 95 successful, 5 failed
         for i in 0..95 {
-            assert_ok!(IcnBft::store_embeddings_hash(
+            assert_ok!(NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 i,
                 H256::from_low_u64_be(i),
@@ -113,7 +113,7 @@ fn test_consensus_statistics_tracking() {
         }
 
         for i in 95..100 {
-            assert_ok!(IcnBft::store_embeddings_hash(
+            assert_ok!(NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 i,
                 H256::zero(), // ZERO_HASH for failure
@@ -123,7 +123,7 @@ fn test_consensus_statistics_tracking() {
         }
 
         // Verify statistics
-        let stats = IcnBft::get_stats();
+        let stats = NsnBft::get_stats();
         assert_eq!(stats.total_rounds, 100);
         assert_eq!(stats.successful_rounds, 95);
         assert_eq!(stats.failed_rounds, 5);
@@ -142,7 +142,7 @@ fn test_failed_consensus_recording() {
         let slot = 200u64;
 
         // Store failed consensus
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             slot,
             H256::zero(), // ZERO_HASH indicates failure
@@ -151,13 +151,13 @@ fn test_failed_consensus_recording() {
         ));
 
         // Verify storage
-        let round = IcnBft::consensus_rounds(slot).unwrap();
+        let round = NsnBft::consensus_rounds(slot).unwrap();
         assert!(!round.success);
         assert_eq!(round.embeddings_hash, H256::zero());
         assert_eq!(round.directors.len(), 0);
 
         // Verify statistics
-        let stats = IcnBft::consensus_stats();
+        let stats = NsnBft::consensus_stats();
         assert_eq!(stats.total_rounds, 1);
         assert_eq!(stats.successful_rounds, 0);
         assert_eq!(stats.failed_rounds, 1);
@@ -174,7 +174,7 @@ fn test_pruning_old_consensus_data() {
         // Store consensus for slots at different blocks
         // Slot 12 at block 100 (old)
         System::set_block_number(100);
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             12,
             H256::from_low_u64_be(12),
@@ -184,7 +184,7 @@ fn test_pruning_old_consensus_data() {
 
         // Slot 62500 at block 500000 (middle)
         System::set_block_number(500_000);
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             62_500,
             H256::from_low_u64_be(62_500),
@@ -194,7 +194,7 @@ fn test_pruning_old_consensus_data() {
 
         // Slot 312500 at block 2500000 (recent)
         System::set_block_number(2_500_000);
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             312_500,
             H256::from_low_u64_be(312_500),
@@ -209,12 +209,12 @@ fn test_pruning_old_consensus_data() {
         System::set_block_number(3_000_000);
 
         // Prune before slot 51000
-        assert_ok!(IcnBft::prune_old_consensus(RuntimeOrigin::root(), 51_000));
+        assert_ok!(NsnBft::prune_old_consensus(RuntimeOrigin::root(), 51_000));
 
         // Verify: slot 12 removed, others kept
-        assert!(IcnBft::consensus_rounds(12).is_none());
-        assert!(IcnBft::consensus_rounds(62_500).is_some());
-        assert!(IcnBft::consensus_rounds(312_500).is_some());
+        assert!(NsnBft::consensus_rounds(12).is_none());
+        assert!(NsnBft::consensus_rounds(62_500).is_some());
+        assert!(NsnBft::consensus_rounds(312_500).is_some());
 
         // Verify event
         System::assert_last_event(
@@ -236,7 +236,7 @@ fn test_batch_query_for_range() {
     new_test_ext().execute_with(|| {
         // Store consensus for slots 100-200
         for slot in 100..=200 {
-            assert_ok!(IcnBft::store_embeddings_hash(
+            assert_ok!(NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 slot,
                 H256::from_low_u64_be(slot),
@@ -246,7 +246,7 @@ fn test_batch_query_for_range() {
         }
 
         // Query range 150-160 (11 slots)
-        let results = IcnBft::get_slot_range(150, 160);
+        let results = NsnBft::get_slot_range(150, 160);
         assert_eq!(results.len(), 11);
 
         // Verify ordered by slot ascending
@@ -268,7 +268,7 @@ fn test_challenge_evidence_verification_support() {
         let real_hash = H256::from_low_u64_be(0x123456); // Real hash (off-chain)
 
         // Store fraudulent consensus
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             slot,
             stored_hash,
@@ -277,7 +277,7 @@ fn test_challenge_evidence_verification_support() {
         ));
 
         // Validator queries on-chain hash for comparison
-        let on_chain_hash = IcnBft::get_embeddings_hash(slot).unwrap();
+        let on_chain_hash = NsnBft::get_embeddings_hash(slot).unwrap();
         assert_eq!(on_chain_hash, stored_hash);
 
         // Off-chain: Validator compares on_chain_hash vs real_hash
@@ -295,7 +295,7 @@ fn test_statistics_update_on_each_store() {
     new_test_ext().execute_with(|| {
         // Initial state: 50 rounds, 47 successful
         for i in 0..47 {
-            assert_ok!(IcnBft::store_embeddings_hash(
+            assert_ok!(NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 i,
                 H256::from_low_u64_be(i),
@@ -304,7 +304,7 @@ fn test_statistics_update_on_each_store() {
             ));
         }
         for i in 47..50 {
-            assert_ok!(IcnBft::store_embeddings_hash(
+            assert_ok!(NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 i,
                 H256::zero(),
@@ -313,12 +313,12 @@ fn test_statistics_update_on_each_store() {
             ));
         }
 
-        let stats_before = IcnBft::consensus_stats();
+        let stats_before = NsnBft::consensus_stats();
         assert_eq!(stats_before.total_rounds, 50);
         assert_eq!(stats_before.successful_rounds, 47);
 
         // Store new successful consensus for slot 51
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             51,
             H256::from_low_u64_be(51),
@@ -327,7 +327,7 @@ fn test_statistics_update_on_each_store() {
         ));
 
         // Verify statistics updated atomically
-        let stats_after = IcnBft::consensus_stats();
+        let stats_after = NsnBft::consensus_stats();
         assert_eq!(stats_after.total_rounds, 51);
         assert_eq!(stats_after.successful_rounds, 48);
 
@@ -347,7 +347,7 @@ fn test_empty_slot_handling() {
 
         // Attempt to store empty consensus (no directors elected)
         // This represents a slot where insufficient stake prevented election
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             slot,
             H256::zero(),
@@ -356,7 +356,7 @@ fn test_empty_slot_handling() {
         ));
 
         // Verify stored as failed consensus
-        let round = IcnBft::consensus_rounds(slot).unwrap();
+        let round = NsnBft::consensus_rounds(slot).unwrap();
         assert!(!round.success);
         assert_eq!(round.directors.len(), 0);
         assert_eq!(round.embeddings_hash, H256::zero());
@@ -371,7 +371,7 @@ fn test_empty_slot_handling() {
 fn test_auto_pruning_on_finalize() {
     new_test_ext().execute_with(|| {
         // Store old consensus at slot 10 (block 1)
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             10,
             H256::from_low_u64_be(10),
@@ -381,7 +381,7 @@ fn test_auto_pruning_on_finalize() {
 
         // Store recent consensus at slot 500000 (block 10000)
         System::set_block_number(10_000);
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             500_000,
             H256::from_low_u64_be(500_000),
@@ -398,18 +398,18 @@ fn test_auto_pruning_on_finalize() {
         // Slot 10 should not be pruned yet (retention period not exceeded)
 
         // Verify slot 10 still exists
-        assert!(IcnBft::consensus_rounds(10).is_some());
+        assert!(NsnBft::consensus_rounds(10).is_some());
 
         // Run to block past retention period
         // Need block > 2,592,000 + 80 (slot 10 stored at approximate block 80)
         System::set_block_number(2_600_000);
 
         // Manually trigger finalize to test auto-prune
-        <IcnBft as Hooks<u64>>::on_finalize(2_600_000);
+        <NsnBft as Hooks<u64>>::on_finalize(2_600_000);
 
         // Now slot 10 should be pruned (cutoff_slot = (2600000 - 2592000) / 8 = 1000)
-        assert!(IcnBft::consensus_rounds(10).is_none());
-        assert!(IcnBft::consensus_rounds(500_000).is_some());
+        assert!(NsnBft::consensus_rounds(10).is_none());
+        assert!(NsnBft::consensus_rounds(500_000).is_some());
     });
 }
 
@@ -422,7 +422,7 @@ fn test_too_many_directors_error() {
     new_test_ext().execute_with(|| {
         // Attempt to store with 6 directors (max is 5)
         assert_noop!(
-            IcnBft::store_embeddings_hash(
+            NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 1,
                 H256::from_low_u64_be(1),
@@ -440,7 +440,7 @@ fn test_slot_already_stored_error() {
         let slot = 100u64;
 
         // Store consensus for slot 100
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             slot,
             H256::from_low_u64_be(100),
@@ -450,7 +450,7 @@ fn test_slot_already_stored_error() {
 
         // Attempt to store again for same slot
         assert_noop!(
-            IcnBft::store_embeddings_hash(
+            NsnBft::store_embeddings_hash(
                 RuntimeOrigin::root(),
                 slot,
                 H256::from_low_u64_be(200),
@@ -467,7 +467,7 @@ fn test_non_root_origin_fails() {
     new_test_ext().execute_with(|| {
         // Attempt to call store_embeddings_hash from signed origin
         assert_noop!(
-            IcnBft::store_embeddings_hash(
+            NsnBft::store_embeddings_hash(
                 RuntimeOrigin::signed(1),
                 1,
                 H256::from_low_u64_be(1),
@@ -487,7 +487,7 @@ fn test_non_root_origin_fails() {
 fn test_moving_average_calculation_first_round() {
     new_test_ext().execute_with(|| {
         // First successful round with 5 directors
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             1,
             H256::from_low_u64_be(1),
@@ -495,7 +495,7 @@ fn test_moving_average_calculation_first_round() {
             true,
         ));
 
-        let stats = IcnBft::consensus_stats();
+        let stats = NsnBft::consensus_stats();
         assert_eq!(stats.average_directors_agreeing, 500); // 5 × 100
     });
 }
@@ -504,7 +504,7 @@ fn test_moving_average_calculation_first_round() {
 fn test_moving_average_calculation_multiple_rounds() {
     new_test_ext().execute_with(|| {
         // Round 1: 5 directors
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             1,
             H256::from_low_u64_be(1),
@@ -513,7 +513,7 @@ fn test_moving_average_calculation_multiple_rounds() {
         ));
 
         // Round 2: 3 directors
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             2,
             H256::from_low_u64_be(2),
@@ -521,7 +521,7 @@ fn test_moving_average_calculation_multiple_rounds() {
             true,
         ));
 
-        let stats = IcnBft::consensus_stats();
+        let stats = NsnBft::consensus_stats();
         // Average: (500 × 1 + 300 × 1) / 2 = 800 / 2 = 400
         assert_eq!(stats.average_directors_agreeing, 400); // 4.00 directors
     });
@@ -533,7 +533,7 @@ fn test_get_embeddings_hash_query() {
         let slot = 42u64;
         let hash = H256::from_low_u64_be(0xDEADBEEF);
 
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             slot,
             hash,
@@ -541,8 +541,8 @@ fn test_get_embeddings_hash_query() {
             true,
         ));
 
-        assert_eq!(IcnBft::get_embeddings_hash(slot), Some(hash));
-        assert_eq!(IcnBft::get_embeddings_hash(999), None);
+        assert_eq!(NsnBft::get_embeddings_hash(slot), Some(hash));
+        assert_eq!(NsnBft::get_embeddings_hash(999), None);
     });
 }
 
@@ -550,7 +550,7 @@ fn test_get_embeddings_hash_query() {
 fn test_prune_empty_range() {
     new_test_ext().execute_with(|| {
         // Store some consensus
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             100,
             H256::from_low_u64_be(100),
@@ -559,10 +559,10 @@ fn test_prune_empty_range() {
         ));
 
         // Prune before slot 50 (nothing to prune)
-        assert_ok!(IcnBft::prune_old_consensus(RuntimeOrigin::root(), 50));
+        assert_ok!(NsnBft::prune_old_consensus(RuntimeOrigin::root(), 50));
 
         // Verify consensus still exists
-        assert!(IcnBft::consensus_rounds(100).is_some());
+        assert!(NsnBft::consensus_rounds(100).is_some());
     });
 }
 
@@ -570,7 +570,7 @@ fn test_prune_empty_range() {
 fn test_success_rate_edge_cases() {
     new_test_ext().execute_with(|| {
         // Test 0% success rate
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             1,
             H256::zero(),
@@ -578,18 +578,18 @@ fn test_success_rate_edge_cases() {
             false,
         ));
 
-        let stats = IcnBft::consensus_stats();
+        let stats = NsnBft::consensus_stats();
         assert_eq!(stats.success_rate(), 0);
 
         // Test 100% success rate
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             2,
             H256::from_low_u64_be(2),
             vec![1, 2, 3],
             true,
         ));
-        assert_ok!(IcnBft::store_embeddings_hash(
+        assert_ok!(NsnBft::store_embeddings_hash(
             RuntimeOrigin::root(),
             3,
             H256::from_low_u64_be(3),
@@ -597,7 +597,7 @@ fn test_success_rate_edge_cases() {
             true,
         ));
 
-        let stats2 = IcnBft::consensus_stats();
+        let stats2 = NsnBft::consensus_stats();
         // 2 successful out of 3 total = 66.66... truncates to 66
         assert_eq!(stats2.success_rate(), 66);
     });

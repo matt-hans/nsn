@@ -32,7 +32,7 @@ construct_runtime!(
 	{
 		System: frame_system,
 		Balances: pallet_balances,
-		IcnStake: pallet_nsn_stake::{Pallet, Call, Storage, Event<T>, FreezeReason},
+		NsnStake: pallet_nsn_stake::{Pallet, Call, Storage, Event<T>, FreezeReason},
 	}
 );
 

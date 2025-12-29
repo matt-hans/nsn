@@ -20,7 +20,7 @@ construct_runtime!(
 	pub enum Test
 	{
 		System: frame_system,
-		IcnReputation: pallet_nsn_reputation,
+		NsnReputation: pallet_nsn_reputation,
 	}
 );
 

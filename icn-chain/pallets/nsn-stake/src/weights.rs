@@ -34,12 +34,12 @@ pub trait WeightInfo {
 /// Weights for pallet_nsn_stake using the Substrate node and recommended hardware.
 pub struct SubstrateWeight<T>(PhantomData<T>);
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-	/// Storage: IcnStake Stakes (r:1 w:1)
-	/// Proof: IcnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
-	/// Storage: IcnStake TotalStaked (r:1 w:1)
-	/// Proof: IcnStake TotalStaked (max_values: Some(1), max_size: Some(16), added: 511, mode: MaxEncodedLen)
-	/// Storage: IcnStake RegionStakes (r:1 w:1)
-	/// Proof: IcnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
+	/// Storage: NsnStake Stakes (r:1 w:1)
+	/// Proof: NsnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	/// Storage: NsnStake TotalStaked (r:1 w:1)
+	/// Proof: NsnStake TotalStaked (max_values: Some(1), max_size: Some(16), added: 511, mode: MaxEncodedLen)
+	/// Storage: NsnStake RegionStakes (r:1 w:1)
+	/// Proof: NsnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
 	fn deposit_stake() -> Weight {
 		// PoV size: Stakes(128) + TotalStaked(16) + RegionStakes(32) + overhead(192) = 368 bytes
 		Weight::from_parts(50_000_000, 5621)
@@ -47,10 +47,10 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
 
-	/// Storage: IcnStake Stakes (r:1 w:1)
-	/// Proof: IcnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
-	/// Storage: IcnStake Delegations (r:1 w:1)
-	/// Proof: IcnStake Delegations (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
+	/// Storage: NsnStake Stakes (r:1 w:1)
+	/// Proof: NsnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	/// Storage: NsnStake Delegations (r:1 w:1)
+	/// Proof: NsnStake Delegations (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
 	fn delegate() -> Weight {
 		// PoV size: Stakes(128) + Delegations(64) + overhead(128) = 320 bytes
 		Weight::from_parts(40_000_000, 5142)
@@ -58,12 +58,12 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
 
-	/// Storage: IcnStake Stakes (r:1 w:1)
-	/// Proof: IcnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
-	/// Storage: IcnStake TotalStaked (r:1 w:1)
-	/// Proof: IcnStake TotalStaked (max_values: Some(1), max_size: Some(16), added: 511, mode: MaxEncodedLen)
-	/// Storage: IcnStake RegionStakes (r:1 w:1)
-	/// Proof: IcnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
+	/// Storage: NsnStake Stakes (r:1 w:1)
+	/// Proof: NsnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	/// Storage: NsnStake TotalStaked (r:1 w:1)
+	/// Proof: NsnStake TotalStaked (max_values: Some(1), max_size: Some(16), added: 511, mode: MaxEncodedLen)
+	/// Storage: NsnStake RegionStakes (r:1 w:1)
+	/// Proof: NsnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
 	fn withdraw_stake() -> Weight {
 		// PoV size: Stakes(128) + TotalStaked(16) + RegionStakes(32) + overhead(192) = 368 bytes
 		Weight::from_parts(45_000_000, 5621)
@@ -71,10 +71,10 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
 
-	/// Storage: IcnStake Delegations (r:1 w:1)
-	/// Proof: IcnStake Delegations (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
-	/// Storage: IcnStake Stakes (r:1 w:1)
-	/// Proof: IcnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	/// Storage: NsnStake Delegations (r:1 w:1)
+	/// Proof: NsnStake Delegations (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
+	/// Storage: NsnStake Stakes (r:1 w:1)
+	/// Proof: NsnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
 	fn revoke_delegation() -> Weight {
 		// PoV size: Delegations(64) + Stakes(128) + overhead(128) = 320 bytes
 		Weight::from_parts(35_000_000, 5142)
@@ -82,12 +82,12 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().writes(2))
 	}
 
-	/// Storage: IcnStake Stakes (r:1 w:1)
-	/// Proof: IcnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
-	/// Storage: IcnStake TotalStaked (r:1 w:1)
-	/// Proof: IcnStake TotalStaked (max_values: Some(1), max_size: Some(16), added: 511, mode: MaxEncodedLen)
-	/// Storage: IcnStake RegionStakes (r:1 w:1)
-	/// Proof: IcnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
+	/// Storage: NsnStake Stakes (r:1 w:1)
+	/// Proof: NsnStake Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+	/// Storage: NsnStake TotalStaked (r:1 w:1)
+	/// Proof: NsnStake TotalStaked (max_values: Some(1), max_size: Some(16), added: 511, mode: MaxEncodedLen)
+	/// Storage: NsnStake RegionStakes (r:1 w:1)
+	/// Proof: NsnStake RegionStakes (max_values: None, max_size: Some(32), added: 2507, mode: MaxEncodedLen)
 	fn slash() -> Weight {
 		// PoV size: Stakes(128) + TotalStaked(16) + RegionStakes(32) + overhead(192) = 368 bytes
 		Weight::from_parts(50_000_000, 5621)

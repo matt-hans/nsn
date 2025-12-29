@@ -33,9 +33,9 @@ fn test_director_election_basic() {
 		roll_to(8); // First slot boundary
 
 		// Verify directors were elected
-		let slot = IcnDirector::current_slot();
+		let slot = NsnDirector::current_slot();
 		let election_slot = slot + ELECTION_LOOKAHEAD;
-		let elected = IcnDirector::elected_directors(election_slot);
+		let elected = NsnDirector::elected_directors(election_slot);
 
 		assert_eq!(elected.len(), 5, "Should elect exactly 5 directors");
 	});
@@ -53,9 +53,9 @@ fn test_director_election_respects_role() {
 
 		roll_to(8);
 
-		let slot = IcnDirector::current_slot();
+		let slot = NsnDirector::current_slot();
 		let election_slot = slot + ELECTION_LOOKAHEAD;
-		let elected = IcnDirector::elected_directors(election_slot);
+		let elected = NsnDirector::elected_directors(election_slot);
 
 		// Only Directors should be eligible
 		assert!(elected.len() <= 3, "Only Director-role accounts should be eligible");
@@ -73,10 +73,10 @@ fn test_director_election_deterministic() {
 		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Run election for slot 100
-		let directors1 = IcnDirector::elect_directors(100);
+		let directors1 = NsnDirector::elect_directors(100);
 
 		// Run again with same slot
-		let directors2 = IcnDirector::elect_directors(100);
+		let directors2 = NsnDirector::elect_directors(100);
 
 		assert_eq!(directors1, directors2, "Same slot should give deterministic result");
 	});
@@ -97,7 +97,7 @@ fn test_multi_region_max_two_per_region() {
 		stake_as_director(EVE, 100 * NSN, Region::EuWest);
 		stake_as_director(FRANK, 100 * NSN, Region::EuWest);
 
-		let directors = IcnDirector::elect_directors(100);
+		let directors = NsnDirector::elect_directors(100);
 
 		// Max 2 from same region should be elected
 		assert!(directors.len() <= 2, "Max 2 directors from same region");
@@ -116,7 +116,7 @@ fn test_multi_region_diverse_selection() {
 		stake_as_director(FRANK, 100 * NSN, Region::Latam);
 		stake_as_director(GRACE, 100 * NSN, Region::Mena);
 
-		let directors = IcnDirector::elect_directors(100);
+		let directors = NsnDirector::elect_directors(100);
 
 		assert_eq!(directors.len(), 5, "Should elect 5 directors from diverse regions");
 	});
@@ -139,7 +139,7 @@ fn test_cooldown_enforced() {
 		crate::Cooldowns::<Test>::insert(ALICE, 80);
 
 		// Election for slot 95 (less than 80 + 20 = 100)
-		let directors = IcnDirector::elect_directors(95);
+		let directors = NsnDirector::elect_directors(95);
 
 		// Alice should be excluded
 		assert!(!directors.contains(&ALICE), "Alice should be in cooldown");
@@ -157,7 +157,7 @@ fn test_cooldown_expires() {
 		crate::Cooldowns::<Test>::insert(ALICE, 80);
 
 		// Election for slot 101 (greater than 80 + 20 = 100)
-		let directors = IcnDirector::elect_directors(101);
+		let directors = NsnDirector::elect_directors(101);
 
 		// Alice should be eligible again
 		// Note: Due to random selection, Alice might not be selected
@@ -194,7 +194,7 @@ fn test_reputation_weighting() {
 
 		let mut alice_count = 0;
 		for slot in 100..200 {
-			let directors = IcnDirector::elect_directors(slot);
+			let directors = NsnDirector::elect_directors(slot);
 			if directors.contains(&ALICE) {
 				alice_count += 1;
 			}
@@ -219,7 +219,7 @@ fn test_submit_bft_result_success() {
 
 		let agreeing = BoundedVec::try_from(vec![ALICE, BOB, CHARLIE]).unwrap();
 
-		assert_ok!(IcnDirector::submit_bft_result(
+		assert_ok!(NsnDirector::submit_bft_result(
 			RuntimeOrigin::signed(ALICE),
 			slot,
 			agreeing,
@@ -227,10 +227,10 @@ fn test_submit_bft_result_success() {
 		));
 
 		// Verify result stored
-		let result = IcnDirector::bft_results(slot).expect("Result should exist");
+		let result = NsnDirector::bft_results(slot).expect("Result should exist");
 		assert_eq!(result.slot, slot);
 		assert_eq!(result.canonical_hash, hash);
-		assert!(!IcnDirector::finalized_slots(slot));
+		assert!(!NsnDirector::finalized_slots(slot));
 	});
 }
 
@@ -245,7 +245,7 @@ fn test_submit_bft_result_requires_elected_director() {
 
 		// JULIA is not an elected director
 		assert_noop!(
-			IcnDirector::submit_bft_result(
+			NsnDirector::submit_bft_result(
 				RuntimeOrigin::signed(JULIA),
 				slot,
 				agreeing,
@@ -268,7 +268,7 @@ fn test_submit_bft_result_requires_bft_threshold() {
 		let agreeing = BoundedVec::try_from(vec![ALICE, BOB]).unwrap();
 
 		assert_noop!(
-			IcnDirector::submit_bft_result(
+			NsnDirector::submit_bft_result(
 				RuntimeOrigin::signed(ALICE),
 				slot,
 				agreeing,
@@ -289,7 +289,7 @@ fn test_submit_bft_result_no_double_submission() {
 		let agreeing = BoundedVec::try_from(vec![ALICE, BOB, CHARLIE]).unwrap();
 
 		// First submission succeeds
-		assert_ok!(IcnDirector::submit_bft_result(
+		assert_ok!(NsnDirector::submit_bft_result(
 			RuntimeOrigin::signed(ALICE),
 			slot,
 			agreeing.clone(),
@@ -298,7 +298,7 @@ fn test_submit_bft_result_no_double_submission() {
 
 		// Second submission fails
 		assert_noop!(
-			IcnDirector::submit_bft_result(
+			NsnDirector::submit_bft_result(
 				RuntimeOrigin::signed(BOB),
 				slot,
 				agreeing,
@@ -323,14 +323,14 @@ fn test_challenge_bft_result() {
 		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		let evidence_hash = test_hash(b"evidence");
-		assert_ok!(IcnDirector::challenge_bft_result(
+		assert_ok!(NsnDirector::challenge_bft_result(
 			RuntimeOrigin::signed(EVE),
 			100,
 			evidence_hash,
 		));
 
 		// Verify challenge stored
-		let challenge = IcnDirector::pending_challenges(100).expect("Challenge should exist");
+		let challenge = NsnDirector::pending_challenges(100).expect("Challenge should exist");
 		assert_eq!(challenge.challenger, EVE);
 		assert!(!challenge.resolved);
 	});
@@ -368,15 +368,15 @@ fn test_resolve_challenge_upheld() {
 		])
 		.unwrap();
 
-		assert_ok!(IcnDirector::resolve_challenge(
+		assert_ok!(NsnDirector::resolve_challenge(
 			RuntimeOrigin::root(),
 			100,
 			attestations,
 		));
 
 		// Slot should be marked as failed
-		assert_eq!(IcnDirector::slot_status(100), SlotStatus::Failed);
-		assert!(IcnDirector::finalized_slots(100));
+		assert_eq!(NsnDirector::slot_status(100), SlotStatus::Failed);
+		assert!(NsnDirector::finalized_slots(100));
 	});
 }
 
@@ -416,15 +416,15 @@ fn test_resolve_challenge_rejected() {
 		])
 		.unwrap();
 
-		assert_ok!(IcnDirector::resolve_challenge(
+		assert_ok!(NsnDirector::resolve_challenge(
 			RuntimeOrigin::root(),
 			100,
 			attestations,
 		));
 
 		// Slot should be finalized (original result stands)
-		assert_eq!(IcnDirector::slot_status(100), SlotStatus::Finalized);
-		assert!(IcnDirector::finalized_slots(100));
+		assert_eq!(NsnDirector::slot_status(100), SlotStatus::Finalized);
+		assert!(NsnDirector::finalized_slots(100));
 	});
 }
 
@@ -445,8 +445,8 @@ fn test_auto_finalization() {
 		roll_to(152);
 
 		// Should be auto-finalized
-		assert!(IcnDirector::finalized_slots(100), "Slot should be auto-finalized");
-		assert_eq!(IcnDirector::slot_status(100), SlotStatus::Finalized);
+		assert!(NsnDirector::finalized_slots(100), "Slot should be auto-finalized");
+		assert_eq!(NsnDirector::slot_status(100), SlotStatus::Finalized);
 	});
 }
 
@@ -464,15 +464,15 @@ fn test_slot_transition() {
 		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Start at block 1
-		assert_eq!(IcnDirector::current_slot(), 0);
+		assert_eq!(NsnDirector::current_slot(), 0);
 
 		// Move to block 8 (first slot boundary)
 		roll_to(8);
-		assert_eq!(IcnDirector::current_slot(), 1);
+		assert_eq!(NsnDirector::current_slot(), 1);
 
 		// Move to block 16
 		roll_to(16);
-		assert_eq!(IcnDirector::current_slot(), 2);
+		assert_eq!(NsnDirector::current_slot(), 2);
 	});
 }
 
@@ -489,7 +489,7 @@ fn test_election_lookahead() {
 		roll_to(8);
 
 		// Election should be for slot 3 (1 + 2 lookahead)
-		let elected = IcnDirector::elected_directors(3);
+		let elected = NsnDirector::elected_directors(3);
 		assert!(elected.len() > 0, "Directors should be elected with lookahead");
 	});
 }
@@ -505,7 +505,7 @@ fn test_insufficient_directors() {
 		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
 		stake_as_director(BOB, 100 * NSN, Region::EuWest);
 
-		let directors = IcnDirector::elect_directors(100);
+		let directors = NsnDirector::elect_directors(100);
 
 		// Should elect available directors (less than 5)
 		assert_eq!(directors.len(), 2, "Should elect available directors");
@@ -525,8 +525,8 @@ fn test_vrf_different_slots() {
 		stake_as_director(DAVE, 100 * NSN, Region::Latam);
 		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
-		let directors1 = IcnDirector::elect_directors(100);
-		let directors2 = IcnDirector::elect_directors(101);
+		let directors1 = NsnDirector::elect_directors(100);
+		let directors2 = NsnDirector::elect_directors(101);
 
 		// Different slots should (usually) produce different orderings
 		// Note: With limited candidates, they might still be same set
@@ -557,9 +557,9 @@ fn test_challenge_deadline_expiry() {
 		roll_to(165);
 
 		// Challenge should expire, original result finalized
-		let challenge = IcnDirector::pending_challenges(100).unwrap();
+		let challenge = NsnDirector::pending_challenges(100).unwrap();
 		assert!(challenge.resolved, "Challenge should be marked resolved");
-		assert!(IcnDirector::finalized_slots(100), "Slot should be finalized");
+		assert!(NsnDirector::finalized_slots(100), "Slot should be finalized");
 	});
 }
 
@@ -576,7 +576,7 @@ fn test_cooldown_updated_on_bft_submission() {
 		let agreeing = BoundedVec::try_from(vec![ALICE, BOB, CHARLIE]).unwrap();
 		let hash = test_hash(b"embeddings");
 
-		assert_ok!(IcnDirector::submit_bft_result(
+		assert_ok!(NsnDirector::submit_bft_result(
 			RuntimeOrigin::signed(ALICE),
 			slot,
 			agreeing,
@@ -584,9 +584,9 @@ fn test_cooldown_updated_on_bft_submission() {
 		));
 
 		// Verify cooldowns were updated
-		assert_eq!(IcnDirector::cooldowns(ALICE), slot);
-		assert_eq!(IcnDirector::cooldowns(BOB), slot);
-		assert_eq!(IcnDirector::cooldowns(CHARLIE), slot);
+		assert_eq!(NsnDirector::cooldowns(ALICE), slot);
+		assert_eq!(NsnDirector::cooldowns(BOB), slot);
+		assert_eq!(NsnDirector::cooldowns(CHARLIE), slot);
 	});
 }
 
@@ -599,7 +599,7 @@ fn test_challenge_requires_sufficient_stake() {
 		// JULIA has 1000 NSN balance but no stake
 		let evidence_hash = test_hash(b"evidence");
 		assert_noop!(
-			IcnDirector::challenge_bft_result(
+			NsnDirector::challenge_bft_result(
 				RuntimeOrigin::signed(JULIA),
 				100,
 				evidence_hash,
@@ -622,7 +622,7 @@ fn test_cannot_challenge_finalized_slot() {
 		let evidence_hash = test_hash(b"evidence");
 
 		assert_noop!(
-			IcnDirector::challenge_bft_result(
+			NsnDirector::challenge_bft_result(
 				RuntimeOrigin::signed(EVE),
 				100,
 				evidence_hash,
@@ -644,7 +644,7 @@ fn test_cannot_double_challenge() {
 		let evidence_hash = test_hash(b"evidence2");
 
 		assert_noop!(
-			IcnDirector::challenge_bft_result(
+			NsnDirector::challenge_bft_result(
 				RuntimeOrigin::signed(FRANK),
 				100,
 				evidence_hash,
@@ -657,13 +657,13 @@ fn test_cannot_double_challenge() {
 #[test]
 fn test_isqrt() {
 	new_test_ext().execute_with(|| {
-		assert_eq!(IcnDirector::isqrt(0), 0);
-		assert_eq!(IcnDirector::isqrt(1), 1);
-		assert_eq!(IcnDirector::isqrt(4), 2);
-		assert_eq!(IcnDirector::isqrt(9), 3);
-		assert_eq!(IcnDirector::isqrt(100), 10);
-		assert_eq!(IcnDirector::isqrt(1000), 31);
-		assert_eq!(IcnDirector::isqrt(10000), 100);
+		assert_eq!(NsnDirector::isqrt(0), 0);
+		assert_eq!(NsnDirector::isqrt(1), 1);
+		assert_eq!(NsnDirector::isqrt(4), 2);
+		assert_eq!(NsnDirector::isqrt(9), 3);
+		assert_eq!(NsnDirector::isqrt(100), 10);
+		assert_eq!(NsnDirector::isqrt(1000), 31);
+		assert_eq!(NsnDirector::isqrt(10000), 100);
 	});
 }
 
@@ -687,7 +687,7 @@ fn submit_bft_result(slot: u64) {
 	let agreeing = BoundedVec::try_from(vec![ALICE, BOB, CHARLIE]).unwrap();
 	let hash = test_hash(b"clip_embeddings");
 
-	IcnDirector::submit_bft_result(RuntimeOrigin::signed(ALICE), slot, agreeing, hash)
+	NsnDirector::submit_bft_result(RuntimeOrigin::signed(ALICE), slot, agreeing, hash)
 		.expect("BFT submission should succeed");
 }
 
@@ -698,6 +698,6 @@ fn submit_challenge(slot: u64, challenger: u64) {
 	}
 
 	let evidence_hash = test_hash(b"evidence");
-	IcnDirector::challenge_bft_result(RuntimeOrigin::signed(challenger), slot, evidence_hash)
+	NsnDirector::challenge_bft_result(RuntimeOrigin::signed(challenger), slot, evidence_hash)
 		.expect("Challenge should succeed");
 }

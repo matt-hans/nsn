@@ -1,4 +1,4 @@
-# Pallet NSN pinning
+# Pallet NSN storage
 
 Part of the Neural Sovereign Network (NSN) custom pallets for Moonbeam.
 

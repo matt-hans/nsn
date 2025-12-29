@@ -28,9 +28,9 @@ construct_runtime!(
 	{
 		System: frame_system,
 		Balances: pallet_balances,
-		IcnStake: pallet_nsn_stake,
-		IcnReputation: pallet_nsn_reputation,
-		IcnDirector: pallet_nsn_director,
+		NsnStake: pallet_nsn_stake,
+		NsnReputation: pallet_nsn_reputation,
+		NsnDirector: pallet_nsn_director,
 	}
 );
 
@@ -239,9 +239,9 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 pub fn roll_to(n: u32) {
 	while System::block_number() < n {
 		let current = System::block_number();
-		<IcnDirector as Hooks<u32>>::on_finalize(current);
+		<NsnDirector as Hooks<u32>>::on_finalize(current);
 		System::set_block_number(current + 1);
-		<IcnDirector as Hooks<u32>>::on_initialize(current + 1);
+		<NsnDirector as Hooks<u32>>::on_initialize(current + 1);
 	}
 }
 

@@ -14,7 +14,7 @@ frame_support::construct_runtime!(
     pub enum Test
     {
         System: frame_system,
-        IcnBft: pallet_nsn_bft,
+        NsnBft: pallet_nsn_bft,
     }
 );
 
@@ -51,6 +51,6 @@ pub fn run_to_block(n: u64) {
         }
         System::set_block_number(System::block_number() + 1);
         <frame_system::Pallet<Test> as Hooks<u64>>::on_initialize(System::block_number());
-        <IcnBft as Hooks<u64>>::on_finalize(System::block_number());
+        <NsnBft as Hooks<u64>>::on_finalize(System::block_number());
     }
 }
