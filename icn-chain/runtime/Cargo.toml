@@ -24,12 +24,12 @@ hex-literal = { optional = true, workspace = true, default-features = true }
 log = { workspace = true }
 
 # ICN custom pallets
-pallet-icn-stake = { workspace = true }
-pallet-icn-reputation = { workspace = true }
-pallet-icn-director = { workspace = true }
-pallet-icn-bft = { workspace = true }
-pallet-icn-pinning = { workspace = true }
-pallet-icn-treasury = { workspace = true }
+pallet-nsn-stake = { workspace = true }
+pallet-nsn-reputation = { workspace = true }
+pallet-nsn-director = { workspace = true }
+pallet-nsn-bft = { workspace = true }
+pallet-nsn-storage = { workspace = true }
+pallet-nsn-treasury = { workspace = true }
 
 polkadot-sdk = { workspace = true, features = ["cumulus-pallet-aura-ext", "cumulus-pallet-session-benchmarking", "cumulus-pallet-weight-reclaim", "cumulus-pallet-xcm", "cumulus-pallet-xcmp-queue", "cumulus-primitives-aura", "cumulus-primitives-core", "cumulus-primitives-utility", "pallet-aura", "pallet-authorship", "pallet-balances", "pallet-collator-selection", "pallet-message-queue", "pallet-session", "pallet-sudo", "pallet-timestamp", "pallet-transaction-payment", "pallet-transaction-payment-rpc-runtime-api", "pallet-xcm", "parachains-common", "polkadot-parachain-primitives", "polkadot-runtime-common", "runtime", "staging-parachain-info", "staging-xcm", "staging-xcm-builder", "staging-xcm-executor"], default-features = false }
 scale-info = { features = ["derive"], workspace = true }
@@ -42,12 +42,12 @@ std = [
 	"codec/std",
 	"cumulus-pallet-parachain-system/std",
 	"log/std",
-	"pallet-icn-stake/std",
-	"pallet-icn-reputation/std",
-	"pallet-icn-director/std",
-	"pallet-icn-bft/std",
-	"pallet-icn-pinning/std",
-	"pallet-icn-treasury/std",
+	"pallet-nsn-stake/std",
+	"pallet-nsn-reputation/std",
+	"pallet-nsn-director/std",
+	"pallet-nsn-bft/std",
+	"pallet-nsn-storage/std",
+	"pallet-nsn-treasury/std",
 	"polkadot-sdk/std",
 	"scale-info/std",
 	"serde_json/std",
@@ -57,23 +57,23 @@ std = [
 runtime-benchmarks = [
 	"cumulus-pallet-parachain-system/runtime-benchmarks",
 	"hex-literal",
-	"pallet-icn-stake/runtime-benchmarks",
-	"pallet-icn-reputation/runtime-benchmarks",
-	"pallet-icn-director/runtime-benchmarks",
-	"pallet-icn-bft/runtime-benchmarks",
-	"pallet-icn-pinning/runtime-benchmarks",
-	"pallet-icn-treasury/runtime-benchmarks",
+	"pallet-nsn-stake/runtime-benchmarks",
+	"pallet-nsn-reputation/runtime-benchmarks",
+	"pallet-nsn-director/runtime-benchmarks",
+	"pallet-nsn-bft/runtime-benchmarks",
+	"pallet-nsn-storage/runtime-benchmarks",
+	"pallet-nsn-treasury/runtime-benchmarks",
 	"polkadot-sdk/runtime-benchmarks",
 ]
 
 try-runtime = [
 	"cumulus-pallet-parachain-system/try-runtime",
-	"pallet-icn-stake/try-runtime",
-	"pallet-icn-reputation/try-runtime",
-	"pallet-icn-director/try-runtime",
-	"pallet-icn-bft/try-runtime",
-	"pallet-icn-pinning/try-runtime",
-	"pallet-icn-treasury/try-runtime",
+	"pallet-nsn-stake/try-runtime",
+	"pallet-nsn-reputation/try-runtime",
+	"pallet-nsn-director/try-runtime",
+	"pallet-nsn-bft/try-runtime",
+	"pallet-nsn-storage/try-runtime",
+	"pallet-nsn-treasury/try-runtime",
 	"polkadot-sdk/try-runtime",
 ]
 

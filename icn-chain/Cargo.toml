@@ -10,24 +10,24 @@ default-members = ["runtime", "node"]
 members = [
     "node",
     "runtime",
-    "pallets/icn-stake",
-    "pallets/icn-reputation",
-    "pallets/icn-director",
-    "pallets/icn-bft",
-    "pallets/icn-pinning",
-    "pallets/icn-treasury",
+    "pallets/nsn-stake",
+    "pallets/nsn-reputation",
+    "pallets/nsn-director",
+    "pallets/nsn-bft",
+    "pallets/nsn-storage",
+    "pallets/nsn-treasury",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-# ICN crates
+# NSN crates
 icn-runtime = { path = "./runtime", default-features = false }
-pallet-icn-stake = { path = "./pallets/icn-stake", default-features = false }
-pallet-icn-reputation = { path = "./pallets/icn-reputation", default-features = false }
-pallet-icn-director = { path = "./pallets/icn-director", default-features = false }
-pallet-icn-bft = { path = "./pallets/icn-bft", default-features = false }
-pallet-icn-pinning = { path = "./pallets/icn-pinning", default-features = false }
-pallet-icn-treasury = { path = "./pallets/icn-treasury", default-features = false }
+pallet-nsn-stake = { path = "./pallets/nsn-stake", default-features = false }
+pallet-nsn-reputation = { path = "./pallets/nsn-reputation", default-features = false }
+pallet-nsn-director = { path = "./pallets/nsn-director", default-features = false }
+pallet-nsn-bft = { path = "./pallets/nsn-bft", default-features = false }
+pallet-nsn-storage = { path = "./pallets/nsn-storage", default-features = false }
+pallet-nsn-treasury = { path = "./pallets/nsn-treasury", default-features = false }
 
 # Substrate/Polkadot SDK crates (version-aligned for compatibility)
 frame-benchmarking = { version = "45.0.0", default-features = false }

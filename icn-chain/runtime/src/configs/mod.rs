@@ -342,7 +342,7 @@ parameter_types! {
 	pub const ReputationMaxPrunePerBlock: u32 = 10_000;
 }
 
-impl pallet_icn_stake::Config for Runtime {
+impl pallet_nsn_stake::Config for Runtime {
 	type Currency = Balances;
 	type RuntimeFreezeReason = RuntimeFreezeReason;
 	type MinStakeDirector = MinStakeDirector;
@@ -355,23 +355,23 @@ impl pallet_icn_stake::Config for Runtime {
 	type DelegationMultiplier = DelegationMultiplier;
 	type MaxDelegationsPerDelegator = MaxDelegationsPerDelegator;
 	type MaxDelegatorsPerValidator = MaxDelegatorsPerValidator;
-	type WeightInfo = pallet_icn_stake::weights::SubstrateWeight<Runtime>;
+	type WeightInfo = pallet_nsn_stake::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_icn_reputation::Config for Runtime {
+impl pallet_nsn_reputation::Config for Runtime {
 	type MaxEventsPerBlock = ReputationMaxEventsPerBlock;
 	type DefaultRetentionPeriod = ReputationDefaultRetentionPeriod;
 	type CheckpointInterval = ReputationCheckpointInterval;
 	type DecayRatePerWeek = ReputationDecayRatePerWeek;
 	type MaxCheckpointAccounts = ReputationMaxCheckpointAccounts;
 	type MaxPrunePerBlock = ReputationMaxPrunePerBlock;
-	type WeightInfo = pallet_icn_reputation::weights::SubstrateWeight<Runtime>;
+	type WeightInfo = pallet_nsn_reputation::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_icn_director::Config for Runtime {}
+impl pallet_nsn_director::Config for Runtime {}
 
-impl pallet_icn_bft::Config for Runtime {}
+impl pallet_nsn_bft::Config for Runtime {}
 
-impl pallet_icn_pinning::Config for Runtime {}
+impl pallet_nsn_storage::Config for Runtime {}
 
-impl pallet_icn_treasury::Config for Runtime {}
+impl pallet_nsn_treasury::Config for Runtime {}

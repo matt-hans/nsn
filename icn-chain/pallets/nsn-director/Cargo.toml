@@ -1,0 +1,59 @@
+[package]
+name = "pallet-nsn-director"
+authors = { workspace = true }
+description = "NSN multi-director election, BFT coordination, and challenge mechanism"
+edition = "2021"
+version = "0.1.0"
+
+[dependencies]
+log = { workspace = true }
+serde = { workspace = true }
+
+# Substrate
+frame-benchmarking = { workspace = true, optional = true }
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+parity-scale-codec = { workspace = true, features = [ "derive" ] }
+scale-info = { workspace = true, features = [ "derive" ] }
+sp-runtime = { workspace = true }
+sp-std = { workspace = true }
+sp-core = { workspace = true }
+
+# NSN pallets (coupling for stake/reputation queries)
+pallet-nsn-stake = { workspace = true }
+pallet-nsn-reputation = { workspace = true }
+
+[dev-dependencies]
+pallet-balances = { workspace = true, features = [ "insecure_zero_ed", "std" ] }
+sp-core = { workspace = true, features = [ "std" ] }
+sp-io = { workspace = true, features = [ "std" ] }
+
+[features]
+default = [ "std" ]
+std = [
+	"frame-benchmarking?/std",
+	"frame-support/std",
+	"frame-system/std",
+	"log/std",
+	"parity-scale-codec/std",
+	"pallet-nsn-stake/std",
+	"pallet-nsn-reputation/std",
+	"scale-info/std",
+	"serde/std",
+	"sp-core/std",
+	"sp-runtime/std",
+	"sp-std/std",
+]
+runtime-benchmarks = [
+	"frame-benchmarking/runtime-benchmarks",
+	"frame-support/runtime-benchmarks",
+	"frame-system/runtime-benchmarks",
+	"pallet-nsn-stake/runtime-benchmarks",
+	"pallet-nsn-reputation/runtime-benchmarks",
+]
+try-runtime = [
+	"frame-support/try-runtime",
+	"frame-system/try-runtime",
+	"pallet-nsn-stake/try-runtime",
+	"pallet-nsn-reputation/try-runtime",
+]

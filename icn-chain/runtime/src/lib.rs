@@ -310,19 +310,19 @@ mod runtime {
 	#[runtime::pallet_index(33)]
 	pub type MessageQueue = pallet_message_queue;
 
-	// ICN Custom Pallets
+	// NSN Custom Pallets
 	#[runtime::pallet_index(50)]
-	pub type IcnStake = pallet_icn_stake;
+	pub type NsnStake = pallet_nsn_stake;
 	#[runtime::pallet_index(51)]
-	pub type IcnReputation = pallet_icn_reputation;
+	pub type NsnReputation = pallet_nsn_reputation;
 	#[runtime::pallet_index(52)]
-	pub type IcnDirector = pallet_icn_director;
+	pub type NsnDirector = pallet_nsn_director;
 	#[runtime::pallet_index(53)]
-	pub type IcnBft = pallet_icn_bft;
+	pub type NsnBft = pallet_nsn_bft;
 	#[runtime::pallet_index(54)]
-	pub type IcnPinning = pallet_icn_pinning;
+	pub type NsnStorage = pallet_nsn_storage;
 	#[runtime::pallet_index(55)]
-	pub type IcnTreasury = pallet_icn_treasury;
+	pub type NsnTreasury = pallet_nsn_treasury;
 }
 
 #[docify::export(register_validate_block)]
