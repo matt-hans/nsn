@@ -1,5 +1,5 @@
 // Copyright 2024 Neural Sovereign Network
-// This file is part of NSN Moonbeam.
+// This file is part of NSN Chain.
 
 //! Types for pallet-nsn-stake
 
