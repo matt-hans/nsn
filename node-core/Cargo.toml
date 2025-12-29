@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = [
+    "bin/nsn-node",
+    "crates/types",
+    "crates/chain-client",
+    "crates/p2p",
+    "crates/scheduler",
+    "crates/lane0",
+    "crates/lane1",
+    "crates/storage",
+    "crates/validator",
+    "sidecar",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/interdim-cable/nsn"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+prost = "0.12"
+tonic = "0.10"
+
+# Substrate client
+subxt = "0.34"
+
+# P2P
+libp2p = { version = "0.53", features = ["tokio", "gossipsub", "kad", "identify", "noise", "tcp", "quic", "yamux", "request-response"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Config
+config = "0.14"
+clap = { version = "4.4", features = ["derive"] }
+
+# Internal crates
+nsn-types = { path = "crates/types" }
+nsn-chain-client = { path = "crates/chain-client" }
+nsn-p2p = { path = "crates/p2p" }
+nsn-scheduler = { path = "crates/scheduler" }
+nsn-lane0 = { path = "crates/lane0" }
+nsn-lane1 = { path = "crates/lane1" }
+nsn-storage = { path = "crates/storage" }
+nsn-validator = { path = "crates/validator" }
+nsn-sidecar = { path = "sidecar" }

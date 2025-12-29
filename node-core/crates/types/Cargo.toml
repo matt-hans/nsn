@@ -1,0 +1,10 @@
+[package]
+name = "nsn-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+codec = { package = "parity-scale-codec", version = "3.6", features = ["derive"] }
