@@ -1,7 +1,7 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Moonbeam.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Moonbeam.
 //
-// ICN Moonbeam is free software: you can redistribute it and/or modify
+// NSN Moonbeam is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
@@ -101,7 +101,7 @@ parameter_types! {
 	pub const MaxStakePerNode: Balance = 1000;
 	pub const MaxRegionPercentage: u32 = 20; // 20%
 	pub const DelegationMultiplier: u32 = 5; // 5× validator stake
-	pub const RegionCapBootstrapStake: Balance = 1000; // Enforce caps after 1000 ICN total
+	pub const RegionCapBootstrapStake: Balance = 1000; // Enforce caps after 1000 NSN total
 
 	// Bounded limits (L0 constraint compliance)
 	pub const MaxDelegationsPerDelegator: u32 = 100;

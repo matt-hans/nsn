@@ -1,14 +1,14 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! # ICN Reputation Pallet
+//! # NSN Reputation Pallet
 //!
-//! Verifiable reputation events with Merkle proofs and pruning for the Interdimensional Cable Network.
+//! Verifiable reputation events with Merkle proofs and pruning for the Neural Sovereign Network.
 //!
 //! ## Overview
 //!
@@ -89,12 +89,12 @@ pub mod pallet {
 	/// The in-code storage version.
 	const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
-	/// Pallet for ICN reputation tracking
+	/// Pallet for NSN reputation tracking
 	#[pallet::pallet]
 	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
-	/// Configuration trait for the ICN Reputation pallet
+	/// Configuration trait for the NSN Reputation pallet
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		/// The overarching event type.

@@ -1,5 +1,5 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 
 //! Mock runtime for pallet-nsn-bft tests
 

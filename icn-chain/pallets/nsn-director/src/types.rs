@@ -1,12 +1,12 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! Types for the ICN Director pallet.
+//! Types for the NSN Director pallet.
 //!
 //! ## Core Types
 //!
@@ -106,18 +106,18 @@ pub struct BftConsensusResult<AccountId, Hash> {
 ///
 /// # Challenge Flow
 ///
-/// 1. Challenger calls `challenge_bft_result()` with 25 ICN bond
+/// 1. Challenger calls `challenge_bft_result()` with 25 NSN bond
 /// 2. Challenge stored in `PendingChallenges` with deadline
 /// 3. Validators submit attestations (agree/disagree with challenge)
 /// 4. `resolve_challenge()` tallies attestations:
-///    - If upheld: Slash directors 100 ICN each, refund + reward challenger
-///    - If rejected: Slash challenger's 25 ICN bond
+///    - If upheld: Slash directors 100 NSN each, refund + reward challenger
+///    - If rejected: Slash challenger's 25 NSN bond
 ///
 /// # Bond Amounts (PRD §3.3)
 ///
-/// * Challenge bond: 25 ICN (forfeited if rejected)
-/// * Director slash: 100 ICN per fraudulent director
-/// * Challenger reward: 10 ICN (if upheld)
+/// * Challenge bond: 25 NSN (forfeited if rejected)
+/// * Director slash: 100 NSN per fraudulent director
+/// * Challenger reward: 10 NSN (if upheld)
 #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(AccountId, Hash))]
 pub struct BftChallenge<AccountId, Hash> {

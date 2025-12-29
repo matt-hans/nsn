@@ -1,5 +1,5 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Moonbeam.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Moonbeam.
 
 //! Unit tests for pallet-nsn-stake
 
@@ -16,11 +16,11 @@ use frame_support::{
 #[test]
 fn deposit_stake_director_role() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Alice has 1000 ICN free balance, no existing stake, region NA-WEST has 0% stake
+		// GIVEN: Alice has 1000 NSN free balance, no existing stake, region NA-WEST has 0% stake
 		assert_eq!(Balances::free_balance(ALICE), 1000);
 		assert_eq!(IcnStake::stakes(ALICE).amount, 0);
 
-		// WHEN: Alice deposits 150 ICN for 1000 blocks in NA-WEST
+		// WHEN: Alice deposits 150 NSN for 1000 blocks in NA-WEST
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			150,
@@ -61,7 +61,7 @@ fn deposit_stake_director_role() {
 #[test]
 fn delegate_under_cap_succeeds() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Charlie has 100 ICN staked (Director role)
+		// GIVEN: Charlie has 100 NSN staked (Director role)
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(CHARLIE),
 			100,
@@ -69,7 +69,7 @@ fn delegate_under_cap_succeeds() {
 			Region::EuWest
 		));
 
-		// WHEN: Dave delegates 300 ICN to Charlie (within 5× cap = 500)
+		// WHEN: Dave delegates 300 NSN to Charlie (within 5× cap = 500)
 		assert_ok!(IcnStake::delegate(
 			RuntimeOrigin::signed(DAVE),
 			CHARLIE,
@@ -100,7 +100,7 @@ fn delegate_under_cap_succeeds() {
 #[test]
 fn withdraw_stake_after_lock_period() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Frank stakes 50 ICN locked until block 100
+		// GIVEN: Frank stakes 50 NSN locked until block 100
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(FRANK),
 			50,
@@ -111,7 +111,7 @@ fn withdraw_stake_after_lock_period() {
 		// Advance to unlock block + 1
 		roll_to(102);
 
-		// WHEN: Frank withdraws 50 ICN
+		// WHEN: Frank withdraws 50 NSN
 		assert_ok!(IcnStake::withdraw_stake(RuntimeOrigin::signed(FRANK), 50));
 
 		// THEN: Tokens unfrozen, stake cleared
@@ -139,7 +139,7 @@ fn withdraw_stake_after_lock_period() {
 #[test]
 fn per_node_cap_at_maximum() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Helen stakes 900 ICN
+		// GIVEN: Helen stakes 900 NSN
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(HELEN),
 			900,
@@ -164,7 +164,7 @@ fn per_node_cap_at_maximum() {
 #[test]
 fn per_region_cap_at_20_percent() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Network has 1000 ICN total stake
+		// GIVEN: Network has 1000 NSN total stake
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			500,
@@ -179,8 +179,8 @@ fn per_region_cap_at_20_percent() {
 		));
 		assert_eq!(IcnStake::total_staked(), 1000);
 
-		// EU-WEST has 500 ICN (50%), NA-EAST has 0%
-		// WHEN: George stakes 200 ICN in NA-EAST (becomes 20% of 1000)
+		// EU-WEST has 500 NSN (50%), NA-EAST has 0%
+		// WHEN: George stakes 200 NSN in NA-EAST (becomes 20% of 1000)
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(GEORGE),
 			200,
@@ -201,7 +201,7 @@ fn per_region_cap_at_20_percent() {
 #[test]
 fn deposit_stake_exceeds_node_cap() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Account at 1000 ICN (max cap)
+		// GIVEN: Account at 1000 NSN (max cap)
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			1000,
@@ -209,7 +209,7 @@ fn deposit_stake_exceeds_node_cap() {
 			Region::NaWest
 		));
 
-		// WHEN: Tries to stake 1 more ICN
+		// WHEN: Tries to stake 1 more NSN
 		// THEN: Fails with PerNodeCapExceeded
 		assert_noop!(
 			IcnStake::deposit_stake(RuntimeOrigin::signed(ALICE), 1, 1000, Region::NaWest),
@@ -221,7 +221,7 @@ fn deposit_stake_exceeds_node_cap() {
 #[test]
 fn deposit_stake_exceeds_region_cap() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Total network = 1000 ICN, EU-WEST = 200 ICN (20%)
+		// GIVEN: Total network = 1000 NSN, EU-WEST = 200 NSN (20%)
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			800,
@@ -247,7 +247,7 @@ fn deposit_stake_exceeds_region_cap() {
 #[test]
 fn delegate_exceeds_5x_cap() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Validator Charlie has 100 ICN self-stake
+		// GIVEN: Validator Charlie has 100 NSN self-stake
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(CHARLIE),
 			100,
@@ -255,7 +255,7 @@ fn delegate_exceeds_5x_cap() {
 			Region::EuWest
 		));
 
-		// AND: Already has 300 ICN delegated (within 5× = 500 cap)
+		// AND: Already has 300 NSN delegated (within 5× = 500 cap)
 		assert_ok!(IcnStake::delegate(
 			RuntimeOrigin::signed(DAVE),
 			CHARLIE,
@@ -294,7 +294,7 @@ fn withdraw_stake_before_unlock() {
 #[test]
 fn slash_reduces_role() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Eve has 110 ICN staked (Director role)
+		// GIVEN: Eve has 110 NSN staked (Director role)
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(EVE),
 			110,
@@ -303,7 +303,7 @@ fn slash_reduces_role() {
 		));
 		assert_eq!(IcnStake::stakes(EVE).role, NodeRole::Director);
 
-		// WHEN: Root slashes 20 ICN
+		// WHEN: Root slashes 20 NSN
 		assert_ok!(IcnStake::slash(
 			RuntimeOrigin::root(),
 			EVE,
@@ -372,7 +372,7 @@ fn role_determination_boundaries() {
 #[test]
 fn multi_region_balance_enforcement() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Stakes across 7 regions totaling 1200 ICN
+		// GIVEN: Stakes across 7 regions totaling 1200 NSN
 		let regions_and_stakes = vec![
 			(ALICE, Region::NaWest, 200),
 			(BOB, Region::NaEast, 180),
@@ -394,14 +394,14 @@ fn multi_region_balance_enforcement() {
 
 		assert_eq!(IcnStake::total_staked(), 1200);
 
-		// WHEN: George tries to stake 100 ICN in NA-WEST
+		// WHEN: George tries to stake 100 NSN in NA-WEST
 		// 200 + 100 = 300, which is 25% of 1200 (exceeds 20%)
 		assert_noop!(
 			IcnStake::deposit_stake(RuntimeOrigin::signed(GEORGE), 100, 1000, Region::NaWest),
 			Error::<Test>::RegionCapExceeded
 		);
 
-		// WHEN: George stakes 50 ICN in MENA instead
+		// WHEN: George stakes 50 NSN in MENA instead
 		// 150 + 50 = 200, which is 16.7% of 1200 (under 20%)
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(GEORGE),
@@ -422,10 +422,10 @@ fn multi_region_balance_enforcement() {
 fn deposit_stake_insufficient_balance() {
 	// Use a custom balance setup with lower balance for this test
 	ExtBuilder::default()
-		.with_balances(vec![(ALICE, 50)]) // Only 50 ICN balance
+		.with_balances(vec![(ALICE, 50)]) // Only 50 NSN balance
 		.build()
 		.execute_with(|| {
-			// WHEN: Alice tries to stake more than balance (100 ICN but only has 50)
+			// WHEN: Alice tries to stake more than balance (100 NSN but only has 50)
 			// Note: 100 is under per-node cap (1000) so InsufficientBalance triggers first
 			assert_noop!(
 				IcnStake::deposit_stake(RuntimeOrigin::signed(ALICE), 100, 1000, Region::NaWest),
@@ -462,7 +462,7 @@ fn deposit_does_not_shorten_lock() {
 #[test]
 fn withdraw_partial_stake() {
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Alice stakes 150 ICN
+		// GIVEN: Alice stakes 150 NSN
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			150,
@@ -472,7 +472,7 @@ fn withdraw_partial_stake() {
 
 		roll_to(102);
 
-		// WHEN: Alice withdraws 50 ICN (partial)
+		// WHEN: Alice withdraws 50 NSN (partial)
 		assert_ok!(IcnStake::withdraw_stake(RuntimeOrigin::signed(ALICE), 50));
 
 		// THEN: Remaining stake = 100, role still Director
@@ -595,7 +595,7 @@ fn revoke_delegation() {
 fn deposit_zero_value_fails_silently() {
 	// Test that zero-value deposit doesn't cause issues
 	ExtBuilder::default().build().execute_with(|| {
-		// WHEN: Alice deposits 0 ICN
+		// WHEN: Alice deposits 0 NSN
 		let result = IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			0,
@@ -623,7 +623,7 @@ fn delegate_zero_value_fails_silently() {
 			Region::EuWest
 		));
 
-		// WHEN: Dave delegates 0 ICN
+		// WHEN: Dave delegates 0 NSN
 		let result = IcnStake::delegate(
 			RuntimeOrigin::signed(DAVE),
 			CHARLIE,
@@ -649,7 +649,7 @@ fn withdraw_zero_value_fails_silently() {
 		));
 		roll_to(102);
 
-		// WHEN: Alice withdraws 0 ICN
+		// WHEN: Alice withdraws 0 NSN
 		let result = IcnStake::withdraw_stake(RuntimeOrigin::signed(ALICE), 0);
 
 		// THEN: Should succeed (no-op) or fail gracefully
@@ -843,7 +843,7 @@ fn withdraw_at_exact_unlock_block() {
 fn slash_exceeds_stake_capped() {
 	// Test over-slash protection: slash amount > stake amount
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Alice has 50 ICN staked
+		// GIVEN: Alice has 50 NSN staked
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			50,
@@ -851,7 +851,7 @@ fn slash_exceeds_stake_capped() {
 			Region::NaWest
 		));
 
-		// WHEN: Root tries to slash 100 ICN (more than stake)
+		// WHEN: Root tries to slash 100 NSN (more than stake)
 		assert_ok!(IcnStake::slash(
 			RuntimeOrigin::root(),
 			ALICE,
@@ -859,7 +859,7 @@ fn slash_exceeds_stake_capped() {
 			crate::SlashReason::BftFailure
 		));
 
-		// THEN: Only 50 ICN slashed (capped at stake amount)
+		// THEN: Only 50 NSN slashed (capped at stake amount)
 		assert_eq!(IcnStake::stakes(ALICE).amount, 0);
 		assert_eq!(IcnStake::total_staked(), 0);
 
@@ -878,7 +878,7 @@ fn slash_exceeds_stake_capped() {
 fn slash_zero_amount_noop() {
 	// Test that slashing 0 doesn't cause issues
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Alice has 100 ICN staked
+		// GIVEN: Alice has 100 NSN staked
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			100,
@@ -886,7 +886,7 @@ fn slash_zero_amount_noop() {
 			Region::NaWest
 		));
 
-		// WHEN: Root slashes 0 ICN
+		// WHEN: Root slashes 0 NSN
 		assert_ok!(IcnStake::slash(
 			RuntimeOrigin::root(),
 			ALICE,
@@ -954,7 +954,7 @@ fn revoke_nonexistent_delegation_fails() {
 fn withdraw_more_than_stake_fails() {
 	// Test withdrawing more than staked amount
 	ExtBuilder::default().build().execute_with(|| {
-		// GIVEN: Alice has 50 ICN staked
+		// GIVEN: Alice has 50 NSN staked
 		assert_ok!(IcnStake::deposit_stake(
 			RuntimeOrigin::signed(ALICE),
 			50,
@@ -963,7 +963,7 @@ fn withdraw_more_than_stake_fails() {
 		));
 		roll_to(102);
 
-		// WHEN: Alice tries to withdraw 100 ICN
+		// WHEN: Alice tries to withdraw 100 NSN
 		assert_noop!(
 			IcnStake::withdraw_stake(RuntimeOrigin::signed(ALICE), 100),
 			Error::<Test>::InsufficientStake

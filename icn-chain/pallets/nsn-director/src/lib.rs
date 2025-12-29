@@ -1,15 +1,15 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! # ICN Director Pallet
+//! # NSN Director Pallet
 //!
 //! Multi-director election, BFT coordination, and challenge mechanism for the
-//! Interdimensional Cable Network.
+//! Neural Sovereign Network.
 //!
 //! ## Overview
 //!
@@ -25,7 +25,7 @@
 //! ### Dispatchable Functions
 //!
 //! - `submit_bft_result`: Submit BFT consensus result for a slot
-//! - `challenge_bft_result`: Challenge a submitted result (25 ICN bond)
+//! - `challenge_bft_result`: Challenge a submitted result (25 NSN bond)
 //! - `resolve_challenge`: Resolve challenge with validator attestations
 //!
 //! ## Hooks
@@ -94,7 +94,7 @@ pub mod pallet {
 	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
-	/// Configuration trait for the ICN Director pallet
+	/// Configuration trait for the NSN Director pallet
 	#[pallet::config]
 	pub trait Config:
 		frame_system::Config + pallet_nsn_stake::Config + pallet_nsn_reputation::Config
@@ -110,15 +110,15 @@ pub mod pallet {
 		/// Randomness source for VRF-based election
 		type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
 
-		/// Challenge bond amount (25 ICN)
+		/// Challenge bond amount (25 NSN)
 		#[pallet::constant]
 		type ChallengeBond: Get<BalanceOf<Self>>;
 
-		/// Director slash amount for fraud (100 ICN) - must be convertible to stake pallet's balance
+		/// Director slash amount for fraud (100 NSN) - must be convertible to stake pallet's balance
 		#[pallet::constant]
 		type DirectorSlashAmount: Get<StakeBalanceOf<Self>>;
 
-		/// Challenger reward for upheld challenge (10 ICN)
+		/// Challenger reward for upheld challenge (10 NSN)
 		#[pallet::constant]
 		type ChallengerReward: Get<BalanceOf<Self>>;
 
@@ -434,7 +434,7 @@ pub mod pallet {
 
 		/// Challenge a BFT result.
 		///
-		/// Any staker with at least 25 ICN can challenge a submitted result
+		/// Any staker with at least 25 NSN can challenge a submitted result
 		/// before the challenge period expires.
 		///
 		/// # Arguments

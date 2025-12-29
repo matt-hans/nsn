@@ -1,19 +1,19 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! # ICN Treasury Pallet
+//! # NSN Treasury Pallet
 //!
-//! Reward distribution and emission management for the Interdimensional Cable Network.
+//! Reward distribution and emission management for the Neural Sovereign Network.
 //!
 //! ## Overview
 //!
 //! This pallet implements:
-//! - Annual ICN token emission with 15% decay (100M Year 1 → 85M Year 2 → ...)
+//! - Annual NSN token emission with 15% decay (100M Year 1 → 85M Year 2 → ...)
 //! - Daily reward distribution in 40/25/20/15 split (Directors/Validators/Pinners/Treasury)
 //! - Treasury balance management for governance proposals
 //! - Proportional reward calculation based on actual work completed
@@ -78,7 +78,7 @@ pub mod pallet {
 	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
-	/// Configuration trait for the ICN Treasury pallet
+	/// Configuration trait for the NSN Treasury pallet
 	#[pallet::config]
 	pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
 		/// The currency type for treasury operations
@@ -96,7 +96,7 @@ pub mod pallet {
 		type WeightInfo: WeightInfo;
 	}
 
-	/// Total ICN available in treasury for governance proposals
+	/// Total NSN available in treasury for governance proposals
 	#[pallet::storage]
 	#[pallet::getter(fn treasury_balance)]
 	pub type TreasuryBalance<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
@@ -193,7 +193,7 @@ pub mod pallet {
 		///
 		/// # Parameters
 		/// - `origin`: Signed account funding the treasury
-		/// - `amount`: Amount of ICN to transfer
+		/// - `amount`: Amount of NSN to transfer
 		#[pallet::call_index(0)]
 		#[pallet::weight(T::WeightInfo::fund_treasury())]
 		pub fn fund_treasury(origin: OriginFor<T>, amount: BalanceOf<T>) -> DispatchResult {
@@ -219,7 +219,7 @@ pub mod pallet {
 		/// # Parameters
 		/// - `origin`: Root (governance)
 		/// - `beneficiary`: Account receiving the funds
-		/// - `amount`: Amount of ICN to release
+		/// - `amount`: Amount of NSN to release
 		/// - `proposal_id`: Unique proposal identifier
 		#[pallet::call_index(1)]
 		#[pallet::weight(T::WeightInfo::approve_proposal())]

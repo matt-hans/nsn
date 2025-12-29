@@ -1,5 +1,5 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 
 //! Tests for pallet-nsn-treasury
 
@@ -91,7 +91,7 @@ fn test_reward_split_percentages() {
 #[test]
 fn test_fund_treasury() {
 	new_test_ext().execute_with(|| {
-		let amount = 500_000_000_000_000_000_000_000_000u128; // 500M ICN
+		let amount = 500_000_000_000_000_000_000_000_000u128; // 500M NSN
 		let initial_balance = Balances::balance(&ALICE);
 
 		// Fund treasury
@@ -113,7 +113,7 @@ fn test_fund_treasury() {
 #[test]
 fn test_approve_proposal_success() {
 	new_test_ext().execute_with(|| {
-		let amount = 100_000_000_000_000_000_000_000_000u128; // 100M ICN
+		let amount = 100_000_000_000_000_000_000_000_000u128; // 100M NSN
 
 		// Fund treasury first
 		assert_ok!(Treasury::fund_treasury(RuntimeOrigin::signed(ALICE), amount));
@@ -220,7 +220,7 @@ fn test_director_rewards_proportional() {
 		assert_ok!(Treasury::record_director_work(RuntimeOrigin::root(), BOB, 15));
 		assert_ok!(Treasury::record_director_work(RuntimeOrigin::root(), CHARLIE, 10));
 
-		let pool = 109_589_000_000_000_000_000_000_000u128; // 109.589M ICN
+		let pool = 109_589_000_000_000_000_000_000_000u128; // 109.589M NSN
 		let initial_alice = Balances::balance(&ALICE);
 		let initial_bob = Balances::balance(&BOB);
 		let initial_charlie = Balances::balance(&CHARLIE);
@@ -265,7 +265,7 @@ fn test_validator_rewards_proportional() {
 		assert_ok!(Treasury::record_validator_work(RuntimeOrigin::root(), BOB, 80));
 		assert_ok!(Treasury::record_validator_work(RuntimeOrigin::root(), CHARLIE, 60));
 
-		let pool = 68_493_000_000_000_000_000_000_000u128; // 68.493M ICN
+		let pool = 68_493_000_000_000_000_000_000_000u128; // 68.493M NSN
 		let initial_alice = Balances::balance(&ALICE);
 		let initial_bob = Balances::balance(&BOB);
 		let initial_charlie = Balances::balance(&CHARLIE);

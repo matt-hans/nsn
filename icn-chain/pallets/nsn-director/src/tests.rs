@@ -1,7 +1,7 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
@@ -23,11 +23,11 @@ use pallet_nsn_stake::Region;
 fn test_director_election_basic() {
 	new_test_ext().execute_with(|| {
 		// Setup: Stake 5 directors across different regions
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-		stake_as_director(DAVE, 100 * ICN, Region::Latam);
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Advance to trigger election
 		roll_to(8); // First slot boundary
@@ -45,11 +45,11 @@ fn test_director_election_basic() {
 fn test_director_election_respects_role() {
 	new_test_ext().execute_with(|| {
 		// Stake with different amounts (only Director role eligible)
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest); // Director
-		stake_as_director(BOB, 50 * ICN, Region::EuWest); // SuperNode - not eligible
-		stake_as_director(CHARLIE, 10 * ICN, Region::Apac); // Validator - not eligible
-		stake_as_director(DAVE, 100 * ICN, Region::Latam); // Director
-		stake_as_director(EVE, 100 * ICN, Region::Mena); // Director
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest); // Director
+		stake_as_director(BOB, 50 * NSN, Region::EuWest); // SuperNode - not eligible
+		stake_as_director(CHARLIE, 10 * NSN, Region::Apac); // Validator - not eligible
+		stake_as_director(DAVE, 100 * NSN, Region::Latam); // Director
+		stake_as_director(EVE, 100 * NSN, Region::Mena); // Director
 
 		roll_to(8);
 
@@ -66,11 +66,11 @@ fn test_director_election_respects_role() {
 fn test_director_election_deterministic() {
 	new_test_ext().execute_with(|| {
 		// Setup directors
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-		stake_as_director(DAVE, 100 * ICN, Region::Latam);
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Run election for slot 100
 		let directors1 = IcnDirector::elect_directors(100);
@@ -90,12 +90,12 @@ fn test_director_election_deterministic() {
 fn test_multi_region_max_two_per_region() {
 	new_test_ext().execute_with(|| {
 		// Stake 6 directors all in same region
-		stake_as_director(ALICE, 100 * ICN, Region::EuWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::EuWest);
-		stake_as_director(DAVE, 100 * ICN, Region::EuWest);
-		stake_as_director(EVE, 100 * ICN, Region::EuWest);
-		stake_as_director(FRANK, 100 * ICN, Region::EuWest);
+		stake_as_director(ALICE, 100 * NSN, Region::EuWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::EuWest);
+		stake_as_director(DAVE, 100 * NSN, Region::EuWest);
+		stake_as_director(EVE, 100 * NSN, Region::EuWest);
+		stake_as_director(FRANK, 100 * NSN, Region::EuWest);
 
 		let directors = IcnDirector::elect_directors(100);
 
@@ -108,13 +108,13 @@ fn test_multi_region_max_two_per_region() {
 fn test_multi_region_diverse_selection() {
 	new_test_ext().execute_with(|| {
 		// Stake 7 directors across all regions
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::NaEast);
-		stake_as_director(CHARLIE, 100 * ICN, Region::EuWest);
-		stake_as_director(DAVE, 100 * ICN, Region::EuEast);
-		stake_as_director(EVE, 100 * ICN, Region::Apac);
-		stake_as_director(FRANK, 100 * ICN, Region::Latam);
-		stake_as_director(GRACE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::NaEast);
+		stake_as_director(CHARLIE, 100 * NSN, Region::EuWest);
+		stake_as_director(DAVE, 100 * NSN, Region::EuEast);
+		stake_as_director(EVE, 100 * NSN, Region::Apac);
+		stake_as_director(FRANK, 100 * NSN, Region::Latam);
+		stake_as_director(GRACE, 100 * NSN, Region::Mena);
 
 		let directors = IcnDirector::elect_directors(100);
 
@@ -129,11 +129,11 @@ fn test_multi_region_diverse_selection() {
 #[test]
 fn test_cooldown_enforced() {
 	new_test_ext().execute_with(|| {
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-		stake_as_director(DAVE, 100 * ICN, Region::Latam);
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Set cooldown for Alice at slot 80
 		crate::Cooldowns::<Test>::insert(ALICE, 80);
@@ -149,9 +149,9 @@ fn test_cooldown_enforced() {
 #[test]
 fn test_cooldown_expires() {
 	new_test_ext().execute_with(|| {
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
 
 		// Set cooldown for Alice at slot 80
 		crate::Cooldowns::<Test>::insert(ALICE, 80);
@@ -173,9 +173,9 @@ fn test_cooldown_expires() {
 #[test]
 fn test_reputation_weighting() {
 	new_test_ext().execute_with(|| {
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
 
 		// Give Alice high reputation
 		record_reputation(ALICE, ReputationEventType::DirectorSlotAccepted, 1);
@@ -320,7 +320,7 @@ fn test_challenge_bft_result() {
 		submit_bft_result(100);
 
 		// EVE (with sufficient stake) challenges
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		let evidence_hash = test_hash(b"evidence");
 		assert_ok!(IcnDirector::challenge_bft_result(
@@ -457,11 +457,11 @@ fn test_auto_finalization() {
 #[test]
 fn test_slot_transition() {
 	new_test_ext().execute_with(|| {
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-		stake_as_director(DAVE, 100 * ICN, Region::Latam);
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Start at block 1
 		assert_eq!(IcnDirector::current_slot(), 0);
@@ -479,11 +479,11 @@ fn test_slot_transition() {
 #[test]
 fn test_election_lookahead() {
 	new_test_ext().execute_with(|| {
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-		stake_as_director(DAVE, 100 * ICN, Region::Latam);
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		// Trigger slot 1
 		roll_to(8);
@@ -502,8 +502,8 @@ fn test_election_lookahead() {
 fn test_insufficient_directors() {
 	new_test_ext().execute_with(|| {
 		// Only 2 directors staked
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
 
 		let directors = IcnDirector::elect_directors(100);
 
@@ -519,11 +519,11 @@ fn test_insufficient_directors() {
 #[test]
 fn test_vrf_different_slots() {
 	new_test_ext().execute_with(|| {
-		stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-		stake_as_director(BOB, 100 * ICN, Region::EuWest);
-		stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-		stake_as_director(DAVE, 100 * ICN, Region::Latam);
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 		let directors1 = IcnDirector::elect_directors(100);
 		let directors2 = IcnDirector::elect_directors(101);
@@ -596,7 +596,7 @@ fn test_challenge_requires_sufficient_stake() {
 		setup_elected_directors();
 		submit_bft_result(100);
 
-		// JULIA has 1000 ICN balance but no stake
+		// JULIA has 1000 NSN balance but no stake
 		let evidence_hash = test_hash(b"evidence");
 		assert_noop!(
 			IcnDirector::challenge_bft_result(
@@ -618,7 +618,7 @@ fn test_cannot_challenge_finalized_slot() {
 		// Manually finalize
 		crate::FinalizedSlots::<Test>::insert(100, true);
 
-		stake_as_director(EVE, 100 * ICN, Region::Mena);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
 		let evidence_hash = test_hash(b"evidence");
 
 		assert_noop!(
@@ -640,7 +640,7 @@ fn test_cannot_double_challenge() {
 		submit_challenge(100, EVE);
 
 		// Second challenge should fail
-		stake_as_director(FRANK, 100 * ICN, Region::Latam);
+		stake_as_director(FRANK, 100 * NSN, Region::Latam);
 		let evidence_hash = test_hash(b"evidence2");
 
 		assert_noop!(
@@ -672,11 +672,11 @@ fn test_isqrt() {
 // =============================================================================
 
 fn setup_elected_directors() {
-	stake_as_director(ALICE, 100 * ICN, Region::NaWest);
-	stake_as_director(BOB, 100 * ICN, Region::EuWest);
-	stake_as_director(CHARLIE, 100 * ICN, Region::Apac);
-	stake_as_director(DAVE, 100 * ICN, Region::Latam);
-	stake_as_director(EVE, 100 * ICN, Region::Mena);
+	stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+	stake_as_director(BOB, 100 * NSN, Region::EuWest);
+	stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+	stake_as_director(DAVE, 100 * NSN, Region::Latam);
+	stake_as_director(EVE, 100 * NSN, Region::Mena);
 
 	// Manually set elected directors for slot 100
 	let elected = BoundedVec::try_from(vec![ALICE, BOB, CHARLIE, DAVE, EVE]).unwrap();
@@ -694,7 +694,7 @@ fn submit_bft_result(slot: u64) {
 fn submit_challenge(slot: u64, challenger: u64) {
 	// Ensure challenger has stake
 	if pallet_nsn_stake::Pallet::<Test>::stakes(challenger).amount == 0 {
-		stake_as_director(challenger, 100 * ICN, Region::Mena);
+		stake_as_director(challenger, 100 * NSN, Region::Mena);
 	}
 
 	let evidence_hash = test_hash(b"evidence");

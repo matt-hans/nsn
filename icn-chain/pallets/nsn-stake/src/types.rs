@@ -1,5 +1,5 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Moonbeam.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Moonbeam.
 
 //! Types for pallet-nsn-stake
 
@@ -22,16 +22,16 @@ use sp_runtime::RuntimeDebug;
 	Default,
 )]
 pub enum NodeRole {
-	/// No role (stake < 5 ICN)
+	/// No role (stake < 5 NSN)
 	#[default]
 	None,
-	/// Relay node (5 ≤ stake < 10 ICN)
+	/// Relay node (5 ≤ stake < 10 NSN)
 	Relay,
-	/// Validator node (10 ≤ stake < 50 ICN)
+	/// Validator node (10 ≤ stake < 50 NSN)
 	Validator,
-	/// SuperNode (50 ≤ stake < 100 ICN)
+	/// SuperNode (50 ≤ stake < 100 NSN)
 	SuperNode,
-	/// Director node (stake ≥ 100 ICN)
+	/// Director node (stake ≥ 100 NSN)
 	Director,
 }
 

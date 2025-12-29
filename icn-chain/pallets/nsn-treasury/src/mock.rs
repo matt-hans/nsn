@@ -1,5 +1,5 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 
 //! Mock runtime for pallet-nsn-treasury testing
 
@@ -66,9 +66,9 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![
-			(1, 1_000_000_000_000_000_000_000_000_000u128), // 1B ICN for account 1
-			(2, 1_000_000_000_000_000_000_000_000_000u128), // 1B ICN for account 2
-			(3, 500_000_000_000_000_000_000_000_000u128),   // 500M ICN for account 3
+			(1, 1_000_000_000_000_000_000_000_000_000u128), // 1B NSN for account 1
+			(2, 1_000_000_000_000_000_000_000_000_000u128), // 1B NSN for account 2
+			(3, 500_000_000_000_000_000_000_000_000u128),   // 500M NSN for account 3
 		],
 		dev_accounts: Default::default(),
 	}

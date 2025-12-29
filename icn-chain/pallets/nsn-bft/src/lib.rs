@@ -1,14 +1,14 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! # ICN BFT Pallet
+//! # NSN BFT Pallet
 //!
-//! BFT consensus result storage and finalization for the Interdimensional Cable Network.
+//! BFT consensus result storage and finalization for the Neural Sovereign Network.
 //!
 //! ## Overview
 //!
@@ -87,7 +87,7 @@ pub mod pallet {
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
-    /// Configuration trait for the ICN BFT pallet
+    /// Configuration trait for the NSN BFT pallet
     #[pallet::config]
     pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
         /// Default retention period in blocks (6 months = 2,592,000 blocks)

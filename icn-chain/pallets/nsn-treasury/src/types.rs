@@ -1,5 +1,5 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 
 //! Types for pallet-nsn-treasury
 
@@ -35,7 +35,7 @@ impl Default for RewardDistribution {
 /// Annual emission schedule with decay
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct EmissionSchedule {
-	/// Base emission for year 1 (100M ICN)
+	/// Base emission for year 1 (100M NSN)
 	pub base_emission: u128,
 	/// Annual decay rate (15% = 0.15)
 	pub decay_rate: Perbill,

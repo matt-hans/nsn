@@ -1,7 +1,7 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
@@ -89,16 +89,16 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
 	// Stake pallet constants
-	pub const MinStakeDirector: u128 = 100_000_000_000_000_000_000; // 100 ICN
-	pub const MinStakeSuperNode: u128 = 50_000_000_000_000_000_000; // 50 ICN
-	pub const MinStakeValidator: u128 = 10_000_000_000_000_000_000; // 10 ICN
-	pub const MinStakeRelay: u128 = 5_000_000_000_000_000_000; // 5 ICN
-	pub const MaxStakePerNode: u128 = 1_000_000_000_000_000_000_000; // 1000 ICN
+	pub const MinStakeDirector: u128 = 100_000_000_000_000_000_000; // 100 NSN
+	pub const MinStakeSuperNode: u128 = 50_000_000_000_000_000_000; // 50 NSN
+	pub const MinStakeValidator: u128 = 10_000_000_000_000_000_000; // 10 NSN
+	pub const MinStakeRelay: u128 = 5_000_000_000_000_000_000; // 5 NSN
+	pub const MaxStakePerNode: u128 = 1_000_000_000_000_000_000_000; // 1000 NSN
 	pub const MaxRegionPercentage: u32 = 20;
 	pub const DelegationMultiplier: u32 = 5;
 	pub const MaxDelegationsPerDelegator: u32 = 10;
 	pub const MaxDelegatorsPerValidator: u32 = 100;
-	pub const RegionCapBootstrapStake: u128 = 1_000_000_000_000_000_000_000; // 1000 ICN
+	pub const RegionCapBootstrapStake: u128 = 1_000_000_000_000_000_000_000; // 1000 NSN
 }
 
 impl pallet_nsn_stake::Config for Test {
@@ -140,9 +140,9 @@ impl pallet_nsn_reputation::Config for Test {
 
 parameter_types! {
 	// Director pallet constants
-	pub const ChallengeBond: u128 = 25_000_000_000_000_000_000; // 25 ICN
-	pub const DirectorSlashAmount: u128 = 100_000_000_000_000_000_000; // 100 ICN
-	pub const ChallengerReward: u128 = 10_000_000_000_000_000_000; // 10 ICN
+	pub const ChallengeBond: u128 = 25_000_000_000_000_000_000; // 25 NSN
+	pub const DirectorSlashAmount: u128 = 100_000_000_000_000_000_000; // 100 NSN
+	pub const ChallengerReward: u128 = 10_000_000_000_000_000_000; // 10 NSN
 	pub const MaxDirectorsPerSlot: u32 = 5;
 	pub const MaxPendingSlots: u32 = 100;
 }
@@ -182,8 +182,8 @@ pub const HENRY: u64 = 8;
 pub const IVAN: u64 = 9;
 pub const JULIA: u64 = 10;
 
-// ICN token amounts (18 decimals)
-pub const ICN: u128 = 1_000_000_000_000_000_000;
+// NSN token amounts (18 decimals)
+pub const NSN: u128 = 1_000_000_000_000_000_000;
 
 // Build test externalities
 pub struct ExtBuilder {
@@ -194,16 +194,16 @@ impl Default for ExtBuilder {
 	fn default() -> Self {
 		Self {
 			balances: vec![
-				(ALICE, 1000 * ICN),
-				(BOB, 1000 * ICN),
-				(CHARLIE, 1000 * ICN),
-				(DAVE, 1000 * ICN),
-				(EVE, 1000 * ICN),
-				(FRANK, 1000 * ICN),
-				(GRACE, 1000 * ICN),
-				(HENRY, 1000 * ICN),
-				(IVAN, 1000 * ICN),
-				(JULIA, 1000 * ICN),
+				(ALICE, 1000 * NSN),
+				(BOB, 1000 * NSN),
+				(CHARLIE, 1000 * NSN),
+				(DAVE, 1000 * NSN),
+				(EVE, 1000 * NSN),
+				(FRANK, 1000 * NSN),
+				(GRACE, 1000 * NSN),
+				(HENRY, 1000 * NSN),
+				(IVAN, 1000 * NSN),
+				(JULIA, 1000 * NSN),
 			],
 		}
 	}

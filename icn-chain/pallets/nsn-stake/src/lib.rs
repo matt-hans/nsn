@@ -1,14 +1,14 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Moonbeam.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Moonbeam.
 //
-// ICN Moonbeam is free software: you can redistribute it and/or modify
+// NSN Moonbeam is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! # ICN Stake Pallet
+//! # NSN Stake Pallet
 //!
-//! Token staking, slashing, role eligibility, and delegation for the Interdimensional Cable Network.
+//! Token staking, slashing, role eligibility, and delegation for the Neural Sovereign Network.
 //!
 //! ## Overview
 //!
@@ -22,7 +22,7 @@
 //!
 //! ### Dispatchable Functions
 //!
-//! - `deposit_stake`: Stake ICN tokens for a specific role and region
+//! - `deposit_stake`: Stake NSN tokens for a specific role and region
 //! - `delegate`: Delegate stake to a validator
 //! - `withdraw_stake`: Withdraw unstaked tokens after lock period
 //! - `revoke_delegation`: Remove delegation from a validator
@@ -69,7 +69,7 @@ pub mod pallet {
 	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
-	/// Configuration trait for the ICN Stake pallet
+	/// Configuration trait for the NSN Stake pallet
 	#[pallet::config]
 	pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
 		/// The currency type for staking
@@ -155,7 +155,7 @@ pub mod pallet {
 
 	/// Total staked in the network
 	///
-	/// Tracks the aggregate amount of ICN tokens staked across all accounts.
+	/// Tracks the aggregate amount of NSN tokens staked across all accounts.
 	/// Used for:
 	/// - Calculating region percentage caps (20% per region)
 	/// - Determining bootstrap phase (first MaxStakePerNode)
@@ -249,7 +249,7 @@ pub mod pallet {
 	/// Errors returned by the pallet
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Per-node stake cap exceeded (max 1000 ICN)
+		/// Per-node stake cap exceeded (max 1000 NSN)
 		PerNodeCapExceeded,
 		/// Per-region stake cap exceeded (max 20%)
 		RegionCapExceeded,
@@ -288,7 +288,7 @@ pub mod pallet {
 		/// * `region` - Geographic region
 		///
 		/// # Errors
-		/// * `PerNodeCapExceeded` - Stake would exceed 1000 ICN per node
+		/// * `PerNodeCapExceeded` - Stake would exceed 1000 NSN per node
 		/// * `RegionCapExceeded` - Stake would exceed 20% of total in region
 		#[pallet::call_index(0)]
 		#[pallet::weight(T::WeightInfo::deposit_stake())]
@@ -633,10 +633,10 @@ pub mod pallet {
 		/// Determine node role based on stake amount.
 		///
 		/// Uses threshold comparison against configured minimum stakes for each role:
-		/// - Director: ≥ MinStakeDirector (default 100 ICN)
-		/// - SuperNode: ≥ MinStakeSuperNode (default 50 ICN)
-		/// - Validator: ≥ MinStakeValidator (default 10 ICN)
-		/// - Relay: ≥ MinStakeRelay (default 5 ICN)
+		/// - Director: ≥ MinStakeDirector (default 100 NSN)
+		/// - SuperNode: ≥ MinStakeSuperNode (default 50 NSN)
+		/// - Validator: ≥ MinStakeValidator (default 10 NSN)
+		/// - Relay: ≥ MinStakeRelay (default 5 NSN)
 		/// - None: < MinStakeRelay
 		///
 		/// # Arguments

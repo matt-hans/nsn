@@ -1,7 +1,7 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 
-//! Mock runtime for ICN Pinning pallet tests.
+//! Mock runtime for NSN Storage pallet tests.
 
 use crate as pallet_nsn_storage;
 use frame_support::{construct_runtime, parameter_types, traits::ConstU32, traits::Everything, PalletId};
@@ -81,13 +81,13 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-	pub const MinStakeDirector: u128 = 100_000_000_000_000_000_000; // 100 ICN
-	pub const MinStakeSuperNode: u128 = 50_000_000_000_000_000_000; // 50 ICN
-	pub const MinStakeValidator: u128 = 10_000_000_000_000_000_000; // 10 ICN
-	pub const MinStakeRelay: u128 = 5_000_000_000_000_000_000; // 5 ICN
-	pub const MaxStakePerNode: u128 = 1_000_000_000_000_000_000_000; // 1000 ICN
+	pub const MinStakeDirector: u128 = 100_000_000_000_000_000_000; // 100 NSN
+	pub const MinStakeSuperNode: u128 = 50_000_000_000_000_000_000; // 50 NSN
+	pub const MinStakeValidator: u128 = 10_000_000_000_000_000_000; // 10 NSN
+	pub const MinStakeRelay: u128 = 5_000_000_000_000_000_000; // 5 NSN
+	pub const MaxStakePerNode: u128 = 1_000_000_000_000_000_000_000; // 1000 NSN
 	pub const MaxRegionPercentage: u32 = 20;
-	pub const RegionCapBootstrapStake: u128 = 1_000_000_000_000_000_000_000; // 1000 ICN
+	pub const RegionCapBootstrapStake: u128 = 1_000_000_000_000_000_000_000; // 1000 NSN
 	pub const DelegationMultiplier: u32 = 5;
 }
 
@@ -125,7 +125,7 @@ impl pallet_nsn_reputation::Config for Test {
 }
 
 parameter_types! {
-	pub const AuditSlashAmount: u128 = 10_000_000_000_000_000_000; // 10 ICN
+	pub const AuditSlashAmount: u128 = 10_000_000_000_000_000_000; // 10 NSN
 	pub const MaxSelectableCandidates: u32 = 1000; // Max candidates to consider
 	pub const PinningPalletId: PalletId = PalletId(*b"icn/pinn");
 }
@@ -166,13 +166,13 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 
 	pallet_balances::GenesisConfig::<Test> {
 		balances: vec![
-			(1, 1_000_000_000_000_000_000_000), // Alice: 1000 ICN
-			(2, 1_000_000_000_000_000_000_000), // Bob: 1000 ICN
-			(3, 1_000_000_000_000_000_000_000), // Charlie: 1000 ICN
-			(4, 1_000_000_000_000_000_000_000), // Dave: 1000 ICN
-			(5, 1_000_000_000_000_000_000_000), // Eve: 1000 ICN
-			(6, 1_000_000_000_000_000_000_000), // Account 6: 1000 ICN
-			(pallet_account, 10_000_000_000_000_000_000_000), // Pallet account: 10000 ICN initial balance
+			(1, 1_000_000_000_000_000_000_000), // Alice: 1000 NSN
+			(2, 1_000_000_000_000_000_000_000), // Bob: 1000 NSN
+			(3, 1_000_000_000_000_000_000_000), // Charlie: 1000 NSN
+			(4, 1_000_000_000_000_000_000_000), // Dave: 1000 NSN
+			(5, 1_000_000_000_000_000_000_000), // Eve: 1000 NSN
+			(6, 1_000_000_000_000_000_000_000), // Account 6: 1000 NSN
+			(pallet_account, 10_000_000_000_000_000_000_000), // Pallet account: 10000 NSN initial balance
 		],
 		dev_accounts: None,
 	}

@@ -1,7 +1,7 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 
-//! Tests for the ICN Pinning pallet.
+//! Tests for the NSN Storage pallet.
 
 use crate::{mock::*, types::*, Error, Event};
 use frame_support::{assert_noop, assert_ok, traits::Hooks, BoundedVec};
@@ -39,7 +39,7 @@ fn create_deal_works() {
 		for i in 1u64..=5 {
 			assert_ok!(Stake::deposit_stake(
 				RuntimeOrigin::signed(i),
-				50_000_000_000_000_000_000, // 50 ICN
+				50_000_000_000_000_000_000, // 50 NSN
 				100,
 				match i {
 					1 => Region::NaWest,
@@ -55,7 +55,7 @@ fn create_deal_works() {
 		let shards = test_shards(14); // Reed-Solomon 10+4
 		let merkle_roots = test_merkle_roots(14);
 		let creator = 1u64;
-		let payment = 100_000_000_000_000_000_000u128; // 100 ICN
+		let payment = 100_000_000_000_000_000_000u128; // 100 NSN
 
 		// Create deal
 		assert_ok!(Pinning::create_deal(
@@ -69,9 +69,9 @@ fn create_deal_works() {
 		// Verify payment transferred to pallet account (creator's balance decreased)
 		// In the new architecture, funds are transferred to pallet account then held there
 		let creator_balance_after = Balances::free_balance(creator);
-		// Creator started with 1000 ICN, staked 50 ICN, transferred 100 ICN for deal
-		// Expected: 1000 - 100 = 900 ICN total (50 frozen for stake, 850 available)
-		let expected_balance = 1_000_000_000_000_000_000_000u128 - payment; // 1000 ICN - 100 ICN
+		// Creator started with 1000 NSN, staked 50 NSN, transferred 100 NSN for deal
+		// Expected: 1000 - 100 = 900 NSN total (50 frozen for stake, 850 available)
+		let expected_balance = 1_000_000_000_000_000_000_000u128 - payment; // 1000 NSN - 100 NSN
 		assert_eq!(creator_balance_after, expected_balance, "Creator balance should decrease by payment amount");
 
 		// Verify shard assignments
@@ -315,7 +315,7 @@ fn submit_audit_proof_invalid_slashes() {
 		let final_stake = Stake::stakes(pinner).amount;
 		assert_eq!(
 			final_stake,
-			initial_stake - 10_000_000_000_000_000_000u128 // 10 ICN slashed
+			initial_stake - 10_000_000_000_000_000_000u128 // 10 NSN slashed
 		);
 
 		// Verify reputation decreased (-50 for PinningAuditFailed)
@@ -363,7 +363,7 @@ fn audit_expiry_auto_slashes() {
 		let final_stake = Stake::stakes(pinner).amount;
 		assert_eq!(
 			final_stake,
-			initial_stake - 10_000_000_000_000_000_000u128 // 10 ICN slashed
+			initial_stake - 10_000_000_000_000_000_000u128 // 10 NSN slashed
 		);
 
 		// Verify reputation decreased (-50 for PinningAuditFailed)
@@ -396,7 +396,7 @@ fn reward_distribution_works() {
 		let shards = test_shards(14);
 		let merkle_roots = test_merkle_roots(14);
 		let creator = 1u64;
-		let payment = 100_000_000_000_000_000_000u128; // 100 ICN
+		let payment = 100_000_000_000_000_000_000u128; // 100 NSN
 
 		// Create deal at block 1
 		assert_ok!(Pinning::create_deal(
@@ -422,7 +422,7 @@ fn reward_distribution_works() {
 			.map(|p| Pinning::pinner_rewards(p))
 			.sum();
 
-		// Expected: 1/10 of payment per interval = 10 ICN
+		// Expected: 1/10 of payment per interval = 10 NSN
 		// But due to region diversity constraints, not all 70 slots are filled
 		// The test verifies rewards are being distributed proportionally
 		assert!(total_reward_distributed > 0, "Rewards should be distributed");
@@ -495,7 +495,7 @@ fn claim_rewards_success_works() {
 		let shards = test_shards(14);
 		let merkle_roots = test_merkle_roots(14);
 		let creator = 1u64;
-		let payment = 100_000_000_000_000_000_000u128; // 100 ICN
+		let payment = 100_000_000_000_000_000_000u128; // 100 NSN
 
 		// Create deal
 		assert_ok!(Pinning::create_deal(
@@ -584,7 +584,7 @@ fn deal_expiry_updates_status() {
 		let shards = test_shards(14);
 		let merkle_roots = test_merkle_roots(14);
 		let creator = 1u64;
-		let payment = 100_000_000_000_000_000_000u128; // 100 ICN
+		let payment = 100_000_000_000_000_000_000u128; // 100 NSN
 
 		// Create deal with short duration (10 blocks)
 		assert_ok!(Pinning::create_deal(
@@ -911,7 +911,7 @@ fn max_shards_boundary_works() {
 			let shards = test_shards(14); // 14 shards * 5 replicas = 70 total pinner slots
 			let merkle_roots = test_merkle_roots(14);
 			let creator = 1u64;
-			let payment = 100_000_000_000_000_000_000u128; // 100 ICN
+			let payment = 100_000_000_000_000_000_000u128; // 100 NSN
 
 			// Create deal with short duration (100 blocks = 1 reward interval)
 			assert_ok!(Pinning::create_deal(

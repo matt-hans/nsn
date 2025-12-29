@@ -1,14 +1,14 @@
-// Copyright 2024 Interdimensional Cable Network
-// This file is part of ICN Chain.
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
 //
-// ICN Chain is free software: you can redistribute it and/or modify
+// NSN Chain is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
-//! # ICN Pinning Pallet
+//! # NSN Storage Pallet
 //!
-//! Erasure-coded shard storage deals, audits, and rewards for the Interdimensional Cable Network.
+//! Erasure-coded shard storage deals, audits, and rewards for the Neural Sovereign Network.
 //!
 //! ## Overview
 //!
@@ -17,7 +17,7 @@
 //! - Stake-weighted random audits (higher stake = less frequent)
 //! - 5× geographic replication across regions
 //! - Automatic reward distribution every 100 blocks
-//! - Slashing for failed audits (10 ICN + -50 reputation)
+//! - Slashing for failed audits (10 NSN + -50 reputation)
 //!
 //! ## Interface
 //!
@@ -82,7 +82,7 @@ pub mod pallet {
 	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
-	/// Configuration trait for the ICN Pinning pallet
+	/// Configuration trait for the NSN Storage pallet
 	#[pallet::config]
 	pub trait Config:
 		frame_system::Config + pallet_nsn_stake::Config + pallet_nsn_reputation::Config
@@ -99,7 +99,7 @@ pub mod pallet {
 		/// Randomness source for audit challenges
 		type Randomness: frame_support::traits::Randomness<Self::Hash, BlockNumberFor<Self>>;
 
-		/// Slash amount for audit failures (10 ICN)
+		/// Slash amount for audit failures (10 NSN)
 		#[pallet::constant]
 		type AuditSlashAmount: Get<StakeBalanceOf<Self>>;
 
@@ -460,9 +460,9 @@ pub mod pallet {
 		/// Probability as u32 (0-1000000, where 1000 = 0.1%)
 		///
 		/// # Example
-		/// - Min stake (50 ICN): 2% per hour = ~20000 per million
-		/// - 10x min stake (500 ICN): ~0.9% per hour = ~9000 per million
-		/// - 100x min stake (5000 ICN): 0.25% per hour (floor) = ~2500 per million
+		/// - Min stake (50 NSN): 2% per hour = ~20000 per million
+		/// - 10x min stake (500 NSN): ~0.9% per hour = ~9000 per million
+		/// - 100x min stake (5000 NSN): 0.25% per hour (floor) = ~2500 per million
 		///
 		/// This should be called off-chain to determine whether to call
 		/// `initiate_audit` for a given pinner in the current block.
@@ -482,12 +482,12 @@ pub mod pallet {
 			const BASE_PROB_PER_HOUR_MILLIONTHS: u64 = 10_000; // 1% per hour
 			const MIN_PROB_PER_HOUR_MILLIONTHS: u64 = 2_500; // 0.25% per hour (floor)
 			const MAX_PROB_PER_HOUR_MILLIONTHS: u64 = 20_000; // 2% per hour (ceiling)
-			const MIN_STAKE_ICN: u64 = 50; // Minimum SuperNode stake in ICN
+			const MIN_STAKE_NSN: u64 = 50; // Minimum SuperNode stake in NSN
 			const BLOCKS_PER_HOUR: u64 = 600; // 3600s / 6s per block
 
 			// Calculate stake ratio
 			let stake_amount: u64 = stake_info.amount.saturated_into();
-			let stake_ratio = stake_amount.saturating_div(MIN_STAKE_ICN);
+			let stake_ratio = stake_amount.saturating_div(MIN_STAKE_NSN);
 
 			// Integer-only sqrt approximation using Newton-Raphson
 			// This avoids floating point which isn't available in no_std
