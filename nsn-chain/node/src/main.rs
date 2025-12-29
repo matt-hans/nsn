@@ -1,4 +1,4 @@
-//! Substrate Parachain Node Template CLI
+//! NSN Chain Node CLI
 
 #![warn(missing_docs)]
 

@@ -1,8 +1,8 @@
 [workspace.package]
 license = "GPL-3.0"
-authors = ["Interdimensional Cable Network <dev@icn.network>"]
-homepage = "https://github.com/interdim-cable/icn-chain"
-repository = "https://github.com/interdim-cable/icn-chain"
+authors = ["Neon Stream Network <dev@nsn.network>"]
+homepage = "https://github.com/neon-stream/nsn-chain"
+repository = "https://github.com/neon-stream/nsn-chain"
 edition = "2021"
 
 [workspace]
@@ -21,7 +21,7 @@ resolver = "2"
 
 [workspace.dependencies]
 # NSN crates
-icn-runtime = { path = "./runtime", default-features = false }
+nsn-runtime = { path = "./runtime", default-features = false }
 pallet-nsn-stake = { path = "./pallets/nsn-stake", default-features = false }
 pallet-nsn-reputation = { path = "./pallets/nsn-reputation", default-features = false }
 pallet-nsn-director = { path = "./pallets/nsn-director", default-features = false }

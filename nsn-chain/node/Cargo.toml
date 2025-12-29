@@ -1,6 +1,6 @@
 [package]
-name = "icn-node"
-description = "ICN Chain node implementation - Polkadot SDK based blockchain for Interdimensional Cable Network"
+name = "nsn-node"
+description = "NSN Chain node implementation - Polkadot SDK based blockchain for Neon Stream Network"
 version = "0.1.0"
 license = "GPL-3.0"
 authors.workspace = true
@@ -10,6 +10,10 @@ edition.workspace = true
 publish = false
 build = "build.rs"
 
+[[bin]]
+name = "nsn-node"
+path = "src/main.rs"
+
 [dependencies]
 clap = { features = ["derive"], workspace = true }
 color-print = { workspace = true }
@@ -17,7 +21,7 @@ docify = { workspace = true }
 futures = { workspace = true }
 jsonrpsee = { features = ["server"], workspace = true }
 log = { workspace = true, default-features = true }
-icn-runtime = { workspace = true }
+nsn-runtime = { workspace = true }
 polkadot-sdk = { workspace = true, features = ["node"] }
 prometheus-endpoint = { workspace = true, default-features = true }
 serde = { features = ["derive"], workspace = true, default-features = true }
@@ -29,14 +33,14 @@ polkadot-sdk = { workspace = true, features = ["substrate-build-script-utils"] }
 default = ["std"]
 std = [
 	"log/std",
-	"icn-runtime/std",
+	"nsn-runtime/std",
 	"polkadot-sdk/std",
 ]
 runtime-benchmarks = [
-	"icn-runtime/runtime-benchmarks",
+	"nsn-runtime/runtime-benchmarks",
 	"polkadot-sdk/runtime-benchmarks",
 ]
 try-runtime = [
-	"icn-runtime/try-runtime",
+	"nsn-runtime/try-runtime",
 	"polkadot-sdk/try-runtime",
 ]

@@ -1,24 +1,24 @@
-# ICN Chain
+# NSN Chain
 
-ICN Chain is the on-chain layer of the Interdimensional Cable Network (ICN), built using the Polkadot SDK.
+NSN Chain is the on-chain layer of the Neon Stream Network (NSN), built using the Polkadot SDK.
 
 ## Overview
 
-ICN Chain is a Polkadot SDK-based blockchain that provides the foundation for the decentralized AI-powered video streaming platform. It implements custom FRAME pallets for staking, reputation management, BFT consensus, content pinning, and treasury operations.
+NSN Chain is a Polkadot SDK-based blockchain that provides the foundation for the decentralized AI-powered video streaming platform. It implements custom FRAME pallets for staking, reputation management, BFT consensus, content storage, and treasury operations.
 
 ## Architecture
 
 ```
-icn-chain/
-├── node/              # ICN node implementation
-├── runtime/           # ICN runtime (WASM + native)
-├── pallets/           # ICN custom pallets
-│   ├── icn-stake/     # Token staking, slashing, role eligibility
-│   ├── icn-reputation/# Reputation scoring with Merkle proofs
-│   ├── icn-director/  # VRF-based director election, BFT coordination
-│   ├── icn-bft/       # BFT consensus storage and finalization
-│   ├── icn-pinning/   # Erasure coding deals and audits
-│   └── icn-treasury/  # Reward distribution and emissions
+nsn-chain/
+├── node/              # NSN node implementation
+├── runtime/           # NSN runtime (WASM + native)
+├── pallets/           # NSN custom pallets
+│   ├── nsn-stake/     # Token staking, slashing, role eligibility
+│   ├── nsn-reputation/# Reputation scoring with Merkle proofs
+│   ├── nsn-director/  # VRF-based director election, BFT coordination
+│   ├── nsn-bft/       # BFT consensus storage and finalization
+│   ├── nsn-storage/   # Erasure coding deals and audits
+│   └── nsn-treasury/  # Reward distribution and emissions
 ├── Cargo.toml         # Workspace configuration
 ├── rust-toolchain.toml # Rust toolchain specification
 └── .cargo/config.toml  # Cargo build configuration
@@ -43,14 +43,14 @@ source $HOME/.cargo/env
 
 ### 2. Install WASM Target
 
-The `rust-toolchain.toml` file automatically configures the correct Rust version and WASM target. Simply navigate to the `icn-chain` directory:
+The `rust-toolchain.toml` file automatically configures the correct Rust version and WASM target. Simply navigate to the `nsn-chain` directory:
 
 ```bash
-cd icn-chain
+cd nsn-chain
 # Rust toolchain and wasm32-unknown-unknown target will be installed automatically
 ```
 
-### 3. Build ICN Chain
+### 3. Build NSN Chain
 
 ```bash
 # Development build (faster, with debug symbols)
@@ -65,12 +65,12 @@ The build process will:
 2. Compile the runtime to native
 3. Build the node binary
 
-## Running ICN Chain
+## Running NSN Chain
 
 ### Development Node (Single Node)
 
 ```bash
-./target/release/icn-node --dev
+./target/release/nsn-node --dev
 ```
 
 This starts a single-node development chain with:
@@ -84,7 +84,7 @@ This starts a single-node development chain with:
 **Alice (validator node):**
 
 ```bash
-./target/release/icn-node \
+./target/release/nsn-node \
   --chain=local \
   --alice \
   --port 30333 \
@@ -95,7 +95,7 @@ This starts a single-node development chain with:
 **Bob (validator node):**
 
 ```bash
-./target/release/icn-node \
+./target/release/nsn-node \
   --chain=local \
   --bob \
   --port 30334 \
@@ -103,25 +103,25 @@ This starts a single-node development chain with:
   --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp
 ```
 
-## ICN Custom Pallets
+## NSN Custom Pallets
 
-### pallet-icn-stake
+### pallet-nsn-stake
 
 Token staking with role-based requirements:
 
 | Role | Min Stake | Max Stake |
 |------|-----------|-----------|
-| Director | 100 ICN | 1,000 ICN |
-| SuperNode | 50 ICN | 500 ICN |
-| Validator | 10 ICN | 100 ICN |
-| Relay | 5 ICN | 50 ICN |
+| Director | 100 NSN | 1,000 NSN |
+| SuperNode | 50 NSN | 500 NSN |
+| Validator | 10 NSN | 100 NSN |
+| Relay | 5 NSN | 50 NSN |
 
 **Anti-Centralization:**
-- Per-node cap: 1,000 ICN maximum
+- Per-node cap: 1,000 NSN maximum
 - Per-region cap: 20% of total stake
 - Delegation cap: 5× validator's own stake
 
-### pallet-icn-reputation
+### pallet-nsn-reputation
 
 Verifiable reputation events with Merkle proofs:
 
@@ -134,7 +134,7 @@ Verifiable reputation events with Merkle proofs:
 
 **Weighted Score:** 50% director + 30% validator + 20% seeder
 
-### pallet-icn-director
+### pallet-nsn-director
 
 Multi-director election and BFT coordination:
 - 5 directors per slot (3-of-5 BFT threshold)
@@ -142,18 +142,18 @@ Multi-director election and BFT coordination:
 - 50-block challenge period
 - Max 2 directors per region
 
-### pallet-icn-bft
+### pallet-nsn-bft
 
 BFT consensus result storage and finalization
 
-### pallet-icn-pinning
+### pallet-nsn-storage
 
-Erasure-coded content pinning with audit mechanism:
+Erasure-coded content storage with audit mechanism:
 - Reed-Solomon (10+4) erasure coding
 - 5× replication across regions
 - Stake-weighted audit probability
 
-### pallet-icn-treasury
+### pallet-nsn-treasury
 
 Reward distribution and emissions management
 
@@ -164,8 +164,8 @@ Reward distribution and emissions management
 cargo test --all
 
 # Run specific pallet tests
-cargo test -p pallet-icn-stake
-cargo test -p pallet-icn-reputation
+cargo test -p pallet-nsn-stake
+cargo test -p pallet-nsn-reputation
 
 # Run with detailed output
 cargo test -- --nocapture
@@ -188,32 +188,32 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ### Development
 
-- Chain ID: `icn-dev`
+- Chain ID: `nsn-dev`
 - Block time: 6 seconds
 - Finality: Instant (dev mode)
 - Initial validators: Alice
 
 ### Local Testnet
 
-- Chain ID: `icn-local`
+- Chain ID: `nsn-local`
 - Block time: 6 seconds
 - Finality: GRANDPA
 - Initial validators: Alice, Bob
 
 ## Deployment Phases
 
-### Phase A: ICN Solochain (Current)
+### Phase A: NSN Solochain (Current)
 
 - Controlled validator set (3-5 trusted operators)
 - Fast iteration on chain logic
 - Low operational overhead
 - Target: MVP deployment
 
-### Phase B: ICN Mainnet
+### Phase B: NSN Mainnet
 
 - Public validator onboarding
 - Security audit completed
-- ICN token launch
+- NSN token launch
 - Production deployment
 
 ### Phase C: Parachain Migration (Future)
@@ -246,17 +246,17 @@ pub const MaxRegionPercentage: u32 = 20;
 
 Connect via `ws://127.0.0.1:9944` (WebSocket) or `http://127.0.0.1:9933` (HTTP).
 
-**ICN Stake:**
-- `icnStake.stakes(AccountId)`: Get stake info for account
-- `icnStake.totalStaked()`: Get total staked in network
-- `icnStake.regionStakes(Region)`: Get stake per region
+**NSN Stake:**
+- `nsnStake.stakes(AccountId)`: Get stake info for account
+- `nsnStake.totalStaked()`: Get total staked in network
+- `nsnStake.regionStakes(Region)`: Get stake per region
 
-**ICN Reputation:**
-- `icnReputation.reputationScores(AccountId)`: Get reputation scores
+**NSN Reputation:**
+- `nsnReputation.reputationScores(AccountId)`: Get reputation scores
 
-**ICN Director:**
-- `icnDirector.currentSlot()`: Get current slot number
-- `icnDirector.electedDirectors()`: Get elected directors for current slot
+**NSN Director:**
+- `nsnDirector.currentSlot()`: Get current slot number
+- `nsnDirector.electedDirectors()`: Get elected directors for current slot
 
 ## Troubleshooting
 
@@ -273,7 +273,7 @@ rustup target add wasm32-unknown-unknown
 Purge the chain database:
 
 ```bash
-./target/release/icn-node purge-chain --dev
+./target/release/nsn-node purge-chain --dev
 ```
 
 ### RPC connection refused
@@ -281,15 +281,15 @@ Purge the chain database:
 Ensure the node is running and RPC is enabled:
 
 ```bash
-./target/release/icn-node --dev --rpc-external --rpc-cors all
+./target/release/nsn-node --dev --rpc-external --rpc-cors all
 ```
 
 ## Resources
 
 - [Polkadot SDK Documentation](https://docs.substrate.io/)
 - [FRAME Pallets](https://docs.substrate.io/reference/frame-pallets/)
-- [ICN Architecture Document](../.claude/rules/architecture.md)
-- [ICN PRD](../.claude/rules/prd.md)
+- [NSN Architecture Document](../.claude/rules/architecture.md)
+- [NSN PRD](../.claude/rules/prd.md)
 
 ## License
 
@@ -297,4 +297,4 @@ GPL-3.0
 
 ## Authors
 
-Interdimensional Cable Network <dev@icn.network>
+Neon Stream Network <dev@nsn.network>
