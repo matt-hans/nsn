@@ -49,7 +49,7 @@ impl pallet_balances::Config for Test {
 }
 
 parameter_types! {
-	pub const TreasuryPalletId: frame_support::PalletId = frame_support::PalletId(*b"icn/trea");
+	pub const TreasuryPalletId: frame_support::PalletId = frame_support::PalletId(*b"nsn/trea");
 	pub const DistributionFrequency: u64 = 14400; // ~1 day at 6s blocks
 }
 

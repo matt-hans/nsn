@@ -167,8 +167,8 @@ impl_opaque_keys! {
 
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: alloc::borrow::Cow::Borrowed("icn-runtime"),
-	impl_name: alloc::borrow::Cow::Borrowed("icn-runtime"),
+	spec_name: alloc::borrow::Cow::Borrowed("nsn-runtime"),
+	impl_name: alloc::borrow::Cow::Borrowed("nsn-runtime"),
 	authoring_version: 1,
 	spec_version: 1,
 	impl_version: 0,

@@ -127,7 +127,7 @@ impl pallet_nsn_reputation::Config for Test {
 parameter_types! {
 	pub const AuditSlashAmount: u128 = 10_000_000_000_000_000_000; // 10 NSN
 	pub const MaxSelectableCandidates: u32 = 1000; // Max candidates to consider
-	pub const PinningPalletId: PalletId = PalletId(*b"icn/pinn");
+	pub const PinningPalletId: PalletId = PalletId(*b"nsn/stor");
 }
 
 impl pallet_nsn_storage::Config for Test {
