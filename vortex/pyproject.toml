@@ -24,6 +24,7 @@ dependencies = [
     "prometheus-client>=0.19.0",
     "kokoro>=0.7.0",         # TTS model (T017) - KPipeline for TTS
     "pyyaml>=6.0.0",         # Config file loading (T017)
+    "open-clip-torch>=2.23.0",  # CLIP ensemble semantic verification (T018)
 ]
 
 [project.optional-dependencies]

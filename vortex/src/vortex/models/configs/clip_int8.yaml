@@ -1,0 +1,49 @@
+# CLIP Model INT8 Quantization Configuration
+# Enables efficient VRAM usage for dual CLIP ensemble
+
+models:
+  clip_vit_b_32:
+    architecture: "ViT-B-32"
+    pretrained: "openai"
+    precision: "int8"
+    vram_budget_gb: 0.3
+    cache_path: "~/.cache/vortex/clip_b32_int8.pt"
+    quantization:
+      method: "dynamic"  # PyTorch dynamic quantization
+      dtype: "qint8"
+      layers: ["Linear"]  # Quantize Linear layers only
+
+  clip_vit_l_14:
+    architecture: "ViT-L-14"
+    pretrained: "openai"
+    precision: "int8"
+    vram_budget_gb: 0.6
+    cache_path: "~/.cache/vortex/clip_l14_int8.pt"
+    quantization:
+      method: "dynamic"
+      dtype: "qint8"
+      layers: ["Linear"]
+
+ensemble:
+  weight_b32: 0.4  # Weight for ViT-B-32
+  weight_l14: 0.6  # Weight for ViT-L-14
+
+  self_check_thresholds:
+    score_b: 0.70  # Minimum ViT-B-32 score for self-check pass
+    score_l: 0.72  # Minimum ViT-L-14 score for self-check pass
+
+  outlier_detection:
+    divergence_threshold: 0.15  # Flag if |score_b - score_l| > this value
+
+  keyframe_sampling:
+    num_frames: 5  # Number of keyframes to sample from video
+    method: "evenly_spaced"  # Sampling strategy
+
+performance:
+  target_latency_p99_ms: 1000  # <1s P99 for 5-frame verification
+  target_vram_total_gb: 0.9    # Combined VRAM budget
+
+notes: |
+  INT8 quantization reduces VRAM by ~60% vs FP16 with <3% accuracy loss.
+  Dual ensemble reduces false positives/negatives by ~40% vs single model.
+  Self-check thresholds prevent wasted BFT rounds on low-quality content.

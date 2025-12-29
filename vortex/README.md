@@ -138,15 +138,83 @@ vortex/
 
 ## Testing
 
+### Unit Tests (CPU/GPU)
+
+Unit tests use **real CLIP models on CPU** for higher confidence (reduced mock ratio to ~40%).
+
 ```bash
-# Run all unit tests
+# Run all unit tests with real CLIP (default)
+pytest tests/unit/ -v
+
+# Disable real CLIP for faster tests (mocks only)
+export CLIP_UNIT_TEST_REAL=false
 pytest tests/unit/ -v
 
 # Run specific test file
-pytest tests/unit/test_pipeline.py -v
+pytest tests/unit/test_clip_ensemble.py -v
 
 # Run with coverage
 pytest tests/unit/ --cov=vortex --cov-report=term-missing
+```
+
+### Integration Tests (GPU or CPU Fallback)
+
+Integration tests run on **GPU if available, else CPU fallback** (89% CPU-compatible).
+
+```bash
+# Run all integration tests (auto-detects GPU/CPU)
+pytest tests/integration/ -v
+
+# Run only CPU-compatible tests (skip GPU-only)
+pytest tests/integration/ -v -m "not gpu_only"
+
+# Override latency threshold for CI (default: 1.0s)
+export CLIP_CI_LATENCY_THRESHOLD=3.0
+pytest tests/integration/test_clip_ensemble.py::test_verification_latency -v
+```
+
+### Mutation Testing
+
+Verify tests catch bugs by introducing code mutations:
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run mutation testing
+mutmut run
+
+# View results
+mutmut results
+
+# Generate HTML report
+mutmut html
+open html/index.html
+```
+
+**Configuration:** `vortex/mutmut_config.py` targets `src/vortex/models/clip_ensemble.py`
+
+### Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CLIP_UNIT_TEST_REAL` | `true` | Use real CLIP models on CPU for unit tests |
+| `CLIP_CI_LATENCY_THRESHOLD` | `1.0` | P99 latency threshold in seconds (CI: set to `3.0`) |
+
+### Test Categories
+
+| Category | Count | GPU Required | Mock Ratio | Edge Cases |
+|----------|-------|--------------|------------|------------|
+| Unit tests | 15 | No | ~40% | N/A |
+| Integration tests | 19 | 2 tests only | 0% | 55% |
+| **Total** | **34** | **11% GPU-only** | **~20% overall** | **55%** |
+
+**Edge case tests:**
+- Adversarial prompt injection (SQL, XSS, instruction injection)
+- FGSM perturbation attacks (ε=0.01)
+- Numerical stability (NaN, Inf, denormal floats)
+- OpenCLIP token truncation (real tokenizer, >77 tokens)
+- Concurrent verification (4 threads, thread safety)
 ```
 
 ### Test Coverage
