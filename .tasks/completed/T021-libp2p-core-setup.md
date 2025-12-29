@@ -1,15 +1,13 @@
 ---
 id: T021
 title: libp2p Core Setup and Transport Layer
-status: completed
+status: in_progress
 priority: 1
 agent: backend
 dependencies: [T001]
 blocked_by: []
 created: 2025-12-24T00:00:00Z
-updated: 2025-12-29T13:01:08Z
-completed: 2025-12-29T13:01:08Z
-completed_by: task-completer
+updated: 2025-12-24T00:00:00Z
 tags: [p2p, libp2p, networking, off-chain, phase1, critical-path]
 
 context_refs:
@@ -22,7 +20,7 @@ docs_refs:
   - ../docs/architecture.md (§4.4, ADR-003)
 
 est_tokens: 10000
-actual_tokens: 11500
+actual_tokens: null
 ---
 
 ## Description

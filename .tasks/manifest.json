@@ -542,7 +542,7 @@
       "id": "T021",
       "title": "libp2p Core Setup and Transport Layer",
       "file": "tasks/T021-libp2p-core-setup.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 1,
       "depends_on": [
         "T001"
@@ -556,9 +556,11 @@
         "critical-path"
       ],
       "estimated_tokens": 10000,
-      "actual_tokens": 0,
+      "actual_tokens": 11500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-29T13:01:08Z",
+      "completed_at": "2025-12-29T13:01:08Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T022",
@@ -1030,9 +1032,9 @@
   ],
   "stats": {
     "total_tasks": 41,
-    "completed": 18,
+    "completed": 19,
     "in_progress": 0,
-    "pending": 23,
+    "pending": 22,
     "blocked": 0
   },
   "dependency_graph": {

@@ -7,9 +7,7 @@ pub mod chain {
     //! Chain client utilities (stub)
 }
 
-pub mod p2p {
-    //! P2P networking utilities (stub)
-}
+pub mod p2p;
 
 pub mod types {
     //! Shared type definitions (stub)

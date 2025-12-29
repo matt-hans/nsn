@@ -41,6 +41,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Crypto
 ed25519-dalek = "2.1"
+sp-core = "28.0"
+
+# Void type for dummy behaviour
+void = "1.0"
 
 # Metrics
 prometheus = "0.13"

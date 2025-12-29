@@ -214,7 +214,8 @@ region = "us-east-1"
         std::fs::write(&keypair_path, keypair_json).unwrap();
 
         let keypair_path_str = keypair_path.to_str().unwrap();
-        let config_content_with_keypair = format!(r#"
+        let config_content_with_keypair = format!(
+            r#"
 chain_endpoint = "ws://127.0.0.1:9944"
 keypair_path = "{}"
 grpc_port = 50051
@@ -222,7 +223,9 @@ metrics_port = 9100
 p2p_listen_addr = "/ip4/0.0.0.0/tcp/30333"
 bootstrap_peers = ["/ip4/127.0.0.1/tcp/30334/p2p/12D3KooWA"]
 region = "us-east-1"
-"#, keypair_path_str.replace('\\', "\\\\"));
+"#,
+            keypair_path_str.replace('\\', "\\\\")
+        );
 
         let config_path = tmp_dir.path().join("config.toml");
         std::fs::write(&config_path, config_content_with_keypair).unwrap();
@@ -252,7 +255,8 @@ region = "us-east-1"
         std::fs::write(&keypair_path, keypair_json).unwrap();
 
         let keypair_path_str = keypair_path.to_str().unwrap();
-        let config_content = format!(r#"
+        let config_content = format!(
+            r#"
 chain_endpoint = "wss://rpc.icn.network:443"
 keypair_path = "{}"
 grpc_port = 50052
@@ -263,7 +267,9 @@ region = "eu-west-1"
 pipeline_lookahead = 3
 grpc_timeout_secs = 10
 bft_consensus_threshold = 0.90
-"#, keypair_path_str.replace('\\', "\\\\"));
+"#,
+            keypair_path_str.replace('\\', "\\\\")
+        );
 
         let config_path = tmp_dir.path().join("custom.toml");
         std::fs::write(&config_path, config_content).unwrap();

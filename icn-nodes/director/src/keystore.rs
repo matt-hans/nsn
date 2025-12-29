@@ -275,8 +275,10 @@ mod tests {
         let err = result.unwrap_err();
         assert!(matches!(err, DirectorError::Config(_)));
         // Error could be "Failed to decode keypair" or protobuf parsing error
-        assert!(err.to_string().contains("Failed to decode keypair") ||
-                err.to_string().contains("protobuf"));
+        assert!(
+            err.to_string().contains("Failed to decode keypair")
+                || err.to_string().contains("protobuf")
+        );
     }
 
     /// Test Case 6: Insecure file permissions rejected (Unix only)
