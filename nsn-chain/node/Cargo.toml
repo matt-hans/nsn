@@ -1,6 +1,6 @@
 [package]
 name = "nsn-node"
-description = "NSN Chain node implementation - Polkadot SDK based blockchain for Neon Stream Network"
+description = "NSN Chain node implementation - Polkadot SDK based blockchain for Neural Sovereign Network"
 version = "0.1.0"
 license = "GPL-3.0"
 authors.workspace = true

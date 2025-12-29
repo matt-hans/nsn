@@ -1,6 +1,6 @@
 # NSN Chain
 
-NSN Chain is the on-chain layer of the Neon Stream Network (NSN), built using the Polkadot SDK.
+NSN Chain is the on-chain layer of the Neural Sovereign Network (NSN), built using the Polkadot SDK.
 
 ## Overview
 
@@ -297,4 +297,4 @@ GPL-3.0
 
 ## Authors
 
-Neon Stream Network <dev@nsn.network>
+Neural Sovereign Network <dev@nsn.network>

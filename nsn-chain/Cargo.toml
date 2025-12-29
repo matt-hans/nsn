@@ -1,6 +1,6 @@
 [workspace.package]
 license = "GPL-3.0"
-authors = ["Neon Stream Network <dev@nsn.network>"]
+authors = ["Neural Sovereign Network <dev@nsn.network>"]
 homepage = "https://github.com/neon-stream/nsn-chain"
 repository = "https://github.com/neon-stream/nsn-chain"
 edition = "2021"
