@@ -548,7 +548,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_model_registration() {
+    async fn test_load_unload_model() {
         let manager = ContainerManager::new();
 
         manager
