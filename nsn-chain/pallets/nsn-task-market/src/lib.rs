@@ -1,0 +1,419 @@
+// Copyright 2024 Neural Sovereign Network
+// This file is part of NSN Chain.
+//
+// NSN Chain is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+//! # NSN Task Market Pallet
+//!
+//! Off-chain compute task scheduling with escrow for the Neural Sovereign Network.
+//!
+//! ## Overview
+//!
+//! This pallet implements:
+//! - Task intent creation with escrow deposit
+//! - Task assignment to executors
+//! - Task completion with payment release
+//! - Task failure handling with escrow return
+//!
+//! ## Interface
+//!
+//! ### Dispatchable Functions
+//!
+//! - `create_task_intent`: Create a new task with escrow deposit
+//! - `accept_assignment`: Executor claims an open task
+//! - `complete_task`: Mark task as completed and release payment
+//! - `fail_task`: Mark task as failed and return escrow
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+pub use pallet::*;
+
+mod types;
+pub use types::{FailReason, TaskIntent, TaskStatus};
+
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+pub mod weights;
+pub use weights::WeightInfo;
+
+#[frame_support::pallet]
+pub mod pallet {
+    use super::*;
+    use frame_support::{
+        pallet_prelude::*,
+        traits::{Currency, ExistenceRequirement, ReservableCurrency, StorageVersion},
+    };
+    use frame_system::pallet_prelude::*;
+    use sp_runtime::traits::{CheckedAdd, Zero};
+
+    /// Balance type alias using ReservableCurrency
+    pub type BalanceOf<T> =
+        <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+    /// Task intent type alias
+    pub type TaskIntentOf<T> =
+        TaskIntent<<T as frame_system::Config>::AccountId, BalanceOf<T>, BlockNumberFor<T>>;
+
+    /// The in-code storage version.
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
+
+    #[pallet::pallet]
+    #[pallet::storage_version(STORAGE_VERSION)]
+    pub struct Pallet<T>(_);
+
+    /// Configuration trait for the NSN Task Market pallet
+    #[pallet::config]
+    pub trait Config: frame_system::Config<RuntimeEvent: From<Event<Self>>> {
+        /// The currency type for escrow operations
+        type Currency: ReservableCurrency<Self::AccountId>;
+
+        /// Maximum number of pending (open) tasks
+        #[pallet::constant]
+        type MaxPendingTasks: Get<u32>;
+
+        /// Weight information
+        type WeightInfo: WeightInfo;
+    }
+
+    /// Next task ID counter
+    ///
+    /// Monotonically increasing counter for unique task IDs.
+    #[pallet::storage]
+    #[pallet::getter(fn next_task_id)]
+    pub type NextTaskId<T: Config> = StorageValue<_, u64, ValueQuery>;
+
+    /// All tasks by ID
+    ///
+    /// Maps task ID to TaskIntent struct containing all task details.
+    ///
+    /// # Storage Key
+    /// Twox64Concat(u64) - task IDs are not user-controlled
+    #[pallet::storage]
+    #[pallet::getter(fn tasks)]
+    pub type Tasks<T: Config> = StorageMap<_, Twox64Concat, u64, TaskIntentOf<T>, OptionQuery>;
+
+    /// Queue of open task IDs available for assignment
+    ///
+    /// Bounded vector of task IDs with status == Open.
+    /// Tasks are added when created and removed when assigned.
+    ///
+    /// # L0 Compliance
+    /// Bounded by MaxPendingTasks to prevent unbounded growth.
+    #[pallet::storage]
+    #[pallet::getter(fn open_tasks)]
+    pub type OpenTasks<T: Config> =
+        StorageValue<_, BoundedVec<u64, T::MaxPendingTasks>, ValueQuery>;
+
+    /// Events emitted by the pallet
+    #[pallet::event]
+    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    pub enum Event<T: Config> {
+        /// A new task intent was created
+        TaskCreated {
+            task_id: u64,
+            requester: T::AccountId,
+            escrow: BalanceOf<T>,
+            deadline: BlockNumberFor<T>,
+        },
+        /// A task was assigned to an executor
+        TaskAssigned {
+            task_id: u64,
+            executor: T::AccountId,
+        },
+        /// A task was completed successfully
+        TaskCompleted {
+            task_id: u64,
+            executor: T::AccountId,
+            payment: BalanceOf<T>,
+        },
+        /// A task failed
+        TaskFailed { task_id: u64, reason: FailReason },
+    }
+
+    /// Errors returned by the pallet
+    #[pallet::error]
+    pub enum Error<T> {
+        /// Task not found
+        TaskNotFound,
+        /// Task is not in Open status
+        TaskNotOpen,
+        /// Task is not in Assigned status
+        TaskNotAssigned,
+        /// Only the assigned executor can complete/fail the task
+        NotExecutor,
+        /// Only the requester can cancel an open task
+        NotRequester,
+        /// Too many pending tasks in the queue
+        TooManyPendingTasks,
+        /// Arithmetic overflow
+        Overflow,
+        /// Insufficient balance for escrow
+        InsufficientBalance,
+        /// Invalid deadline (must be in the future)
+        InvalidDeadline,
+        /// Task already assigned
+        TaskAlreadyAssigned,
+    }
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        /// Block initialization - no operations needed for MVP.
+        /// Deadline enforcement is handled off-chain.
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            Weight::zero()
+        }
+    }
+
+    /// Extrinsic calls
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        /// Create a new task intent with escrow deposit
+        ///
+        /// # Arguments
+        /// * `escrow_amount` - Amount to escrow for payment
+        /// * `deadline_blocks` - Number of blocks until deadline (relative)
+        ///
+        /// # Errors
+        /// * `TooManyPendingTasks` - Open tasks queue is full
+        /// * `InsufficientBalance` - Not enough balance for escrow
+        /// * `InvalidDeadline` - Deadline must be > 0
+        #[pallet::call_index(0)]
+        #[pallet::weight(T::WeightInfo::create_task_intent())]
+        pub fn create_task_intent(
+            origin: OriginFor<T>,
+            escrow_amount: BalanceOf<T>,
+            deadline_blocks: BlockNumberFor<T>,
+        ) -> DispatchResult {
+            let requester = ensure_signed(origin)?;
+
+            // Validate deadline is in the future
+            ensure!(
+                deadline_blocks > BlockNumberFor::<T>::zero(),
+                Error::<T>::InvalidDeadline
+            );
+
+            // Reserve escrow from requester
+            T::Currency::reserve(&requester, escrow_amount)
+                .map_err(|_| Error::<T>::InsufficientBalance)?;
+
+            // Get next task ID and increment counter
+            let task_id = NextTaskId::<T>::get();
+            NextTaskId::<T>::put(task_id.checked_add(1).ok_or(Error::<T>::Overflow)?);
+
+            // Calculate absolute deadline
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let deadline = current_block
+                .checked_add(&deadline_blocks)
+                .ok_or(Error::<T>::Overflow)?;
+
+            // Create task intent
+            let task = TaskIntent {
+                id: task_id,
+                requester: requester.clone(),
+                executor: None,
+                status: TaskStatus::Open,
+                escrow: escrow_amount,
+                created_at: current_block,
+                deadline,
+            };
+
+            // Add to open tasks queue (bounded)
+            OpenTasks::<T>::try_mutate(|open| {
+                open.try_push(task_id)
+                    .map_err(|_| Error::<T>::TooManyPendingTasks)
+            })?;
+
+            // Store task
+            Tasks::<T>::insert(task_id, task);
+
+            Self::deposit_event(Event::TaskCreated {
+                task_id,
+                requester,
+                escrow: escrow_amount,
+                deadline,
+            });
+
+            Ok(())
+        }
+
+        /// Accept assignment of an open task
+        ///
+        /// For MVP: Any signed origin can claim any open task.
+        ///
+        /// # Arguments
+        /// * `task_id` - ID of the task to accept
+        ///
+        /// # Errors
+        /// * `TaskNotFound` - Task does not exist
+        /// * `TaskNotOpen` - Task is not in Open status
+        #[pallet::call_index(1)]
+        #[pallet::weight(T::WeightInfo::accept_assignment())]
+        pub fn accept_assignment(origin: OriginFor<T>, task_id: u64) -> DispatchResult {
+            let executor = ensure_signed(origin)?;
+
+            // Get and validate task
+            Tasks::<T>::try_mutate(task_id, |maybe_task| -> DispatchResult {
+                let task = maybe_task.as_mut().ok_or(Error::<T>::TaskNotFound)?;
+
+                // Verify task is open
+                ensure!(task.status == TaskStatus::Open, Error::<T>::TaskNotOpen);
+
+                // Assign executor and update status
+                task.executor = Some(executor.clone());
+                task.status = TaskStatus::Assigned;
+
+                // Remove from open tasks queue
+                OpenTasks::<T>::try_mutate(|open| -> DispatchResult {
+                    if let Some(pos) = open.iter().position(|&id| id == task_id) {
+                        open.remove(pos);
+                    }
+                    Ok(())
+                })?;
+
+                Self::deposit_event(Event::TaskAssigned { task_id, executor });
+
+                Ok(())
+            })
+        }
+
+        /// Complete a task and release payment to executor
+        ///
+        /// Only the assigned executor can complete a task.
+        ///
+        /// # Arguments
+        /// * `task_id` - ID of the task to complete
+        ///
+        /// # Errors
+        /// * `TaskNotFound` - Task does not exist
+        /// * `TaskNotAssigned` - Task is not in Assigned status
+        /// * `NotExecutor` - Caller is not the assigned executor
+        #[pallet::call_index(2)]
+        #[pallet::weight(T::WeightInfo::complete_task())]
+        pub fn complete_task(origin: OriginFor<T>, task_id: u64) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            // Get and validate task
+            Tasks::<T>::try_mutate(task_id, |maybe_task| -> DispatchResult {
+                let task = maybe_task.as_mut().ok_or(Error::<T>::TaskNotFound)?;
+
+                // Verify task is assigned
+                ensure!(
+                    task.status == TaskStatus::Assigned,
+                    Error::<T>::TaskNotAssigned
+                );
+
+                // Verify caller is the executor
+                let executor = task.executor.as_ref().ok_or(Error::<T>::TaskNotAssigned)?;
+                ensure!(&caller == executor, Error::<T>::NotExecutor);
+
+                // Unreserve from requester and transfer to executor
+                let escrow = task.escrow;
+                T::Currency::unreserve(&task.requester, escrow);
+                T::Currency::transfer(
+                    &task.requester,
+                    executor,
+                    escrow,
+                    ExistenceRequirement::AllowDeath,
+                )?;
+
+                // Update status
+                task.status = TaskStatus::Completed;
+
+                Self::deposit_event(Event::TaskCompleted {
+                    task_id,
+                    executor: caller,
+                    payment: escrow,
+                });
+
+                Ok(())
+            })
+        }
+
+        /// Fail a task and return escrow to requester
+        ///
+        /// Authorization rules:
+        /// - If task is Assigned: both executor AND requester can fail it
+        /// - If task is Open: only requester can fail it (cancel)
+        ///
+        /// # Arguments
+        /// * `task_id` - ID of the task to fail
+        /// * `reason` - Reason for failure
+        ///
+        /// # Errors
+        /// * `TaskNotFound` - Task does not exist
+        /// * `NotExecutor` - Caller is not authorized to fail this task
+        /// * `NotRequester` - Caller is not the requester (for Open tasks)
+        #[pallet::call_index(3)]
+        #[pallet::weight(T::WeightInfo::fail_task())]
+        pub fn fail_task(origin: OriginFor<T>, task_id: u64, reason: FailReason) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            // Get and validate task
+            Tasks::<T>::try_mutate(task_id, |maybe_task| -> DispatchResult {
+                let task = maybe_task.as_mut().ok_or(Error::<T>::TaskNotFound)?;
+
+                match task.status {
+                    TaskStatus::Open => {
+                        // Only requester can cancel an open task
+                        ensure!(caller == task.requester, Error::<T>::NotRequester);
+
+                        // Remove from open tasks queue
+                        OpenTasks::<T>::try_mutate(|open| -> DispatchResult {
+                            if let Some(pos) = open.iter().position(|&id| id == task_id) {
+                                open.remove(pos);
+                            }
+                            Ok(())
+                        })?;
+                    }
+                    TaskStatus::Assigned => {
+                        // Both executor and requester can fail an assigned task
+                        let executor = task.executor.as_ref().ok_or(Error::<T>::TaskNotAssigned)?;
+                        ensure!(
+                            &caller == executor || caller == task.requester,
+                            Error::<T>::NotExecutor
+                        );
+                    }
+                    TaskStatus::Completed | TaskStatus::Failed => {
+                        // Cannot fail a completed or already failed task
+                        return Err(Error::<T>::TaskNotAssigned.into());
+                    }
+                }
+
+                // Return escrow to requester
+                T::Currency::unreserve(&task.requester, task.escrow);
+
+                // Update status
+                task.status = TaskStatus::Failed;
+
+                Self::deposit_event(Event::TaskFailed {
+                    task_id,
+                    reason: reason.clone(),
+                });
+
+                Ok(())
+            })
+        }
+    }
+
+    // Helper functions
+    impl<T: Config> Pallet<T> {
+        /// Get the number of open tasks
+        pub fn open_task_count() -> u32 {
+            OpenTasks::<T>::get().len() as u32
+        }
+
+        /// Check if a task exists
+        pub fn task_exists(task_id: u64) -> bool {
+            Tasks::<T>::contains_key(task_id)
+        }
+    }
+}

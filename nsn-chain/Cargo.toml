@@ -16,6 +16,7 @@ members = [
     "pallets/nsn-bft",
     "pallets/nsn-storage",
     "pallets/nsn-treasury",
+    "pallets/nsn-task-market",
 ]
 resolver = "2"
 
@@ -28,6 +29,7 @@ pallet-nsn-director = { path = "./pallets/nsn-director", default-features = fals
 pallet-nsn-bft = { path = "./pallets/nsn-bft", default-features = false }
 pallet-nsn-storage = { path = "./pallets/nsn-storage", default-features = false }
 pallet-nsn-treasury = { path = "./pallets/nsn-treasury", default-features = false }
+pallet-nsn-task-market = { path = "./pallets/nsn-task-market", default-features = false }
 
 # Substrate/Polkadot SDK crates (version-aligned for compatibility)
 frame-benchmarking = { version = "45.0.0", default-features = false }
