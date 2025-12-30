@@ -8,8 +8,10 @@ use std::collections::HashMap;
 
 use tracing::{debug, warn};
 
+use crate::vram::VramError;
+
 /// Default total VRAM budget (RTX 3060 12GB target, with 0.2GB safety margin)
-const DEFAULT_TOTAL_VRAM_GB: f32 = 11.8;
+pub const DEFAULT_TOTAL_VRAM_GB: f32 = 11.8;
 
 /// Tracks VRAM allocations across loaded models.
 ///
@@ -69,40 +71,77 @@ impl VramTracker {
     ///
     /// # Arguments
     /// * `model_id` - Unique identifier for the model
-    /// * `size_gb` - VRAM size in GB
+    /// * `gb` - VRAM size in GB
     ///
     /// # Returns
-    /// `true` if allocation succeeded, `false` if model already allocated
+    /// `Ok(())` if allocation succeeded
     ///
-    /// # Panics
-    /// Does not panic, but logs a warning if allocation would exceed budget.
-    pub fn allocate(&mut self, model_id: &str, size_gb: f32) -> bool {
+    /// # Errors
+    /// - `VramError::AlreadyAllocated` if model is already allocated
+    /// - `VramError::BudgetExceeded` if allocation would exceed budget
+    pub fn allocate(&mut self, model_id: &str, gb: f32) -> Result<(), VramError> {
         if self.allocations.contains_key(model_id) {
             warn!(model_id = %model_id, "Model already allocated");
-            return false;
+            return Err(VramError::AlreadyAllocated(model_id.to_string()));
         }
 
-        if !self.can_allocate(size_gb) {
+        if !self.can_allocate(gb) {
             warn!(
                 model_id = %model_id,
-                size_gb = size_gb,
+                gb = gb,
                 available = self.available(),
                 "Allocation would exceed budget"
             );
+            return Err(VramError::BudgetExceeded {
+                requested_gb: gb,
+                used_gb: self.used_gb,
+                allocatable_gb: self.total_gb,
+            });
         }
 
-        self.allocations.insert(model_id.to_string(), size_gb);
-        self.used_gb += size_gb;
+        self.allocations.insert(model_id.to_string(), gb);
+        self.used_gb += gb;
 
         debug!(
             model_id = %model_id,
-            size_gb = size_gb,
+            gb = gb,
             used = self.used_gb,
             available = self.available(),
             "VRAM allocated"
         );
 
-        true
+        Ok(())
+    }
+
+    /// Force allocate VRAM for a model, bypassing budget checks.
+    ///
+    /// This is used internally by VramManager when its allocation policy
+    /// (e.g., soft policy) has already approved the allocation.
+    ///
+    /// # Arguments
+    /// * `model_id` - Unique identifier for the model
+    /// * `gb` - VRAM size in GB
+    ///
+    /// # Errors
+    /// - `VramError::AlreadyAllocated` if model is already allocated
+    pub(crate) fn allocate_unchecked(&mut self, model_id: &str, gb: f32) -> Result<(), VramError> {
+        if self.allocations.contains_key(model_id) {
+            warn!(model_id = %model_id, "Model already allocated");
+            return Err(VramError::AlreadyAllocated(model_id.to_string()));
+        }
+
+        self.allocations.insert(model_id.to_string(), gb);
+        self.used_gb += gb;
+
+        debug!(
+            model_id = %model_id,
+            gb = gb,
+            used = self.used_gb,
+            available = self.available(),
+            "VRAM allocated (unchecked)"
+        );
+
+        Ok(())
     }
 
     /// Deallocate VRAM for a model.
@@ -156,6 +195,22 @@ impl VramTracker {
             0.0
         }
     }
+
+    /// Set the total VRAM budget.
+    ///
+    /// Useful when the budget needs to be adjusted based on actual GPU capacity.
+    pub fn set_total(&mut self, total_gb: f32) {
+        self.total_gb = total_gb;
+        debug!(total_gb = total_gb, "VRAM budget updated");
+    }
+
+    /// Check if VRAM usage has exceeded the budget.
+    ///
+    /// Returns `true` when used VRAM exceeds the total budget, signaling
+    /// that preemption or cleanup should occur.
+    pub fn should_preempt(&self) -> bool {
+        self.used_gb > self.total_gb
+    }
 }
 
 impl Default for VramTracker {
@@ -177,12 +232,12 @@ mod tests {
         assert_eq!(tracker.available(), 12.0);
 
         // Allocate
-        assert!(tracker.allocate("flux", 6.0));
+        assert!(tracker.allocate("flux", 6.0).is_ok());
         assert_eq!(tracker.used(), 6.0);
         assert_eq!(tracker.available(), 6.0);
 
         // Allocate another
-        assert!(tracker.allocate("clip", 0.5));
+        assert!(tracker.allocate("clip", 0.5).is_ok());
         assert_eq!(tracker.used(), 6.5);
         assert_eq!(tracker.available(), 5.5);
 
@@ -201,7 +256,7 @@ mod tests {
         assert!(tracker.can_allocate(10.0));
         assert!(!tracker.can_allocate(10.1));
 
-        tracker.allocate("model1", 8.0);
+        tracker.allocate("model1", 8.0).unwrap();
 
         assert!(tracker.can_allocate(2.0));
         assert!(!tracker.can_allocate(2.1));
@@ -211,8 +266,10 @@ mod tests {
     fn test_duplicate_allocation() {
         let mut tracker = VramTracker::new();
 
-        assert!(tracker.allocate("model1", 1.0));
-        assert!(!tracker.allocate("model1", 2.0)); // Duplicate
+        assert!(tracker.allocate("model1", 1.0).is_ok());
+        let result = tracker.allocate("model1", 2.0);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(VramError::AlreadyAllocated(_))));
 
         // Original allocation unchanged
         assert_eq!(tracker.get_allocation("model1"), Some(1.0));
@@ -230,9 +287,9 @@ mod tests {
     fn test_reset() {
         let mut tracker = VramTracker::new();
 
-        tracker.allocate("m1", 1.0);
-        tracker.allocate("m2", 2.0);
-        tracker.allocate("m3", 3.0);
+        tracker.allocate("m1", 1.0).unwrap();
+        tracker.allocate("m2", 2.0).unwrap();
+        tracker.allocate("m3", 3.0).unwrap();
 
         assert_eq!(tracker.model_count(), 3);
         assert_eq!(tracker.used(), 6.0);
@@ -249,10 +306,10 @@ mod tests {
 
         assert_eq!(tracker.utilization_percent(), 0.0);
 
-        tracker.allocate("m1", 5.0);
+        tracker.allocate("m1", 5.0).unwrap();
         assert_eq!(tracker.utilization_percent(), 50.0);
 
-        tracker.allocate("m2", 2.5);
+        tracker.allocate("m2", 2.5).unwrap();
         assert_eq!(tracker.utilization_percent(), 75.0);
     }
 
@@ -262,11 +319,11 @@ mod tests {
         let mut tracker = VramTracker::new(); // Uses 11.8 GB budget
 
         // ICN model stack from PRD
-        assert!(tracker.allocate("flux-schnell", 6.0));
-        assert!(tracker.allocate("liveportrait", 3.5));
-        assert!(tracker.allocate("kokoro-82m", 0.4));
-        assert!(tracker.allocate("clip-vit-b-32", 0.3));
-        assert!(tracker.allocate("clip-vit-l-14", 0.6));
+        assert!(tracker.allocate("flux-schnell", 6.0).is_ok());
+        assert!(tracker.allocate("liveportrait", 3.5).is_ok());
+        assert!(tracker.allocate("kokoro-82m", 0.4).is_ok());
+        assert!(tracker.allocate("clip-vit-b-32", 0.3).is_ok());
+        assert!(tracker.allocate("clip-vit-l-14", 0.6).is_ok());
 
         // Total: 10.8 GB
         assert_eq!(tracker.used(), 10.8);
@@ -274,5 +331,45 @@ mod tests {
 
         // System overhead should fit
         assert!(tracker.can_allocate(1.0));
+    }
+
+    #[test]
+    fn test_set_total() {
+        let mut tracker = VramTracker::with_budget(8.0);
+        assert_eq!(tracker.total(), 8.0);
+
+        tracker.set_total(16.0);
+        assert_eq!(tracker.total(), 16.0);
+        assert_eq!(tracker.available(), 16.0);
+    }
+
+    #[test]
+    fn test_budget_exceeded_signals_preemption() {
+        let mut tracker = VramTracker::with_budget(10.0);
+
+        // Initially no preemption needed
+        assert!(!tracker.should_preempt());
+
+        // Allocate models up to budget
+        tracker.allocate("m1", 6.0).unwrap();
+        assert!(!tracker.should_preempt());
+
+        tracker.allocate("m2", 4.0).unwrap();
+        assert!(!tracker.should_preempt());
+        assert_eq!(tracker.used(), 10.0);
+
+        // Try to allocate beyond budget - should fail
+        let result = tracker.allocate("m3", 1.0);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(VramError::BudgetExceeded { .. })));
+
+        // Used should still be at budget, not exceeded
+        assert!(!tracker.should_preempt());
+
+        // Manually set budget lower to simulate budget exceeded state
+        tracker.set_total(8.0);
+        assert!(tracker.should_preempt());
+        assert_eq!(tracker.used(), 10.0);
+        assert_eq!(tracker.total(), 8.0);
     }
 }

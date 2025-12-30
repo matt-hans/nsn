@@ -93,10 +93,16 @@ pub mod vram;
 
 // Re-export main types for convenience
 pub use client::{SidecarClient, SidecarClientBuilder, SidecarClientConfig};
-pub use container::{ContainerInfo, ContainerManager, ContainerStatus, LoadedModelInfo};
+pub use container::{
+    ContainerInfo, ContainerManager, ContainerStatus, LoadedModelInfo, PreemptionManager,
+    PreemptionReason, PreemptionResult, PreemptionStrategy,
+};
 pub use error::{SidecarError, SidecarResult};
 pub use service::{SidecarService, SidecarServiceConfig, TaskState, TaskStatus};
-pub use vram::VramTracker;
+pub use vram::{
+    AllocationPolicy, NvidiaError, NvidiaGpu, VramBudget, VramError, VramManager, VramStatus,
+    VramTracker,
+};
 
 /// Generated protobuf types and gRPC service definitions.
 ///

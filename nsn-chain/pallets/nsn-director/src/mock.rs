@@ -145,6 +145,10 @@ parameter_types! {
 	pub const ChallengerReward: u128 = 10_000_000_000_000_000_000; // 10 NSN
 	pub const MaxDirectorsPerSlot: u32 = 5;
 	pub const MaxPendingSlots: u32 = 100;
+	// Epoch constants (for testing, use shorter durations)
+	pub const EpochDuration: u32 = 600; // 1 hour at 6s/block
+	pub const EpochLookahead: u32 = 20; // 2 minutes (20 blocks)
+	pub const MaxDirectorsPerEpoch: u32 = 5;
 }
 
 /// Simple randomness implementation for testing
@@ -167,6 +171,9 @@ impl pallet_nsn_director::Config for Test {
 	type ChallengerReward = ChallengerReward;
 	type MaxDirectorsPerSlot = MaxDirectorsPerSlot;
 	type MaxPendingSlots = MaxPendingSlots;
+	type EpochDuration = EpochDuration;
+	type EpochLookahead = EpochLookahead;
+	type MaxDirectorsPerEpoch = MaxDirectorsPerEpoch;
 	type WeightInfo = ();
 }
 

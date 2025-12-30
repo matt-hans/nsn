@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+# Enable NVIDIA GPU integration via NVML
+# Requires NVIDIA drivers and NVML library to be installed
+nvidia = ["nvml-wrapper"]
+
 [dependencies]
 tokio = { workspace = true }
 tonic = { workspace = true }
@@ -14,6 +20,9 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 
 nsn-types = { workspace = true }
+
+# Optional NVIDIA Management Library wrapper
+nvml-wrapper = { version = "0.10", optional = true }
 
 [build-dependencies]
 tonic-build = "0.10"

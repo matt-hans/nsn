@@ -701,3 +701,189 @@ fn submit_challenge(slot: u64, challenger: u64) {
 	NsnDirector::challenge_bft_result(RuntimeOrigin::signed(challenger), slot, evidence_hash)
 		.expect("Challenge should succeed");
 }
+
+// =============================================================================
+// Epoch-Based Election Tests
+// =============================================================================
+
+#[test]
+fn test_epoch_bootstrap_on_first_block() {
+	new_test_ext().execute_with(|| {
+		// Setup: Stake 5 directors
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
+
+		// Initially no epoch exists
+		assert!(NsnDirector::current_epoch().is_none());
+
+		// Roll to block 2 (trigger on_initialize)
+		roll_to(2);
+
+		// Verify first epoch was bootstrapped
+		let current_epoch = NsnDirector::current_epoch().expect("Epoch should exist");
+		assert_eq!(current_epoch.id, 0);
+		assert_eq!(current_epoch.status, crate::EpochStatus::Active);
+		assert!(current_epoch.directors.len() > 0);
+		assert!(current_epoch.directors.len() <= 5);
+	});
+}
+
+#[test]
+fn test_epoch_on_deck_election() {
+	new_test_ext().execute_with(|| {
+		// Setup directors
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
+
+		// Bootstrap first epoch
+		roll_to(2);
+		let current_epoch = NsnDirector::current_epoch().unwrap();
+
+		// Calculate when On-Deck election should trigger
+		// Epoch ends at start_block + 600, election at end_block - 20
+		let election_block = current_epoch.end_block.saturating_sub(20);
+
+		// Initially no next epoch directors
+		assert!(NsnDirector::next_epoch_directors().is_empty());
+
+		// Roll to election trigger block
+		roll_to(election_block);
+
+		// Verify On-Deck election happened
+		let next_directors = NsnDirector::next_epoch_directors();
+		assert!(!next_directors.is_empty());
+		assert!(next_directors.len() <= 5);
+	});
+}
+
+#[test]
+fn test_epoch_transition() {
+	new_test_ext().execute_with(|| {
+		// Setup directors
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
+
+		// Bootstrap first epoch
+		roll_to(2);
+		let first_epoch = NsnDirector::current_epoch().unwrap();
+		let first_epoch_id = first_epoch.id;
+		let epoch_end_block = first_epoch.end_block;
+
+		// Trigger On-Deck election
+		let election_block = epoch_end_block.saturating_sub(20);
+		roll_to(election_block);
+
+		// Verify next epoch directors elected
+		assert!(!NsnDirector::next_epoch_directors().is_empty());
+
+		// Roll to epoch end
+		roll_to(epoch_end_block);
+
+		// Verify epoch transitioned
+		let new_epoch = NsnDirector::current_epoch().unwrap();
+		assert_eq!(new_epoch.id, first_epoch_id + 1);
+		assert_eq!(new_epoch.status, crate::EpochStatus::Active);
+
+		// Next epoch directors should be cleared
+		assert!(NsnDirector::next_epoch_directors().is_empty());
+	});
+}
+
+#[test]
+fn test_epoch_multiple_transitions() {
+	new_test_ext().execute_with(|| {
+		// Setup directors
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+		stake_as_director(CHARLIE, 100 * NSN, Region::Apac);
+		stake_as_director(DAVE, 100 * NSN, Region::Latam);
+		stake_as_director(EVE, 100 * NSN, Region::Mena);
+
+		// Bootstrap
+		roll_to(2);
+
+		// Transition through 3 epochs
+		for expected_epoch_id in 1..=3 {
+			let current_epoch = NsnDirector::current_epoch().unwrap();
+			let end_block = current_epoch.end_block;
+
+			// Trigger On-Deck election
+			let election_block = end_block.saturating_sub(20);
+			roll_to(election_block);
+			assert!(!NsnDirector::next_epoch_directors().is_empty());
+
+			// Transition to next epoch
+			roll_to(end_block);
+			let new_epoch = NsnDirector::current_epoch().unwrap();
+			assert_eq!(new_epoch.id, expected_epoch_id);
+		}
+	});
+}
+
+#[test]
+fn test_epoch_emergency_fallback_no_next_directors() {
+	new_test_ext().execute_with(|| {
+		// Setup directors
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+
+		// Bootstrap first epoch
+		roll_to(2);
+		let first_epoch = NsnDirector::current_epoch().unwrap();
+
+		// Skip On-Deck election by going directly to epoch end
+		// This simulates emergency scenario where election was missed
+		roll_to(first_epoch.end_block);
+
+		// Epoch should still transition with emergency re-election
+		let new_epoch = NsnDirector::current_epoch().unwrap();
+		assert_eq!(new_epoch.id, 1);
+		assert!(!new_epoch.directors.is_empty());
+	});
+}
+
+#[test]
+fn test_epoch_duration_constant() {
+	new_test_ext().execute_with(|| {
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+
+		roll_to(2);
+		let epoch = NsnDirector::current_epoch().unwrap();
+
+		// Verify epoch duration is 600 blocks (1 hour)
+		let duration = epoch.end_block - epoch.start_block;
+		assert_eq!(duration, 600);
+	});
+}
+
+#[test]
+fn test_epoch_lookahead_timing() {
+	new_test_ext().execute_with(|| {
+		stake_as_director(ALICE, 100 * NSN, Region::NaWest);
+		stake_as_director(BOB, 100 * NSN, Region::EuWest);
+
+		roll_to(2);
+		let epoch = NsnDirector::current_epoch().unwrap();
+
+		// Election should trigger exactly 20 blocks before epoch end
+		let expected_election_block = epoch.end_block - 20;
+
+		// Roll to one block before
+		roll_to(expected_election_block.saturating_sub(1));
+		assert!(NsnDirector::next_epoch_directors().is_empty());
+
+		// Roll to election block
+		roll_to(expected_election_block);
+		assert!(!NsnDirector::next_epoch_directors().is_empty());
+	});
+}

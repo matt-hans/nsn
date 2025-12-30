@@ -375,7 +375,16 @@ impl Sidecar for SidecarService {
         // Track VRAM allocation
         {
             let mut vram = self.vram_tracker.write().await;
-            vram.allocate(&req.model_id, vram_gb);
+            // Allocation should always succeed here since we checked before loading
+            // If it fails, log error but don't fail the operation (model is already loaded)
+            if let Err(e) = vram.allocate(&req.model_id, vram_gb) {
+                warn!(
+                    model_id = %req.model_id,
+                    vram_gb = vram_gb,
+                    error = %e,
+                    "Failed to track VRAM allocation (model already loaded)"
+                );
+            }
         }
 
         let load_time_ms = load_start.elapsed().as_millis() as u64;

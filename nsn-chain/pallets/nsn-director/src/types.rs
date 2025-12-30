@@ -62,6 +62,19 @@ pub const MAX_ATTESTATIONS: u32 = 10;
 pub const MAX_VALIDATOR_ATTESTATIONS: u32 = 20;
 
 // =============================================================================
+// Epoch Management Constants
+// =============================================================================
+
+/// Epoch duration in blocks (1 hour at 6s/block = 600 blocks)
+pub const EPOCH_DURATION_BLOCKS: u64 = 600;
+
+/// Epoch lookahead for On-Deck notification (2 minutes = 20 blocks)
+pub const EPOCH_LOOKAHEAD_BLOCKS: u64 = 20;
+
+/// Maximum directors per epoch
+pub const MAX_DIRECTORS_PER_EPOCH: u32 = 5;
+
+// =============================================================================
 // BFT Consensus Types
 // =============================================================================
 
@@ -154,6 +167,52 @@ pub struct ValidatorAttestation<AccountId, Hash> {
 	pub agrees_with_challenge: bool,
 	/// Hash of attestation proof
 	pub attestation_hash: Hash,
+}
+
+// =============================================================================
+// Epoch Management Types
+// =============================================================================
+
+use frame_support::{pallet_prelude::*, BoundedVec};
+
+/// Epoch identifier
+pub type EpochId = u64;
+
+/// Epoch information
+///
+/// Represents a 1-hour shift during which 5 directors are active.
+/// Epoch transitions trigger lane swaps (Lane1Active → Draining → Lane0Active).
+///
+/// # Lifecycle
+///
+/// 1. Scheduled: Elected 20 blocks before start (On-Deck notification)
+/// 2. Active: Currently running, directors are generating content
+/// 3. Completed: Epoch has ended, directors moved to draining/inactive
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[scale_info(skip_type_params(MaxDirectors))]
+pub struct Epoch<BlockNumber, AccountId, MaxDirectors: Get<u32>> {
+	/// Unique epoch identifier
+	pub id: EpochId,
+	/// Block number when epoch starts
+	pub start_block: BlockNumber,
+	/// Block number when epoch ends
+	pub end_block: BlockNumber,
+	/// Elected directors for this epoch
+	pub directors: BoundedVec<AccountId, MaxDirectors>,
+	/// Current status of the epoch
+	pub status: EpochStatus,
+}
+
+/// Epoch lifecycle status
+#[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+pub enum EpochStatus {
+	/// Epoch scheduled but not yet active (On-Deck phase)
+	#[default]
+	Scheduled,
+	/// Epoch is currently active
+	Active,
+	/// Epoch has completed
+	Completed,
 }
 
 // =============================================================================

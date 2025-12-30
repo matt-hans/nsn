@@ -76,7 +76,7 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 	use pallet_nsn_reputation::ReputationEventType;
 	use pallet_nsn_stake::{NodeRole, SlashReason};
-	use sp_runtime::traits::{Hash, SaturatedConversion, Zero};
+	use sp_runtime::traits::{Hash, SaturatedConversion, Saturating, Zero};
 
 	/// Balance type from the currency trait (our pallet's Currency)
 	pub type BalanceOf<T> =
@@ -129,6 +129,18 @@ pub mod pallet {
 		/// Maximum pending slots to track (L0 constraint)
 		#[pallet::constant]
 		type MaxPendingSlots: Get<u32>;
+
+		/// Epoch duration in blocks (1 hour at 6s/block = 600 blocks)
+		#[pallet::constant]
+		type EpochDuration: Get<BlockNumberFor<Self>>;
+
+		/// Lookahead blocks for On-Deck notification (2 min = 20 blocks)
+		#[pallet::constant]
+		type EpochLookahead: Get<BlockNumberFor<Self>>;
+
+		/// Maximum directors per epoch
+		#[pallet::constant]
+		type MaxDirectorsPerEpoch: Get<u32>;
 
 		/// Weight information for extrinsics
 		type WeightInfo: WeightInfo;
@@ -217,6 +229,33 @@ pub mod pallet {
 		StorageMap<_, Twox64Concat, u64, SlotStatus, ValueQuery>;
 
 	// =========================================================================
+	// Epoch Management Storage
+	// =========================================================================
+
+	/// Current epoch information
+	///
+	/// Tracks the active epoch with its directors and lifecycle status.
+	#[pallet::storage]
+	#[pallet::getter(fn current_epoch)]
+	pub type CurrentEpoch<T: Config> = StorageValue<
+		_,
+		Epoch<BlockNumberFor<T>, T::AccountId, T::MaxDirectorsPerEpoch>,
+		OptionQuery,
+	>;
+
+	/// Directors elected for next epoch (lookahead)
+	///
+	/// Populated 20 blocks before epoch transition to enable On-Deck protocol.
+	/// Directors in this list are notified to prepare for their upcoming shift.
+	#[pallet::storage]
+	#[pallet::getter(fn next_epoch_directors)]
+	pub type NextEpochDirectors<T: Config> = StorageValue<
+		_,
+		BoundedVec<T::AccountId, T::MaxDirectorsPerEpoch>,
+		ValueQuery,
+	>;
+
+	// =========================================================================
 	// Events
 	// =========================================================================
 
@@ -262,6 +301,22 @@ pub mod pallet {
 			slot: u64,
 			reason: Vec<u8>,
 		},
+		/// Directors elected for upcoming epoch (On-Deck notification)
+		OnDeckElection {
+			epoch_id: EpochId,
+			directors: Vec<T::AccountId>,
+			start_block: BlockNumberFor<T>,
+		},
+		/// New epoch started
+		EpochStarted {
+			epoch_id: EpochId,
+			directors: Vec<T::AccountId>,
+			end_block: BlockNumberFor<T>,
+		},
+		/// Epoch completed
+		EpochCompleted {
+			epoch_id: EpochId,
+		},
 	}
 
 	// =========================================================================
@@ -306,20 +361,41 @@ pub mod pallet {
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		/// Block initialization hook
 		///
-		/// Triggers slot transitions and director elections at slot boundaries.
+		/// Handles epoch-based elections and transitions:
+		/// 1. Checks if it's time to elect next epoch's directors (lookahead)
+		/// 2. Checks if current epoch is ending and needs transition
+		/// 3. Falls back to slot-based election if no epoch is active
 		fn on_initialize(block: BlockNumberFor<T>) -> Weight {
 			let block_num: u64 = block.saturated_into();
-			let slot = block_num / BLOCKS_PER_SLOT;
+			let mut total_weight = T::DbWeight::get().reads(1);
 
-			// Check if we've entered a new slot
-			if slot > Self::current_slot() {
-				Self::start_new_slot(slot);
-				// Weight for slot transition: reads (CurrentSlot, Stakes) + writes (CurrentSlot, ElectedDirectors, SlotStatuses)
-				return T::DbWeight::get().reads_writes(2, 3);
+			// Handle epoch-based elections
+			if let Some(current_epoch) = Self::current_epoch() {
+				let lookahead = T::EpochLookahead::get();
+				let election_trigger = current_epoch.end_block.saturating_sub(lookahead);
+
+				// Check 1: Is it time to elect next epoch's directors?
+				if block == election_trigger && NextEpochDirectors::<T>::get().is_empty() {
+					total_weight = total_weight.saturating_add(Self::run_epoch_election(block));
+				}
+
+				// Check 2: Is current epoch ending?
+				if block >= current_epoch.end_block {
+					total_weight = total_weight.saturating_add(Self::transition_epoch(block));
+				}
+			} else {
+				// No active epoch - bootstrap first epoch
+				total_weight = total_weight.saturating_add(Self::bootstrap_first_epoch(block));
 			}
 
-			// Minimal weight for slot check only
-			T::DbWeight::get().reads(1)
+			// Also handle slot-based logic for backwards compatibility
+			let slot = block_num / BLOCKS_PER_SLOT;
+			if slot > Self::current_slot() {
+				Self::start_new_slot(slot);
+				total_weight = total_weight.saturating_add(T::DbWeight::get().reads_writes(2, 3));
+			}
+
+			total_weight
 		}
 
 		/// Block finalization hook
@@ -848,6 +924,143 @@ pub mod pallet {
 		/// Get the current slot number.
 		pub fn get_current_slot() -> u64 {
 			Self::current_slot()
+		}
+
+		// =====================================================================
+		// Epoch Management Functions
+		// =====================================================================
+
+		/// Bootstrap the first epoch when pallet initializes.
+		///
+		/// Creates an initial epoch starting at the current block.
+		fn bootstrap_first_epoch(now: BlockNumberFor<T>) -> Weight {
+			let epoch_duration = T::EpochDuration::get();
+			let end_block = now.saturating_add(epoch_duration);
+
+			// Elect initial directors
+			let directors_vec = Self::elect_directors_for_epoch(0);
+			let directors = match BoundedVec::try_from(directors_vec.clone()) {
+				Ok(bounded) => bounded,
+				Err(_) => {
+					// Failed to create bounded vec - return minimal weight
+					return T::DbWeight::get().reads(1);
+				}
+			};
+
+			let epoch = Epoch {
+				id: 0,
+				start_block: now,
+				end_block,
+				directors: directors.clone(),
+				status: EpochStatus::Active,
+			};
+
+			CurrentEpoch::<T>::put(epoch);
+
+			Self::deposit_event(Event::EpochStarted {
+				epoch_id: 0,
+				directors: directors_vec,
+				end_block,
+			});
+
+			// Weight: 1 read (Stakes iteration) + 1 write (CurrentEpoch)
+			T::DbWeight::get().reads_writes(1, 1)
+		}
+
+		/// Run election for next epoch (On-Deck notification).
+		///
+		/// Called 20 blocks before epoch transition to give directors time to prepare.
+		fn run_epoch_election(_now: BlockNumberFor<T>) -> Weight {
+			let current_epoch = match Self::current_epoch() {
+				Some(epoch) => epoch,
+				None => return T::DbWeight::get().reads(1),
+			};
+
+			let next_epoch_id = current_epoch.id.saturating_add(1);
+
+			// Elect directors for next epoch
+			let directors_vec = Self::elect_directors_for_epoch(next_epoch_id);
+			let directors = match BoundedVec::try_from(directors_vec.clone()) {
+				Ok(bounded) => bounded,
+				Err(_) => {
+					// Failed to create bounded vec - return
+					return T::DbWeight::get().reads(1);
+				}
+			};
+
+			NextEpochDirectors::<T>::put(directors);
+
+			Self::deposit_event(Event::OnDeckElection {
+				epoch_id: next_epoch_id,
+				directors: directors_vec,
+				start_block: current_epoch.end_block,
+			});
+
+			// Weight: 1 read (Stakes iteration) + 1 write (NextEpochDirectors)
+			T::DbWeight::get().reads_writes(1, 1)
+		}
+
+		/// Transition to next epoch.
+		///
+		/// Called when current epoch ends. Moves next epoch directors to active,
+		/// updates epoch status, and clears lookahead storage.
+		fn transition_epoch(now: BlockNumberFor<T>) -> Weight {
+			let mut current_epoch = match Self::current_epoch() {
+				Some(epoch) => epoch,
+				None => return T::DbWeight::get().reads(1),
+			};
+
+			// Mark current epoch as completed
+			current_epoch.status = EpochStatus::Completed;
+			Self::deposit_event(Event::EpochCompleted { epoch_id: current_epoch.id });
+
+			// Get next epoch directors
+			let next_directors = NextEpochDirectors::<T>::get();
+			if next_directors.is_empty() {
+				// No directors elected for next epoch - emergency fallback
+				// Re-elect immediately
+				let directors_vec = Self::elect_directors_for_epoch(current_epoch.id.saturating_add(1));
+				let directors = match BoundedVec::try_from(directors_vec) {
+					Ok(bounded) => bounded,
+					Err(_) => return T::DbWeight::get().reads_writes(2, 1),
+				};
+				NextEpochDirectors::<T>::put(directors.clone());
+			}
+
+			let next_directors = NextEpochDirectors::<T>::get();
+			let next_epoch_id = current_epoch.id.saturating_add(1);
+			let epoch_duration = T::EpochDuration::get();
+			let end_block = now.saturating_add(epoch_duration);
+
+			// Create new epoch
+			let new_epoch = Epoch {
+				id: next_epoch_id,
+				start_block: now,
+				end_block,
+				directors: next_directors.clone(),
+				status: EpochStatus::Active,
+			};
+
+			CurrentEpoch::<T>::put(new_epoch);
+			NextEpochDirectors::<T>::kill(); // Clear lookahead
+
+			Self::deposit_event(Event::EpochStarted {
+				epoch_id: next_epoch_id,
+				directors: next_directors.into_inner(),
+				end_block,
+			});
+
+			// Weight: 2 reads (CurrentEpoch, NextEpochDirectors) + 2 writes (CurrentEpoch, NextEpochDirectors)
+			T::DbWeight::get().reads_writes(2, 2)
+		}
+
+		/// Elect directors for a specific epoch.
+		///
+		/// Reuses the existing `elect_directors` logic but takes epoch ID instead of slot.
+		/// For now, we use epoch_id as a pseudo-slot for the VRF seed.
+		fn elect_directors_for_epoch(epoch_id: EpochId) -> Vec<T::AccountId> {
+			// Reuse slot-based election logic with epoch_id as seed
+			Self::elect_directors(epoch_id)
 		}
 	}
 }
