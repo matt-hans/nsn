@@ -43,6 +43,25 @@ pub struct P2pMetrics {
     /// Current connection limit
     pub connection_limit: IntGauge,
 
+    // GossipSub metrics
+    /// Number of topics subscribed to
+    pub gossipsub_topics_subscribed: IntGauge,
+
+    /// Total messages published
+    pub gossipsub_messages_published_total: IntCounter,
+
+    /// Total messages received
+    pub gossipsub_messages_received_total: IntCounter,
+
+    /// Total invalid messages rejected
+    pub gossipsub_invalid_messages_total: IntCounter,
+
+    /// Messages ignored from graylisted peers
+    pub gossipsub_graylisted_messages_total: IntCounter,
+
+    /// Current mesh peer count
+    pub gossipsub_mesh_peers: IntGauge,
+
     /// Prometheus registry
     registry: Arc<Registry>,
 }
@@ -102,6 +121,43 @@ impl P2pMetrics {
         )?;
         registry.register(Box::new(connection_limit.clone()))?;
 
+        // GossipSub metrics
+        let gossipsub_topics_subscribed = IntGauge::new(
+            "nsn_gossipsub_topics_subscribed",
+            "Number of GossipSub topics currently subscribed to",
+        )?;
+        registry.register(Box::new(gossipsub_topics_subscribed.clone()))?;
+
+        let gossipsub_messages_published_total = IntCounter::new(
+            "nsn_gossipsub_messages_published_total",
+            "Total number of messages published to GossipSub topics",
+        )?;
+        registry.register(Box::new(gossipsub_messages_published_total.clone()))?;
+
+        let gossipsub_messages_received_total = IntCounter::new(
+            "nsn_gossipsub_messages_received_total",
+            "Total number of messages received from GossipSub topics",
+        )?;
+        registry.register(Box::new(gossipsub_messages_received_total.clone()))?;
+
+        let gossipsub_invalid_messages_total = IntCounter::new(
+            "nsn_gossipsub_invalid_messages_total",
+            "Total number of invalid messages rejected by GossipSub",
+        )?;
+        registry.register(Box::new(gossipsub_invalid_messages_total.clone()))?;
+
+        let gossipsub_graylisted_messages_total = IntCounter::new(
+            "nsn_gossipsub_graylisted_messages_total",
+            "Total number of messages ignored from graylisted peers",
+        )?;
+        registry.register(Box::new(gossipsub_graylisted_messages_total.clone()))?;
+
+        let gossipsub_mesh_peers = IntGauge::new(
+            "nsn_gossipsub_mesh_peers",
+            "Current number of peers in GossipSub mesh",
+        )?;
+        registry.register(Box::new(gossipsub_mesh_peers.clone()))?;
+
         Ok(Self {
             active_connections,
             connected_peers,
@@ -111,6 +167,12 @@ impl P2pMetrics {
             connections_failed_total,
             connections_closed_total,
             connection_limit,
+            gossipsub_topics_subscribed,
+            gossipsub_messages_published_total,
+            gossipsub_messages_received_total,
+            gossipsub_invalid_messages_total,
+            gossipsub_graylisted_messages_total,
+            gossipsub_mesh_peers,
             registry: Arc::new(registry),
         })
     }

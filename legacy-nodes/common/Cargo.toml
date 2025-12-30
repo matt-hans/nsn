@@ -6,6 +6,10 @@ authors.workspace = true
 license.workspace = true
 description = "Shared libraries for ICN off-chain nodes (P2P, chain client, types)"
 
+[features]
+# Enable test helper methods for integration tests
+test-helpers = []
+
 [dependencies]
 tokio.workspace = true
 futures.workspace = true

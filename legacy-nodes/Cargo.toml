@@ -5,7 +5,6 @@ members = [
     "director",
     "validator",
     "super-node",
-    "relay",
 ]
 
 [workspace.package]

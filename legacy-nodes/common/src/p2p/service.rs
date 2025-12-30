@@ -1,15 +1,19 @@
 //! P2P network service
 //!
-//! Main P2P service that manages libp2p Swarm, connection lifecycle,
-//! and event handling with metrics and graceful shutdown support.
+//! Main P2P service that manages libp2p Swarm, GossipSub messaging,
+//! connection lifecycle, reputation oracle, and event handling.
 
-use super::behaviour::IcnBehaviour;
+use super::behaviour::NsnBehaviour;
 use super::config::P2pConfig;
 use super::connection_manager::ConnectionManager;
 use super::event_handler;
+use super::gossipsub::{create_gossipsub_behaviour, subscribe_to_all_topics, GossipsubError};
 use super::identity::{generate_keypair, load_keypair, save_keypair, IdentityError};
 use super::metrics::P2pMetrics;
+use super::reputation_oracle::{OracleError, ReputationOracle};
+use super::topics::TopicCategory;
 use futures::StreamExt;
+use libp2p::gossipsub::MessageId;
 use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder};
 use std::sync::Arc;
 use thiserror::Error;
@@ -32,6 +36,12 @@ pub enum ServiceError {
 
     #[error("Event handling error: {0}")]
     Event(#[from] event_handler::EventError),
+
+    #[error("GossipSub error: {0}")]
+    Gossipsub(#[from] GossipsubError),
+
+    #[error("Oracle error: {0}")]
+    Oracle(#[from] OracleError),
 }
 
 /// Commands that can be sent to the P2P service
@@ -46,6 +56,19 @@ pub enum ServiceCommand {
     /// Get connection count
     GetConnectionCount(tokio::sync::oneshot::Sender<usize>),
 
+    /// Subscribe to a topic
+    Subscribe(
+        TopicCategory,
+        tokio::sync::oneshot::Sender<Result<(), GossipsubError>>,
+    ),
+
+    /// Publish message to a topic
+    Publish(
+        TopicCategory,
+        Vec<u8>,
+        tokio::sync::oneshot::Sender<Result<MessageId, GossipsubError>>,
+    ),
+
     /// Shutdown the service
     Shutdown,
 }
@@ -53,7 +76,7 @@ pub enum ServiceCommand {
 /// P2P network service
 pub struct P2pService {
     /// libp2p Swarm
-    swarm: Swarm<IcnBehaviour>,
+    swarm: Swarm<NsnBehaviour>,
 
     /// Configuration
     config: P2pConfig,
@@ -73,20 +96,26 @@ pub struct P2pService {
     /// Connection manager
     connection_manager: ConnectionManager,
 
+    /// Reputation oracle for on-chain reputation scores
+    #[allow(dead_code)] // Stored for future use and passed to GossipSub during construction
+    reputation_oracle: Arc<ReputationOracle>,
+
     /// Shutdown flag
     shutdown: bool,
 }
 
 impl P2pService {
-    /// Create new P2P service
+    /// Create new P2P service with GossipSub and reputation oracle
     ///
     /// # Arguments
     /// * `config` - P2P configuration
+    /// * `rpc_url` - NSN Chain RPC URL for reputation oracle
     ///
     /// # Returns
     /// Tuple of (P2pService, command sender)
     pub async fn new(
         config: P2pConfig,
+        rpc_url: String,
     ) -> Result<(Self, mpsc::UnboundedSender<ServiceCommand>), ServiceError> {
         // Load or generate keypair
         let keypair = if let Some(path) = &config.keypair_path {
@@ -111,11 +140,30 @@ impl P2pService {
         let metrics = Arc::new(P2pMetrics::new().expect("Failed to create metrics"));
         metrics.connection_limit.set(config.max_connections as i64);
 
+        // Create reputation oracle
+        let reputation_oracle = Arc::new(ReputationOracle::new(rpc_url));
+
+        // Spawn reputation oracle sync loop
+        let oracle_clone = reputation_oracle.clone();
+        tokio::spawn(async move {
+            oracle_clone.sync_loop().await;
+        });
+
+        // Create GossipSub behavior
+        let mut gossipsub = create_gossipsub_behaviour(&keypair, reputation_oracle.clone())?;
+
+        // Subscribe to all NSN topics
+        let sub_count = subscribe_to_all_topics(&mut gossipsub)?;
+        info!("Subscribed to {} topics", sub_count);
+
+        // Create NSN behaviour
+        let behaviour = NsnBehaviour::new(gossipsub);
+
         // Build swarm with QUIC transport
         let swarm = SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
             .with_quic()
-            .with_behaviour(|_| IcnBehaviour::new())
+            .with_behaviour(|_| behaviour)
             .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
             .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
             .build();
@@ -134,6 +182,7 @@ impl P2pService {
                 command_rx,
                 command_tx: command_tx.clone(),
                 connection_manager,
+                reputation_oracle,
                 shutdown: false,
             },
             command_tx,
@@ -227,6 +276,28 @@ impl P2pService {
                 let _ = tx.send(count);
             }
 
+            ServiceCommand::Subscribe(category, tx) => {
+                let topic = category.to_topic();
+                let result = self
+                    .swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .subscribe(&topic)
+                    .map_err(|e| GossipsubError::SubscriptionFailed(format!("{}: {}", category, e)))
+                    .map(|_| ());
+
+                let _ = tx.send(result);
+            }
+
+            ServiceCommand::Publish(category, data, tx) => {
+                let result = super::gossipsub::publish_message(
+                    &mut self.swarm.behaviour_mut().gossipsub,
+                    &category,
+                    data,
+                );
+                let _ = tx.send(result);
+            }
+
             ServiceCommand::Shutdown => {
                 info!("Received shutdown command");
                 self.shutdown = true;
@@ -256,11 +327,14 @@ impl P2pService {
 mod tests {
     use super::*;
 
+    /// Default RPC URL for tests (will fail to connect but that's fine for P2P tests)
+    const TEST_RPC_URL: &str = "ws://localhost:9944";
+
     #[tokio::test]
     async fn test_service_creation() {
         let config = P2pConfig::default();
 
-        let (service, _cmd_tx) = P2pService::new(config)
+        let (service, _cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -275,7 +349,7 @@ mod tests {
     async fn test_service_local_peer_id() {
         let config = P2pConfig::default();
 
-        let (service, _cmd_tx) = P2pService::new(config)
+        let (service, _cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -287,7 +361,7 @@ mod tests {
     async fn test_service_metrics() {
         let config = P2pConfig::default();
 
-        let (service, _cmd_tx) = P2pService::new(config)
+        let (service, _cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -301,7 +375,7 @@ mod tests {
             listen_port: 9100, // Use different port for each test
             ..Default::default()
         };
-        let (mut service, cmd_tx) = P2pService::new(config)
+        let (mut service, cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -338,7 +412,7 @@ mod tests {
             listen_port: 9101, // Use different port for each test
             ..Default::default()
         };
-        let (mut service, cmd_tx) = P2pService::new(config)
+        let (mut service, cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -370,7 +444,7 @@ mod tests {
     #[tokio::test]
     async fn test_service_shutdown_command() {
         let config = P2pConfig::default();
-        let (mut service, cmd_tx) = P2pService::new(config)
+        let (mut service, cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -399,7 +473,7 @@ mod tests {
             listen_port: 9102, // Use different port
             ..Default::default()
         };
-        let (mut service, _cmd_tx) = P2pService::new(config)
+        let (mut service, _cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -423,7 +497,7 @@ mod tests {
             listen_port: 9103, // Use different port
             ..Default::default()
         };
-        let (mut service, cmd_tx) = P2pService::new(config)
+        let (mut service, cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 
@@ -477,7 +551,7 @@ mod tests {
         };
 
         // First creation should generate and save keypair
-        let (service1, _) = P2pService::new(config.clone())
+        let (service1, _) = P2pService::new(config.clone(), TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service with new keypair");
 
@@ -488,7 +562,7 @@ mod tests {
         assert!(keypair_path.exists(), "Keypair should be saved to file");
 
         // Second creation should load existing keypair
-        let (service2, _) = P2pService::new(config)
+        let (service2, _) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service with existing keypair");
 
@@ -508,10 +582,10 @@ mod tests {
             ..Default::default()
         };
 
-        let (service1, _) = P2pService::new(config.clone())
+        let (service1, _) = P2pService::new(config.clone(), TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service 1");
-        let (service2, _) = P2pService::new(config)
+        let (service2, _) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service 2");
 
@@ -528,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn test_connection_metrics_updated() {
         let config = P2pConfig::default();
-        let (service, _cmd_tx) = P2pService::new(config)
+        let (service, _cmd_tx) = P2pService::new(config, TEST_RPC_URL.to_string())
             .await
             .expect("Failed to create service");
 

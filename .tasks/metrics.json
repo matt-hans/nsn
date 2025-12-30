@@ -1,8 +1,8 @@
 {
   "initialized_at": "2025-12-24T00:00:00Z",
-  "tasks_completed": 18,
-  "total_tokens_used": 218500,
-  "average_tokens_per_task": 12139,
+  "tasks_completed": 20,
+  "total_tokens_used": 232000,
+  "average_tokens_per_task": 11600,
   "token_estimate_accuracy": 0.89,
   "completions": [
     {
@@ -157,13 +157,31 @@
       "variance": 500,
       "accuracy": 0.96,
       "completed_at": "2025-12-29T13:37:01Z"
+    },
+    {
+      "task_id": "T021",
+      "title": "libp2p Core Setup and Transport Layer",
+      "estimated_tokens": 10000,
+      "actual_tokens": 11500,
+      "variance": 1500,
+      "accuracy": 0.85,
+      "completed_at": "2025-12-29T13:01:08Z"
+    },
+    {
+      "task_id": "T022",
+      "title": "GossipSub Configuration with Reputation Integration",
+      "estimated_tokens": 12000,
+      "actual_tokens": 13500,
+      "variance": 1500,
+      "accuracy": 0.89,
+      "completed_at": "2025-12-30T06:43:26Z"
     }
   ],
   "phase_progress": {
     "phase_a_icn_solo": {
       "total_tasks": 33,
-      "completed": 16,
-      "percentage": 48.5
+      "completed": 18,
+      "percentage": 54.5
     },
     "phase_b_icn_mainnet": {
       "total_tasks": 4,

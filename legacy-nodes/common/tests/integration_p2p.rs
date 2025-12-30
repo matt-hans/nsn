@@ -4,10 +4,13 @@
 //! and P2P protocol behavior.
 
 use icn_common::p2p::{P2pConfig, P2pService, ServiceCommand};
-use libp2p::{Multiaddr, PeerId};
+use libp2p::Multiaddr;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
+
+/// Default RPC URL for tests (will fail to connect, but that's fine for P2P tests)
+const TEST_RPC_URL: &str = "ws://localhost:9944";
 
 /// Test that two nodes can connect via QUIC and maintain connection
 #[tokio::test]
@@ -22,7 +25,7 @@ async fn test_two_nodes_connect_via_quic() {
         ..Default::default()
     };
 
-    let (mut service_a, cmd_tx_a) = P2pService::new(config_a)
+    let (mut service_a, cmd_tx_a) = P2pService::new(config_a, TEST_RPC_URL.to_string())
         .await
         .expect("Failed to create service A");
 
@@ -35,7 +38,7 @@ async fn test_two_nodes_connect_via_quic() {
         ..Default::default()
     };
 
-    let (mut service_b, cmd_tx_b) = P2pService::new(config_b)
+    let (mut service_b, cmd_tx_b) = P2pService::new(config_b, TEST_RPC_URL.to_string())
         .await
         .expect("Failed to create service B");
 
@@ -131,11 +134,11 @@ async fn test_connection_timeout_after_inactivity() {
         ..Default::default()
     };
 
-    let (mut service_a, cmd_tx_a) = P2pService::new(config_a)
+    let (mut service_a, cmd_tx_a) = P2pService::new(config_a, TEST_RPC_URL.to_string())
         .await
         .expect("Failed to create service A");
 
-    let peer_id_a = service_a.local_peer_id();
+    let _peer_id_a = service_a.local_peer_id();
 
     let config_b = P2pConfig {
         listen_port: 9004,
@@ -144,7 +147,7 @@ async fn test_connection_timeout_after_inactivity() {
         ..Default::default()
     };
 
-    let (mut service_b, cmd_tx_b) = P2pService::new(config_b)
+    let (mut service_b, cmd_tx_b) = P2pService::new(config_b, TEST_RPC_URL.to_string())
         .await
         .expect("Failed to create service B");
 
@@ -224,15 +227,19 @@ async fn test_multiple_nodes_mesh() {
         keypair_path: None,
         ..Default::default()
     };
-    let (mut service_a, cmd_tx_a) = P2pService::new(config_a).await.unwrap();
-    let peer_id_a = service_a.local_peer_id();
+    let (mut service_a, cmd_tx_a) = P2pService::new(config_a, TEST_RPC_URL.to_string())
+        .await
+        .unwrap();
+    let _peer_id_a = service_a.local_peer_id();
 
     let config_b = P2pConfig {
         listen_port: 9006,
         keypair_path: None,
         ..Default::default()
     };
-    let (mut service_b, cmd_tx_b) = P2pService::new(config_b).await.unwrap();
+    let (mut service_b, cmd_tx_b) = P2pService::new(config_b, TEST_RPC_URL.to_string())
+        .await
+        .unwrap();
     let peer_id_b = service_b.local_peer_id();
 
     let config_c = P2pConfig {
@@ -240,7 +247,9 @@ async fn test_multiple_nodes_mesh() {
         keypair_path: None,
         ..Default::default()
     };
-    let (mut service_c, cmd_tx_c) = P2pService::new(config_c).await.unwrap();
+    let (mut service_c, cmd_tx_c) = P2pService::new(config_c, TEST_RPC_URL.to_string())
+        .await
+        .unwrap();
     let peer_id_c = service_c.local_peer_id();
 
     // Start all services
@@ -291,15 +300,19 @@ async fn test_graceful_shutdown_closes_connections() {
         keypair_path: None,
         ..Default::default()
     };
-    let (mut service_a, cmd_tx_a) = P2pService::new(config_a).await.unwrap();
-    let peer_id_a = service_a.local_peer_id();
+    let (mut service_a, cmd_tx_a) = P2pService::new(config_a, TEST_RPC_URL.to_string())
+        .await
+        .unwrap();
+    let _peer_id_a = service_a.local_peer_id();
 
     let config_b = P2pConfig {
         listen_port: 9009,
         keypair_path: None,
         ..Default::default()
     };
-    let (mut service_b, cmd_tx_b) = P2pService::new(config_b).await.unwrap();
+    let (mut service_b, cmd_tx_b) = P2pService::new(config_b, TEST_RPC_URL.to_string())
+        .await
+        .unwrap();
     let peer_id_b = service_b.local_peer_id();
 
     let handle_a = tokio::spawn(async move { service_a.start().await });

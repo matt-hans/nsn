@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_global_connection_limit_enforced() {
-        use crate::p2p::behaviour::IcnBehaviour;
+        use crate::p2p::behaviour::NsnBehaviour;
         use libp2p::{identity, SwarmBuilder};
         use std::num::NonZeroU32;
 
@@ -205,10 +205,10 @@ mod tests {
 
         // Create a test swarm
         let keypair = identity::Keypair::generate_ed25519();
-        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+        let mut swarm = SwarmBuilder::with_existing_identity(keypair.clone())
             .with_tokio()
             .with_quic()
-            .with_behaviour(|_| IcnBehaviour::new())
+            .with_behaviour(|_| NsnBehaviour::new_for_testing(&keypair))
             .unwrap()
             .build();
 
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_per_peer_connection_limit_enforced() {
-        use crate::p2p::behaviour::IcnBehaviour;
+        use crate::p2p::behaviour::NsnBehaviour;
         use libp2p::{identity, SwarmBuilder};
         use std::num::NonZeroU32;
 
@@ -275,10 +275,10 @@ mod tests {
         let mut manager = ConnectionManager::new(config.clone(), metrics);
 
         let keypair = identity::Keypair::generate_ed25519();
-        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+        let mut swarm = SwarmBuilder::with_existing_identity(keypair.clone())
             .with_tokio()
             .with_quic()
-            .with_behaviour(|_| IcnBehaviour::new())
+            .with_behaviour(|_| NsnBehaviour::new_for_testing(&keypair))
             .unwrap()
             .build();
 

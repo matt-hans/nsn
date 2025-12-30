@@ -1,35 +1,46 @@
 //! P2P network behaviour
 //!
-//! Defines the libp2p NetworkBehaviour for ICN nodes with
-//! connection limits and basic event handling.
+//! Defines the libp2p NetworkBehaviour for NSN nodes with
+//! GossipSub messaging and connection management.
 
-use libp2p::swarm::{dummy, NetworkBehaviour};
+use libp2p::gossipsub;
+use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
 use std::collections::HashMap;
 
-/// P2P network behaviour
+/// P2P network behaviour with GossipSub
 ///
-/// This is a minimal behaviour using libp2p's dummy behaviour as a placeholder.
-/// Additional protocols like GossipSub, Kademlia will be added in future tasks.
+/// Combines GossipSub for pub/sub messaging with future protocols
+/// (Kademlia DHT, Request-Response, etc.)
 #[derive(NetworkBehaviour)]
-pub struct IcnBehaviour {
-    /// Dummy sub-behaviour (required for NetworkBehaviour derive)
-    /// This will be replaced with actual behaviours in future tasks
-    dummy: dummy::Behaviour,
+pub struct NsnBehaviour {
+    /// GossipSub pub/sub messaging
+    pub gossipsub: gossipsub::Behaviour,
 }
 
-impl IcnBehaviour {
-    /// Create new ICN behaviour
-    pub fn new() -> Self {
-        Self {
-            dummy: dummy::Behaviour,
-        }
+impl NsnBehaviour {
+    /// Create new NSN behaviour with GossipSub
+    ///
+    /// # Arguments
+    /// * `gossipsub` - Configured GossipSub behavior
+    pub fn new(gossipsub: gossipsub::Behaviour) -> Self {
+        Self { gossipsub }
     }
-}
 
-impl Default for IcnBehaviour {
-    fn default() -> Self {
-        Self::new()
+    /// Create a simple behaviour for testing (uses default GossipSub config)
+    #[cfg(test)]
+    pub fn new_for_testing(keypair: &libp2p::identity::Keypair) -> Self {
+        use libp2p::gossipsub::{ConfigBuilder, MessageAuthenticity};
+
+        let config = ConfigBuilder::default()
+            .build()
+            .expect("Default config should be valid");
+
+        let gossipsub =
+            gossipsub::Behaviour::new(MessageAuthenticity::Signed(keypair.clone()), config)
+                .expect("GossipSub creation should succeed");
+
+        Self { gossipsub }
     }
 }
 
@@ -81,12 +92,6 @@ impl ConnectionTracker {
 mod tests {
     use super::*;
     use libp2p::identity::Keypair;
-
-    #[test]
-    fn test_behaviour_creation() {
-        let _behaviour = IcnBehaviour::new();
-        // Just verify it compiles and constructs
-    }
 
     #[test]
     fn test_connection_tracker() {
