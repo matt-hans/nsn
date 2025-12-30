@@ -15,7 +15,7 @@
 //! cargo build --release --features runtime-benchmarks
 //!
 //! # Run benchmarks for this pallet
-//! ./target/release/icn-node benchmark pallet \
+//! ./target/release/nsn-node benchmark pallet \
 //!   --chain dev \
 //!   --pallet pallet_nsn_reputation \
 //!   --extrinsics '*' \

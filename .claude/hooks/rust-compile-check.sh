@@ -56,12 +56,12 @@ if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
     cd "$CLAUDE_PROJECT_DIR"
 fi
 
-# Find the nearest Cargo.toml (could be in icn-chain subdirectory)
+# Find the nearest Cargo.toml (could be in nsn-chain subdirectory)
 cargo_dir=""
 if [[ -f "Cargo.toml" ]]; then
     cargo_dir="."
-elif [[ -f "icn-chain/Cargo.toml" ]]; then
-    cargo_dir="icn-chain"
+elif [[ -f "nsn-chain/Cargo.toml" ]]; then
+    cargo_dir="nsn-chain"
 else
     # Search for Cargo.toml in changed file paths
     for file in $CLAUDE_FILE_PATHS; do

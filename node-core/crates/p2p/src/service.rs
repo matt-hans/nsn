@@ -13,8 +13,13 @@ use super::metrics::P2pMetrics;
 use super::reputation_oracle::{OracleError, ReputationOracle};
 use super::topics::TopicCategory;
 use futures::StreamExt;
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Request, Response, Server};
 use libp2p::gossipsub::MessageId;
 use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder};
+use prometheus::{Encoder, TextEncoder};
+use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -139,6 +144,15 @@ impl P2pService {
         // Create metrics
         let metrics = Arc::new(P2pMetrics::new().expect("Failed to create metrics"));
         metrics.connection_limit.set(config.max_connections as f64);
+
+        // Spawn Prometheus metrics server
+        let metrics_registry = metrics.registry.clone();
+        let metrics_addr: SocketAddr = ([0, 0, 0, 0], config.metrics_port).into();
+        tokio::spawn(async move {
+            if let Err(err) = serve_metrics(metrics_registry, metrics_addr).await {
+                error!("Metrics server failed: {}", err);
+            }
+        });
 
         // Create reputation oracle
         let reputation_oracle = Arc::new(ReputationOracle::new(rpc_url));
@@ -321,6 +335,37 @@ impl P2pService {
 
         info!("All connections closed");
     }
+}
+
+async fn serve_metrics(
+    registry: prometheus::Registry,
+    addr: SocketAddr,
+) -> Result<(), hyper::Error> {
+    let make_svc = make_service_fn(move |_| {
+        let registry = registry.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |_req: Request<Body>| {
+                let registry = registry.clone();
+                async move {
+                    let metric_families = registry.gather();
+                    let encoder = TextEncoder::new();
+                    let mut buffer = Vec::new();
+                    encoder.encode(&metric_families, &mut buffer).unwrap_or_default();
+
+                    Ok::<_, Infallible>(
+                        Response::builder()
+                            .status(200)
+                            .header(hyper::header::CONTENT_TYPE, encoder.format_type())
+                            .body(Body::from(buffer))
+                            .unwrap_or_else(|_| Response::new(Body::from("metrics unavailable"))),
+                    )
+                }
+            }))
+        }
+    });
+
+    info!("Prometheus metrics listening on http://{}", addr);
+    Server::bind(&addr).serve(make_svc).await
 }
 
 #[cfg(test)]

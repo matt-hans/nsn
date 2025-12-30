@@ -136,6 +136,5 @@ MIT
 
 ## Related
 
-- [ICN Chain](../icn-chain/) - Polkadot SDK runtime
-- [Director Node](../icn-nodes/director/) - Video generation
-- [Regional Relay](../icn-nodes/relay/) - Content distribution
+- [NSN Chain](../nsn-chain/) - Polkadot SDK runtime
+- [Node Core](../node-core/) - Unified off-chain node implementation

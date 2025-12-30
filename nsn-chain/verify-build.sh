@@ -65,22 +65,22 @@ fi
 
 # Verify binary exists
 echo ""
-echo "7. Verifying icn-node binary..."
-if [ -f "./target/release/icn-node" ]; then
-    echo "✅ icn-node binary exists"
-    ls -lh ./target/release/icn-node
+echo "7. Verifying nsn-node binary..."
+if [ -f "./target/release/nsn-node" ]; then
+    echo "✅ nsn-node binary exists"
+    ls -lh ./target/release/nsn-node
 else
-    echo "❌ icn-node binary not found"
+    echo "❌ nsn-node binary not found"
     exit 1
 fi
 
 # Run binary --version
 echo ""
 echo "8. Testing binary execution..."
-if ./target/release/icn-node --version; then
-    echo "✅ icn-node binary executes successfully"
+if ./target/release/nsn-node --version; then
+    echo "✅ nsn-node binary executes successfully"
 else
-    echo "❌ icn-node binary failed to execute"
+    echo "❌ nsn-node binary failed to execute"
     exit 1
 fi
 
@@ -91,11 +91,11 @@ echo "✅ ALL CHECKS PASSED"
 echo "========================================="
 echo ""
 echo "Next steps:"
-echo "  1. Run dev node:    ./target/release/icn-node --dev"
+echo "  1. Run dev node:    ./target/release/nsn-node --dev"
 echo "  2. Run tests:       cargo test --all"
 echo "  3. Run clippy:      cargo clippy --all-targets --all-features"
 echo ""
 echo "Build artifacts:"
-echo "  Binary:     ./target/release/icn-node"
-echo "  WASM:       ./target/release/wbuild/icn-runtime/icn_runtime.wasm"
+echo "  Binary:     ./target/release/nsn-node"
+echo "  WASM:       ./target/release/wbuild/nsn-runtime/nsn_runtime.wasm"
 echo ""

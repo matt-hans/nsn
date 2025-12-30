@@ -28,6 +28,8 @@ use sp_runtime::RuntimeDebug;
 /// - SeederChunkServed: +1 seeder
 /// - PinningAuditPassed: +10 seeder
 /// - PinningAuditFailed: -50 seeder
+/// - TaskCompleted: +5 seeder
+/// - TaskFailed: -10 seeder
 #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub enum ReputationEventType {
 	/// Director slot successfully completed
@@ -46,6 +48,10 @@ pub enum ReputationEventType {
 	PinningAuditPassed,
 	/// Pinning audit failed (shard missing/corrupt)
 	PinningAuditFailed,
+	/// Task completed successfully (Lane 1 compute)
+	TaskCompleted,
+	/// Task failed or abandoned (Lane 1 compute)
+	TaskFailed,
 }
 
 impl ReputationEventType {
@@ -66,6 +72,8 @@ impl ReputationEventType {
 			ReputationEventType::SeederChunkServed => 1,
 			ReputationEventType::PinningAuditPassed => 10,
 			ReputationEventType::PinningAuditFailed => -50,
+			ReputationEventType::TaskCompleted => 5,
+			ReputationEventType::TaskFailed => -10,
 		}
 	}
 
@@ -86,7 +94,11 @@ impl ReputationEventType {
 	pub fn is_seeder_event(&self) -> bool {
 		matches!(
 			self,
-			Self::SeederChunkServed | Self::PinningAuditPassed | Self::PinningAuditFailed
+			Self::SeederChunkServed
+				| Self::PinningAuditPassed
+				| Self::PinningAuditFailed
+				| Self::TaskCompleted
+				| Self::TaskFailed
 		)
 	}
 }
@@ -338,6 +350,8 @@ mod tests {
 		assert_eq!(ReputationEventType::SeederChunkServed.delta(), 1);
 		assert_eq!(ReputationEventType::PinningAuditPassed.delta(), 10);
 		assert_eq!(ReputationEventType::PinningAuditFailed.delta(), -50);
+		assert_eq!(ReputationEventType::TaskCompleted.delta(), 5);
+		assert_eq!(ReputationEventType::TaskFailed.delta(), -10);
 	}
 
 	#[test]

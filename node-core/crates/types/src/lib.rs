@@ -5,9 +5,9 @@
 use codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
-/// Node operational mode
+/// Node capability mode (static role configuration)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
-pub enum NodeMode {
+pub enum NodeCapability {
     /// Super-Node: Full capabilities (Director + Validator + Storage)
     SuperNode,
     /// Director-only: Generation capabilities
@@ -16,6 +16,19 @@ pub enum NodeMode {
     ValidatorOnly,
     /// Storage-only: Pinning and distribution
     StorageOnly,
+}
+
+/// Lane operational mode synced from chain
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+pub enum LaneMode {
+    /// Ready for Lane 1 tasks (default reserve mode)
+    Lane1Active,
+    /// Draining Lane 1 tasks ahead of Lane 0 epoch
+    Draining { epoch_start: u32 },
+    /// Active Lane 0 director for current epoch
+    Lane0Active { epoch_end: u32 },
+    /// Offline or maintenance
+    Offline,
 }
 
 /// Runtime node state

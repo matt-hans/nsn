@@ -8,7 +8,9 @@ use sp_core::crypto::AccountId32;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use subxt::{OnlineClient, PolkadotConfig};
+use subxt::{dynamic::storage, OnlineClient, PolkadotConfig};
+use subxt::ext::scale_value;
+use serde::Deserialize;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
@@ -56,6 +58,27 @@ pub struct ReputationOracle {
 
     /// Whether the oracle has successfully connected to the chain
     connected: Arc<RwLock<bool>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReputationScore {
+    director_score: u64,
+    validator_score: u64,
+    seeder_score: u64,
+    last_activity: u64,
+}
+
+impl ReputationScore {
+    fn total(&self) -> u64 {
+        let director_weighted = self.director_score.saturating_mul(50);
+        let validator_weighted = self.validator_score.saturating_mul(30);
+        let seeder_weighted = self.seeder_score.saturating_mul(20);
+
+        director_weighted
+            .saturating_add(validator_weighted)
+            .saturating_add(seeder_weighted)
+            .saturating_div(100)
+    }
 }
 
 impl ReputationOracle {
@@ -180,38 +203,35 @@ impl ReputationOracle {
     /// Fetch all reputation scores from pallet-nsn-reputation
     async fn fetch_all_reputations(&self) -> Result<(), OracleError> {
         // Create client for this fetch
-        let _client = OnlineClient::<PolkadotConfig>::from_url(&self.rpc_url).await?;
+        let client = OnlineClient::<PolkadotConfig>::from_url(&self.rpc_url).await?;
 
         debug!("Fetching reputation scores from chain...");
-
-        // Query all reputation scores
-        // Note: This is a simplified implementation. In production, we'd use actual subxt metadata.
-        // For now, we'll use a placeholder that returns empty results (test mode).
-
-        // TODO: Replace with actual subxt storage query when pallet-nsn-reputation metadata is available
-        // Example:
-        // let storage_query = nsn_reputation::storage().reputation_scores_root();
-        // let mut iter = client.storage().at_latest().await?.iter(storage_query).await?;
 
         let mut new_cache = HashMap::new();
         let mut synced_count = 0;
 
-        // Placeholder: In real implementation, iterate over storage:
-        // while let Some(Ok((key, value))) = iter.next().await {
-        //     let account = key.0;
-        //     let score = value.total(); // Weighted score from ReputationScore struct
-        //
-        //     if let Some(peer_id) = self.account_to_peer(&account).await {
-        //         new_cache.insert(peer_id, score);
-        //         synced_count += 1;
-        //     }
-        // }
+        let storage_query = storage("NsnReputation", "ReputationScores", vec![]);
+        let mut iter = client.storage().at_latest().await?.iter(storage_query).await?;
 
-        // For now, just preserve existing cache and log that we "synced"
-        let existing_cache = self.cache.read().await;
-        for (peer_id, score) in existing_cache.iter() {
-            new_cache.insert(*peer_id, *score);
-            synced_count += 1;
+        while let Some(result) = iter.next().await {
+            let key_value = result.map_err(|e| OracleError::StorageQueryFailed(e.to_string()))?;
+            let account_value = key_value
+                .keys
+                .get(0)
+                .ok_or_else(|| OracleError::StorageQueryFailed("Missing account key".into()))?;
+            let account: AccountId32 = scale_value::serde::from_value(account_value.clone())
+                .map_err(|e| OracleError::StorageQueryFailed(format!("Key decode failed: {e}")))?;
+            let value = key_value
+                .value
+                .to_value()
+                .map_err(|e| OracleError::StorageQueryFailed(format!("Value decode failed: {e}")))?;
+            let score: ReputationScore = scale_value::serde::from_value(value)
+                .map_err(|e| OracleError::StorageQueryFailed(format!("Score decode failed: {e}")))?;
+
+            if let Some(peer_id) = self.account_to_peer(&account).await {
+                new_cache.insert(peer_id, score.total());
+                synced_count += 1;
+            }
         }
 
         *self.cache.write().await = new_cache;

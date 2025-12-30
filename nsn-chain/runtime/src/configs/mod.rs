@@ -52,7 +52,7 @@ use polkadot_runtime_common::{
 	xcm_sender::NoPriceForMessageDelivery, BlockHashCount, SlowAdjustingFeeUpdate,
 };
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
-use sp_runtime::Perbill;
+use sp_runtime::{traits::AccountIdConversion, Perbill};
 use sp_version::RuntimeVersion;
 use xcm::latest::prelude::BodyId;
 
@@ -60,7 +60,7 @@ use xcm::latest::prelude::BodyId;
 use super::{
 	weights::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight},
 	AccountId, Aura, Balance, Balances, Block, BlockNumber, CollatorSelection, ConsensusHook, Hash,
-	MessageQueue, Nonce, PalletInfo, ParachainSystem, Runtime, RuntimeCall, RuntimeEvent,
+	MessageQueue, Nonce, PalletInfo, ParachainSystem, RandomnessCollectiveFlip, Runtime, RuntimeCall, RuntimeEvent,
 	RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask, Session, SessionKeys,
 	System, WeightToFee, XcmpQueue, AVERAGE_ON_INITIALIZE_RATIO, EXISTENTIAL_DEPOSIT, HOURS,
 	MAXIMUM_BLOCK_WEIGHT, MICRO_UNIT, NORMAL_DISPATCH_RATIO, SLOT_DURATION, UNIT, VERSION,
@@ -316,7 +316,7 @@ impl pallet_collator_selection::Config for Runtime {
 	type WeightInfo = ();
 }
 
-// ICN Custom Pallet Configurations
+// NSN Custom Pallet Configurations
 
 parameter_types! {
 	// ICN Stake parameters (from PRD)
@@ -333,6 +333,18 @@ parameter_types! {
 }
 
 parameter_types! {
+	// NSN Director parameters (epoch-based election)
+	pub const ChallengeBond: Balance = 25 * UNIT;
+	pub const DirectorSlashAmount: Balance = 100 * UNIT;
+	pub const ChallengerReward: Balance = 10 * UNIT;
+	pub const MaxDirectorsPerSlot: u32 = 5;
+	pub const MaxPendingSlots: u32 = 100;
+	pub const EpochDuration: BlockNumber = 600; // 1 hour at 6s/block
+	pub const EpochLookahead: BlockNumber = 20; // 2 minutes at 6s/block
+	pub const MaxDirectorsPerEpoch: u32 = 5;
+}
+
+parameter_types! {
 	// ICN Reputation parameters (from PRD)
 	pub const ReputationMaxEventsPerBlock: u32 = 50;
 	pub const ReputationDefaultRetentionPeriod: BlockNumber = 2_592_000;
@@ -345,9 +357,41 @@ parameter_types! {
 parameter_types! {
 	// Task Market parameters (Lane 1 compute marketplace)
 	pub const TaskMarketMaxPendingTasks: u32 = 1_000;
+	pub const TaskMarketMaxAssignedLane1Tasks: u32 = 1_000;
+	pub const TaskMarketMaxAssignmentCandidates: u32 = 100;
+	pub const TaskMarketMaxExpiredPerBlock: u32 = 100;
+	pub const TaskMarketMaxPreemptionsPerBlock: u32 = 10;
 	pub const TaskMarketMaxModelIdLen: u32 = 64;
 	pub const TaskMarketMaxCidLen: u32 = 128;
 	pub const TaskMarketMinEscrow: Balance = UNIT / 10; // 0.1 NSN minimum
+	pub const TaskMarketTaskAbandonmentSlash: Balance = 5 * UNIT;
+}
+
+parameter_types! {
+	// BFT parameters
+	pub const BftDefaultRetentionPeriod: BlockNumber = 2_592_000; // 6 months at 6s/block
+}
+
+parameter_types! {
+	// Storage parameters
+	pub const StorageAuditSlashAmount: Balance = 10 * UNIT;
+	pub const StorageMaxShardsPerDeal: u32 = 20;
+	pub const StorageMaxPinnersPerShard: u32 = 10;
+	pub const StorageMaxActiveDeals: u32 = 100;
+	pub const StorageMaxPendingAudits: u32 = 100;
+}
+
+parameter_types! {
+	// Treasury parameters
+	pub const TreasuryPalletId: PalletId = PalletId(*b"nsn/trea");
+	pub const TreasuryDistributionFrequency: BlockNumber = 14_400; // ~1 day at 6s/block
+}
+
+pub struct TreasuryAccount;
+impl frame_support::traits::Get<AccountId> for TreasuryAccount {
+	fn get() -> AccountId {
+		TreasuryPalletId::get().into_account_truncating()
+	}
 }
 
 parameter_types! {
@@ -385,20 +429,135 @@ impl pallet_nsn_reputation::Config for Runtime {
 	type WeightInfo = pallet_nsn_reputation::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_nsn_director::Config for Runtime {}
+impl pallet_nsn_task_market::LaneNodeProvider<AccountId, Balance> for pallet_nsn_stake::Pallet<Runtime> {
+	fn eligible_nodes(
+		lane: pallet_nsn_task_market::TaskLane,
+		max: u32,
+	) -> Vec<(AccountId, Balance)> {
+		use pallet_nsn_stake::{NodeMode, NodeRole, NodeModes, Stakes};
+		use sp_runtime::traits::Zero;
 
-impl pallet_nsn_bft::Config for Runtime {}
+		let limit = max as usize;
+		if limit == 0 {
+			return Vec::new();
+		}
 
-impl pallet_nsn_storage::Config for Runtime {}
+		Stakes::<Runtime>::iter()
+			.filter(|(_, stake)| !stake.amount.is_zero())
+			.filter(|(account, stake)| {
+				let mode = NodeModes::<Runtime>::get(account);
+				match lane {
+					pallet_nsn_task_market::TaskLane::Lane0 => {
+						matches!(mode, NodeMode::Lane0Active { .. })
+							&& matches!(stake.role, NodeRole::ActiveDirector)
+					}
+					pallet_nsn_task_market::TaskLane::Lane1 => {
+						matches!(mode, NodeMode::Lane1Active)
+							&& matches!(stake.role, NodeRole::Reserve | NodeRole::Director)
+					}
+				}
+			})
+			.take(limit)
+			.map(|(account, stake)| (account, stake.amount))
+			.collect()
+	}
 
-impl pallet_nsn_treasury::Config for Runtime {}
+	fn is_eligible(account: &AccountId, lane: pallet_nsn_task_market::TaskLane) -> bool {
+		use pallet_nsn_stake::{NodeMode, NodeRole, NodeModes, Stakes};
+		use sp_runtime::traits::Zero;
+
+		let stake = Stakes::<Runtime>::get(account);
+		if stake.amount.is_zero() {
+			return false;
+		}
+
+		let mode = NodeModes::<Runtime>::get(account);
+		match lane {
+			pallet_nsn_task_market::TaskLane::Lane0 => {
+				matches!(mode, NodeMode::Lane0Active { .. })
+					&& matches!(stake.role, NodeRole::ActiveDirector)
+			}
+			pallet_nsn_task_market::TaskLane::Lane1 => {
+				matches!(mode, NodeMode::Lane1Active)
+					&& matches!(stake.role, NodeRole::Reserve | NodeRole::Director)
+			}
+		}
+	}
+}
+
+impl pallet_nsn_task_market::ReputationUpdater<AccountId> for pallet_nsn_reputation::Pallet<Runtime> {
+	fn record_task_result(account: &AccountId, success: bool) {
+		let _ = pallet_nsn_reputation::Pallet::<Runtime>::record_task_outcome(account, success);
+	}
+}
+
+impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for pallet_nsn_stake::Pallet<Runtime> {
+	fn slash_for_abandonment(
+		account: &AccountId,
+		amount: Balance,
+	) -> frame_support::dispatch::DispatchResult {
+		pallet_nsn_stake::Pallet::<Runtime>::slash_for_abandonment(account, amount)
+	}
+}
+
+impl pallet_insecure_randomness_collective_flip::Config for Runtime {}
+
+impl pallet_nsn_director::Config for Runtime {
+	type Currency = Balances;
+	type RuntimeHoldReason = RuntimeHoldReason;
+	type Randomness = RandomnessCollectiveFlip;
+	type ChallengeBond = ChallengeBond;
+	type DirectorSlashAmount = DirectorSlashAmount;
+	type ChallengerReward = ChallengerReward;
+	type MaxDirectorsPerSlot = MaxDirectorsPerSlot;
+	type MaxPendingSlots = MaxPendingSlots;
+	type EpochDuration = EpochDuration;
+	type EpochLookahead = EpochLookahead;
+	type MaxDirectorsPerEpoch = MaxDirectorsPerEpoch;
+	type NodeModeUpdater = pallet_nsn_stake::Pallet<Runtime>;
+	type NodeRoleUpdater = pallet_nsn_stake::Pallet<Runtime>;
+	type WeightInfo = pallet_nsn_director::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_nsn_bft::Config for Runtime {
+	type DefaultRetentionPeriod = BftDefaultRetentionPeriod;
+	type WeightInfo = pallet_nsn_bft::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_nsn_storage::Config for Runtime {
+	type Currency = Balances;
+	type RuntimeHoldReason = RuntimeHoldReason;
+	type Randomness = RandomnessCollectiveFlip;
+	type AuditSlashAmount = StorageAuditSlashAmount;
+	type MaxShardsPerDeal = StorageMaxShardsPerDeal;
+	type MaxPinnersPerShard = StorageMaxPinnersPerShard;
+	type MaxActiveDeals = StorageMaxActiveDeals;
+	type MaxPendingAudits = StorageMaxPendingAudits;
+	type WeightInfo = pallet_nsn_storage::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_nsn_treasury::Config for Runtime {
+	type Currency = Balances;
+	type PalletId = TreasuryPalletId;
+	type DistributionFrequency = TreasuryDistributionFrequency;
+	type WeightInfo = pallet_nsn_treasury::weights::SubstrateWeight<Runtime>;
+}
 
 impl pallet_nsn_task_market::Config for Runtime {
 	type Currency = Balances;
 	type MaxPendingTasks = TaskMarketMaxPendingTasks;
+	type MaxAssignedLane1Tasks = TaskMarketMaxAssignedLane1Tasks;
+	type MaxAssignmentCandidates = TaskMarketMaxAssignmentCandidates;
+	type MaxExpiredPerBlock = TaskMarketMaxExpiredPerBlock;
+	type MaxPreemptionsPerBlock = TaskMarketMaxPreemptionsPerBlock;
 	type MaxModelIdLen = TaskMarketMaxModelIdLen;
 	type MaxCidLen = TaskMarketMaxCidLen;
 	type MinEscrow = TaskMarketMinEscrow;
+	type LaneNodeProvider = pallet_nsn_stake::Pallet<Runtime>;
+	type ReputationUpdater = pallet_nsn_reputation::Pallet<Runtime>;
+	type TaskSlashHandler = pallet_nsn_stake::Pallet<Runtime>;
+	type TaskAbandonmentSlash = TaskMarketTaskAbandonmentSlash;
+	type TreasuryAccount = TreasuryAccount;
 	type WeightInfo = pallet_nsn_task_market::weights::SubstrateWeight<Runtime>;
 }
 

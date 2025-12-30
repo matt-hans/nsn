@@ -22,29 +22,27 @@ The project uses the Polkadot SDK to build NSN as a sovereign chain with staged 
 
 ```
 interdim-cable/
-├── nsn-chain/              # NSN Chain (Polkadot SDK runtime + pallets)
+├── nsn-chain/               # NSN Chain (Polkadot SDK runtime + pallets)
 │   ├── pallets/
-│   │   ├── nsn-stake/      # Token staking, slashing, role eligibility
-│   │   ├── nsn-reputation/ # Reputation scoring with Merkle proofs
-│   │   ├── nsn-epochs/     # Epoch-based elections with On-Deck protocol
-│   │   ├── nsn-bft/        # BFT consensus storage and finalization
-│   │   ├── nsn-pinning/    # Erasure coding deals and audits
-│   │   ├── nsn-treasury/   # Reward distribution and emissions
-│   │   ├── nsn-task-market/# Lane 1 task marketplace
+│   │   ├── nsn-stake/       # Token staking, slashing, role eligibility
+│   │   ├── nsn-reputation/  # Reputation scoring with Merkle proofs
+│   │   ├── nsn-director/    # Epoch-based elections with On-Deck protocol
+│   │   ├── nsn-bft/         # BFT consensus storage and finalization
+│   │   ├── nsn-storage/     # Erasure coding deals and audits
+│   │   ├── nsn-treasury/    # Reward distribution and emissions
+│   │   ├── nsn-task-market/ # Lane 1 task marketplace
 │   │   └── nsn-model-registry/ # Model capability registry
-│   ├── runtime/            # NSN runtime configuration
-│   ├── node/               # NSN node client implementation
-│   ├── precompiles/        # Optional EVM precompiles (Frontier)
-│   └── test/               # Integration tests
-├── nsn-nodes/              # Off-chain node implementations
-│   ├── common/             # Shared P2P, chain client, types
-│   ├── director/           # Lane 0: GPU video generation + BFT coordination
-│   ├── validator/          # Lane 0: CLIP semantic verification
-│   ├── super-node/         # Tier 1 erasure-coded storage
-│   └── relay/              # Tier 2 regional distribution
-├── node-core/              # Lane 1: Universal compute orchestration (Rust)
-│   ├── scheduler/          # Task scheduler with On-Deck protocol
-│   └── sidecar/            # Compute execution runtime
+│   ├── runtime/             # NSN runtime configuration
+│   ├── node/                # NSN node client implementation
+│   ├── precompiles/         # Optional EVM precompiles (Frontier)
+│   └── test/                # Integration tests
+├── node-core/               # Off-chain node core (Rust)
+│   ├── bin/nsn-node/         # Unified node binary (modes for director/validator/storage)
+│   ├── crates/p2p/           # P2P networking (GossipSub + reputation)
+│   ├── crates/scheduler/     # Task scheduler with On-Deck protocol
+│   ├── crates/lane0/         # Lane 0 orchestration logic
+│   ├── crates/lane1/         # Lane 1 orchestration logic
+│   └── sidecar/              # Compute execution runtime
 ├── vortex/                 # Lane 0: AI generation engine - Python
 │   └── src/vortex/
 │       ├── models/         # Flux, LivePortrait, Kokoro, CLIP loaders
@@ -79,16 +77,16 @@ cargo clippy --release --workspace
 cargo fmt -- --check
 ```
 
-### Off-Chain Nodes (nsn-nodes/)
+### Off-Chain Node Core (node-core/)
 
 ```bash
-cd nsn-nodes
+cd node-core
 
-# Build all nodes
+# Build all components
 cargo build --release
 
-# Build specific node
-cargo build --release -p nsn-director
+# Build the unified node binary
+cargo build --release -p nsn-node
 ```
 
 ### Lane 1 Compute (node-core/)
@@ -147,7 +145,7 @@ cargo test
 # Run specific pallet tests
 cargo test -p pallet-nsn-stake
 cargo test -p pallet-nsn-reputation
-cargo test -p pallet-nsn-epochs
+cargo test -p pallet-nsn-director
 cargo test -p pallet-nsn-task-market
 cargo test -p pallet-nsn-model-registry
 

@@ -1,13 +1,13 @@
 ---
 id: T043
 title: Migrate GossipSub, Reputation Oracle, and P2P Metrics to node-core
-status: in_progress
+status: completed
 priority: 1
 agent: backend
 dependencies: [T042, T003]
 blocked_by: []
 created: 2025-12-30T08:00:00Z
-updated: 2025-12-30T08:00:00Z
+updated: 2025-12-30T21:44:30Z
 
 context_refs:
   - context/project.md
@@ -19,7 +19,9 @@ docs_refs:
   - .claude/rules/prd.md
 
 est_tokens: 13000
-actual_tokens: null
+actual_tokens: 14200
+completed_at: 2025-12-30T21:44:30Z
+completed_by: task-completer
 ---
 
 ## Description
@@ -67,21 +69,21 @@ Migrate GossipSub configuration, topic management, peer scoring, reputation orac
 
 ## Acceptance Criteria
 
-- [ ] **GossipSub Config Migrated**: `gossipsub.rs` with `build_gossipsub_config()`, `create_gossipsub_behaviour()` functions
-- [ ] **GossipSub Mesh Parameters**: MESH_N=6, MESH_N_LOW=4, MESH_N_HIGH=12 configured correctly
-- [ ] **Max Transmit Size**: 16MB limit for video chunks configured
-- [ ] **Flood Publishing**: Enabled for low-latency BFT signals
-- [ ] **Topic Definitions**: `topics.rs` with all 6 NSN topics (recipes, video, bft, attestations, challenges, tasks)
-- [ ] **Topic Parsing**: `parse_topic()` function correctly identifies Lane 0 vs Lane 1 topics
-- [ ] **Peer Scoring**: `scoring.rs` with reputation-integrated scoring parameters (GOSSIP_THRESHOLD=-10, PUBLISH_THRESHOLD=-50, GRAYLIST_THRESHOLD=-100)
-- [ ] **Reputation Oracle**: `reputation_oracle.rs` with on-chain score syncing via subxt, 60s sync interval
-- [ ] **Metrics**: `metrics.rs` with Prometheus metrics (peer_count, connection_count, message_throughput, scoring metrics)
-- [ ] **Metrics Endpoint**: Prometheus metrics exposed on configured port (default 9100)
-- [ ] **Integration**: GossipSub integrated into T042's P2pService::new() and event loop
-- [ ] **Subscription**: `subscribe_to_all_topics()` and `subscribe_to_categories()` functions work
-- [ ] **Publishing**: `publish_message()` function successfully broadcasts to topics
-- [ ] **Compilation**: `cargo build --release -p nsn-p2p` succeeds without warnings
-- [ ] **Tests**: All migrated GossipSub tests pass (from T022)
+- [x] **GossipSub Config Migrated**: `gossipsub.rs` with `build_gossipsub_config()`, `create_gossipsub_behaviour()` functions
+- [x] **GossipSub Mesh Parameters**: MESH_N=6, MESH_N_LOW=4, MESH_N_HIGH=12 configured correctly
+- [x] **Max Transmit Size**: 16MB limit for video chunks configured
+- [x] **Flood Publishing**: Enabled for low-latency BFT signals
+- [x] **Topic Definitions**: `topics.rs` with all 6 NSN topics (recipes, video, bft, attestations, challenges, tasks)
+- [x] **Topic Parsing**: `parse_topic()` function correctly identifies Lane 0 vs Lane 1 topics
+- [x] **Peer Scoring**: `scoring.rs` with reputation-integrated scoring parameters (GOSSIP_THRESHOLD=-10, PUBLISH_THRESHOLD=-50, GRAYLIST_THRESHOLD=-100)
+- [x] **Reputation Oracle**: `reputation_oracle.rs` with on-chain score syncing via subxt, 60s sync interval
+- [x] **Metrics**: `metrics.rs` with Prometheus metrics (peer_count, connection_count, message_throughput, scoring metrics)
+- [x] **Metrics Endpoint**: Prometheus metrics exposed on configured port (default 9100)
+- [x] **Integration**: GossipSub integrated into T042's P2pService::new() and event loop
+- [x] **Subscription**: `subscribe_to_all_topics()` and `subscribe_to_categories()` functions work
+- [x] **Publishing**: `publish_message()` function successfully broadcasts to topics
+- [x] **Compilation**: `cargo build --release -p nsn-p2p` succeeds without warnings
+- [x] **Tests**: All migrated GossipSub tests pass (from T022)
 
 ## Test Scenarios
 
@@ -354,38 +356,38 @@ pub fn all_topics() -> Vec<(&'static str, TopicCategory)> {
 ## Completion Checklist
 
 **Code Quality**:
-- [ ] All migrated files compile (`cargo build -p nsn-p2p`)
-- [ ] Clippy passes (`cargo clippy -p nsn-p2p -- -D warnings`)
-- [ ] Code formatted (`cargo fmt -p nsn-p2p`)
-- [ ] No unused imports or dead code
+- [x] All migrated files compile (`cargo build -p nsn-p2p`)
+- [x] Clippy passes (`cargo clippy -p nsn-p2p -- -D warnings`)
+- [x] Code formatted (`cargo fmt -p nsn-p2p`)
+- [x] No unused imports or dead code
 
 **Testing**:
-- [ ] Unit tests pass (`cargo test -p nsn-p2p`)
-- [ ] GossipSub initialization test passes
-- [ ] Topic subscription tests pass
-- [ ] Message publishing/receiving tests pass
-- [ ] Reputation oracle sync test passes
-- [ ] Peer scoring tests pass
-- [ ] Metrics endpoint test passes
+- [x] Unit tests pass (`cargo test -p nsn-p2p`)
+- [x] GossipSub initialization test passes
+- [x] Topic subscription tests pass
+- [x] Message publishing/receiving tests pass
+- [x] Reputation oracle sync test passes
+- [x] Peer scoring tests pass
+- [x] Metrics endpoint test passes
 
 **Documentation**:
-- [ ] All public functions have rustdoc comments
-- [ ] GossipSub config parameters documented
-- [ ] Topic categories explained
-- [ ] Scoring thresholds justified
-- [ ] Metrics descriptions complete
+- [x] All public functions have rustdoc comments
+- [x] GossipSub config parameters documented
+- [x] Topic categories explained
+- [x] Scoring thresholds justified
+- [x] Metrics descriptions complete
 
 **Integration**:
-- [ ] GossipSub integrated into T042's P2pService
-- [ ] Reputation oracle connects to chain RPC
-- [ ] Metrics exposed on Prometheus endpoint
-- [ ] Service commands (Subscribe/Publish) work end-to-end
+- [x] GossipSub integrated into T042's P2pService
+- [x] Reputation oracle connects to chain RPC
+- [x] Metrics exposed on Prometheus endpoint
+- [x] Service commands (Subscribe/Publish) work end-to-end
 
 **Validation**:
-- [ ] `cargo build --release -p nsn-p2p` succeeds
-- [ ] `cargo test -p nsn-p2p` all tests pass
-- [ ] Prometheus metrics endpoint returns valid metrics
-- [ ] Ready for T044 (legacy-nodes removal)
+- [x] `cargo build --release -p nsn-p2p` succeeds
+- [x] `cargo test -p nsn-p2p` all tests pass
+- [x] Prometheus metrics endpoint returns valid metrics
+- [x] Ready for T044 (legacy-nodes removal)
 
 **Definition of Done**:
 Task is complete when ALL acceptance criteria are met, ALL tests pass, GossipSub is fully integrated with P2pService, reputation oracle syncs correctly, Prometheus metrics are exposed, and code is production-ready for T044.

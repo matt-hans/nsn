@@ -92,20 +92,73 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     /// Maximum number of pending (open) tasks
     pub const MaxPendingTasks: u32 = 100;
+    /// Maximum number of assigned Lane 1 tasks
+    pub const MaxAssignedLane1Tasks: u32 = 100;
+    /// Maximum number of assignment candidates to consider
+    pub const MaxAssignmentCandidates: u32 = 10;
+    /// Maximum expired tasks to process per block
+    pub const MaxExpiredPerBlock: u32 = 25;
+    /// Maximum Lane 1 preemptions per block
+    pub const MaxPreemptionsPerBlock: u32 = 10;
     /// Maximum length of model identifier
     pub const MaxModelIdLen: u32 = 64;
     /// Maximum length of content identifier (CID)
     pub const MaxCidLen: u32 = 64;
     /// Minimum escrow amount required for task creation
     pub const MinEscrow: Balance = 10;
+    /// Slash amount for task abandonment
+    pub const TaskAbandonmentSlash: Balance = 5;
+}
+
+pub struct MockLaneNodeProvider;
+impl pallet_nsn_task_market::LaneNodeProvider<AccountId, Balance> for MockLaneNodeProvider {
+    fn eligible_nodes(lane: pallet_nsn_task_market::TaskLane, max: u32) -> Vec<(AccountId, Balance)> {
+        let mut candidates = match lane {
+            pallet_nsn_task_market::TaskLane::Lane0 => vec![(ALICE, 100)],
+            pallet_nsn_task_market::TaskLane::Lane1 => vec![(ALICE, 100), (BOB, 90), (CHARLIE, 80)],
+        };
+        let limit = max as usize;
+        if candidates.len() > limit {
+            candidates.truncate(limit);
+        }
+        candidates
+    }
+
+    fn is_eligible(account: &AccountId, lane: pallet_nsn_task_market::TaskLane) -> bool {
+        match lane {
+            pallet_nsn_task_market::TaskLane::Lane0 => *account == ALICE,
+            pallet_nsn_task_market::TaskLane::Lane1 => matches!(account, &ALICE | &BOB | &CHARLIE),
+        }
+    }
+}
+
+pub struct MockReputationUpdater;
+impl pallet_nsn_task_market::ReputationUpdater<AccountId> for MockReputationUpdater {
+    fn record_task_result(_account: &AccountId, _success: bool) {}
+}
+
+pub struct MockTaskSlashHandler;
+impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for MockTaskSlashHandler {
+    fn slash_for_abandonment(_account: &AccountId, _amount: Balance) -> frame_support::dispatch::DispatchResult {
+        Ok(())
+    }
 }
 
 impl pallet_nsn_task_market::Config for Test {
     type Currency = Balances;
     type MaxPendingTasks = MaxPendingTasks;
+    type MaxAssignedLane1Tasks = MaxAssignedLane1Tasks;
+    type MaxAssignmentCandidates = MaxAssignmentCandidates;
+    type MaxExpiredPerBlock = MaxExpiredPerBlock;
+    type MaxPreemptionsPerBlock = MaxPreemptionsPerBlock;
     type MaxModelIdLen = MaxModelIdLen;
     type MaxCidLen = MaxCidLen;
     type MinEscrow = MinEscrow;
+    type LaneNodeProvider = MockLaneNodeProvider;
+    type ReputationUpdater = MockReputationUpdater;
+    type TaskSlashHandler = MockTaskSlashHandler;
+    type TaskAbandonmentSlash = TaskAbandonmentSlash;
+    type TreasuryAccount = TreasuryAccount;
     type WeightInfo = ();
 }
 
@@ -115,6 +168,14 @@ pub const BOB: AccountId = 2;
 pub const CHARLIE: AccountId = 3;
 pub const DAVE: AccountId = 4;
 pub const EVE: AccountId = 5;
+pub const TREASURY_ACCOUNT: AccountId = EVE;
+
+pub struct TreasuryAccount;
+impl frame_support::traits::Get<AccountId> for TreasuryAccount {
+    fn get() -> AccountId {
+        TREASURY_ACCOUNT
+    }
+}
 
 // Build test externalities
 pub struct ExtBuilder {

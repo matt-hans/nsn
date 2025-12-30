@@ -8,7 +8,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use nsn_types::NodeMode;
+use nsn_types::NodeCapability;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -62,12 +62,12 @@ enum Mode {
 }
 
 impl Mode {
-    fn to_node_mode(&self) -> NodeMode {
+    fn to_node_mode(&self) -> NodeCapability {
         match self {
-            Mode::SuperNode { .. } => NodeMode::SuperNode,
-            Mode::DirectorOnly { .. } => NodeMode::DirectorOnly,
-            Mode::ValidatorOnly { .. } => NodeMode::ValidatorOnly,
-            Mode::StorageOnly { .. } => NodeMode::StorageOnly,
+            Mode::SuperNode { .. } => NodeCapability::SuperNode,
+            Mode::DirectorOnly { .. } => NodeCapability::DirectorOnly,
+            Mode::ValidatorOnly { .. } => NodeCapability::ValidatorOnly,
+            Mode::StorageOnly { .. } => NodeCapability::StorageOnly,
         }
     }
 }
@@ -142,9 +142,9 @@ mod tests {
     #[test]
     fn test_mode_to_node_mode() {
         let mode = Mode::SuperNode { gpu_device: 0 };
-        assert_eq!(mode.to_node_mode(), NodeMode::SuperNode);
+        assert_eq!(mode.to_node_mode(), NodeCapability::SuperNode);
 
         let mode = Mode::DirectorOnly { gpu_device: 0 };
-        assert_eq!(mode.to_node_mode(), NodeMode::DirectorOnly);
+        assert_eq!(mode.to_node_mode(), NodeCapability::DirectorOnly);
     }
 }

@@ -10,7 +10,7 @@
 //! EXECUTION: Some(Wasm), WASM-EXECUTION: Compiled, CHAIN: None, DB CACHE: 1024
 
 // Executed Command:
-// target/release/icn-node
+// target/release/nsn-node
 // benchmark
 // pallet
 // --pallet=pallet_nsn_storage

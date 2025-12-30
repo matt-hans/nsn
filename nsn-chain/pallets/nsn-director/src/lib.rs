@@ -74,8 +74,8 @@ pub mod pallet {
 		},
 	};
 	use frame_system::pallet_prelude::*;
-	use pallet_nsn_reputation::ReputationEventType;
-	use pallet_nsn_stake::{NodeRole, SlashReason};
+use pallet_nsn_reputation::ReputationEventType;
+use pallet_nsn_stake::{NodeMode, NodeModeUpdater, NodeRole, NodeRoleUpdater, SlashReason};
 	use sp_runtime::traits::{Hash, SaturatedConversion, Saturating, Zero};
 
 	/// Balance type from the currency trait (our pallet's Currency)
@@ -141,6 +141,12 @@ pub mod pallet {
 		/// Maximum directors per epoch
 		#[pallet::constant]
 		type MaxDirectorsPerEpoch: Get<u32>;
+
+		/// Node mode updater (loose coupling to stake pallet)
+		type NodeModeUpdater: NodeModeUpdater<Self::AccountId>;
+
+		/// Node role updater (loose coupling to stake pallet)
+		type NodeRoleUpdater: NodeRoleUpdater<Self::AccountId>;
 
 		/// Weight information for extrinsics
 		type WeightInfo: WeightInfo;
@@ -740,7 +746,7 @@ pub mod pallet {
 			let candidates: Vec<_> = pallet_nsn_stake::Stakes::<T>::iter()
 				.filter(|(account, stake)| {
 					// Must be Director role
-					if stake.role != NodeRole::Director {
+					if !stake.role.is_director_like() {
 						return false;
 					}
 					// Check cooldown: either never directed (0) or past cooldown period
@@ -957,14 +963,30 @@ pub mod pallet {
 
 			CurrentEpoch::<T>::put(epoch);
 
+			// Mark elected directors as active for the epoch
+			let mut mode_weight = Weight::zero();
+			for director in directors.iter() {
+				mode_weight = mode_weight.saturating_add(
+					T::NodeModeUpdater::set_mode(
+						director,
+						NodeMode::Lane0Active {
+							epoch_end: end_block.saturated_into(),
+						},
+					),
+				);
+				mode_weight = mode_weight.saturating_add(
+					T::NodeRoleUpdater::set_role(director, NodeRole::ActiveDirector),
+				);
+			}
+
 			Self::deposit_event(Event::EpochStarted {
 				epoch_id: 0,
 				directors: directors_vec,
 				end_block,
 			});
 
-			// Weight: 1 read (Stakes iteration) + 1 write (CurrentEpoch)
-			T::DbWeight::get().reads_writes(1, 1)
+			// Weight: 1 read (Stakes iteration) + 1 write (CurrentEpoch) + mode updates
+			T::DbWeight::get().reads_writes(1, 1).saturating_add(mode_weight)
 		}
 
 		/// Run election for next epoch (On-Deck notification).
@@ -990,14 +1012,29 @@ pub mod pallet {
 
 			NextEpochDirectors::<T>::put(directors);
 
+			// Notify On-Deck directors to drain Lane 1 tasks
+			let mut mode_weight = Weight::zero();
+			for director in NextEpochDirectors::<T>::get().iter() {
+				mode_weight = mode_weight.saturating_add(
+					T::NodeModeUpdater::set_mode(
+						director,
+						NodeMode::Draining {
+							epoch_start: current_epoch.end_block.saturated_into(),
+						},
+					),
+				);
+				mode_weight = mode_weight
+					.saturating_add(T::NodeRoleUpdater::set_role(director, NodeRole::Reserve));
+			}
+
 			Self::deposit_event(Event::OnDeckElection {
 				epoch_id: next_epoch_id,
 				directors: directors_vec,
 				start_block: current_epoch.end_block,
 			});
 
-			// Weight: 1 read (Stakes iteration) + 1 write (NextEpochDirectors)
-			T::DbWeight::get().reads_writes(1, 1)
+			// Weight: 1 read (Stakes iteration) + 1 write (NextEpochDirectors) + mode updates
+			T::DbWeight::get().reads_writes(1, 1).saturating_add(mode_weight)
 		}
 
 		/// Transition to next epoch.
@@ -1032,6 +1069,30 @@ pub mod pallet {
 			let epoch_duration = T::EpochDuration::get();
 			let end_block = now.saturating_add(epoch_duration);
 
+			// Move previous epoch directors back to reserve (Lane 1)
+			let mut mode_weight = Weight::zero();
+			for director in current_epoch.directors.iter() {
+				mode_weight = mode_weight.saturating_add(
+					T::NodeModeUpdater::set_mode(director, NodeMode::Lane1Active),
+				);
+				mode_weight = mode_weight
+					.saturating_add(T::NodeRoleUpdater::set_role(director, NodeRole::Reserve));
+			}
+
+			// Activate next epoch directors for Lane 0
+			for director in next_directors.iter() {
+				mode_weight = mode_weight.saturating_add(
+					T::NodeModeUpdater::set_mode(
+						director,
+						NodeMode::Lane0Active {
+							epoch_end: end_block.saturated_into(),
+						},
+					),
+				);
+				mode_weight = mode_weight
+					.saturating_add(T::NodeRoleUpdater::set_role(director, NodeRole::ActiveDirector));
+			}
+
 			// Create new epoch
 			let new_epoch = Epoch {
 				id: next_epoch_id,
@@ -1050,8 +1111,8 @@ pub mod pallet {
 				end_block,
 			});
 
-			// Weight: 2 reads (CurrentEpoch, NextEpochDirectors) + 2 writes (CurrentEpoch, NextEpochDirectors)
-			T::DbWeight::get().reads_writes(2, 2)
+			// Weight: 2 reads (CurrentEpoch, NextEpochDirectors) + 2 writes (CurrentEpoch, NextEpochDirectors) + mode updates
+			T::DbWeight::get().reads_writes(2, 2).saturating_add(mode_weight)
 		}
 
 		/// Elect directors for a specific epoch.

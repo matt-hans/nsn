@@ -33,6 +33,20 @@ pub enum NodeRole {
     SuperNode,
     /// Director node (stake ≥ 100 NSN)
     Director,
+    /// Director currently active for an epoch (lane 0)
+    ActiveDirector,
+    /// Director in reserve (lane 1) awaiting election
+    Reserve,
+}
+
+impl NodeRole {
+    /// Director-eligible roles (base + operational variants).
+    pub fn is_director_like(&self) -> bool {
+        matches!(
+            self,
+            NodeRole::Director | NodeRole::ActiveDirector | NodeRole::Reserve
+        )
+    }
 }
 
 /// Geographic regions for anti-centralization
@@ -73,11 +87,12 @@ pub enum Region {
     MaxEncodedLen,
 )]
 pub enum SlashReason {
-    BftFailure,
-    AuditTimeout,
-    AuditInvalid,
-    MissedSlot,
-    ContentViolation,
+	BftFailure,
+	AuditTimeout,
+	AuditInvalid,
+	MissedSlot,
+	ContentViolation,
+	TaskAbandonment,
 }
 
 /// Node operational mode for dual-lane architecture

@@ -30,6 +30,7 @@ sp-core = "28.0"
 
 # Metrics
 prometheus = "0.13"
+hyper = { version = "0.14", features = ["server", "http1", "tcp"] }
 
 # Chain client for reputation oracle
 subxt = "0.37"

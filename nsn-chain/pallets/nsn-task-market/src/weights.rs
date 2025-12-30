@@ -26,6 +26,7 @@ use sp_std::marker::PhantomData;
 pub trait WeightInfo {
     fn create_task_intent() -> Weight;
     fn accept_assignment() -> Weight;
+    fn start_task() -> Weight;
     fn complete_task() -> Weight;
     fn fail_task() -> Weight;
 }
@@ -37,59 +38,68 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
     /// Proof: NsnTaskMarket NextTaskId (max_values: Some(1), max_size: Some(8), added: 503, mode: MaxEncodedLen)
     /// Storage: NsnTaskMarket Tasks (r:0 w:1)
     /// Proof: NsnTaskMarket Tasks (max_values: None, max_size: Some(200), added: 2675, mode: MaxEncodedLen)
-    /// Storage: NsnTaskMarket OpenTasks (r:1 w:1)
-    /// Proof: NsnTaskMarket OpenTasks (max_values: Some(1), max_size: Some(800), added: 1295, mode: MaxEncodedLen)
+    /// Storage: NsnTaskMarket OpenLane0Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket OpenLane1Tasks (r:1 w:1)
     fn create_task_intent() -> Weight {
-        // PoV size: NextTaskId(8) + Tasks(200) + OpenTasks(800) + overhead(192) = 1200 bytes
-        Weight::from_parts(45_000_000, 4473)
+        // PoV size: NextTaskId + Tasks + OpenLane* queue + overhead
+        Weight::from_parts(50_000_000, 5000)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(3))
     }
 
     /// Storage: NsnTaskMarket Tasks (r:1 w:1)
     /// Proof: NsnTaskMarket Tasks (max_values: None, max_size: Some(200), added: 2675, mode: MaxEncodedLen)
-    /// Storage: NsnTaskMarket OpenTasks (r:1 w:1)
-    /// Proof: NsnTaskMarket OpenTasks (max_values: Some(1), max_size: Some(800), added: 1295, mode: MaxEncodedLen)
+    /// Storage: NsnTaskMarket OpenLane0Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket OpenLane1Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket AssignedLane1Tasks (r:1 w:1)
     fn accept_assignment() -> Weight {
-        // PoV size: Tasks(200) + OpenTasks(800) + overhead(128) = 1128 bytes
-        Weight::from_parts(40_000_000, 3970)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(2))
+        Weight::from_parts(55_000_000, 5500)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(3))
     }
 
     /// Storage: NsnTaskMarket Tasks (r:1 w:1)
-    /// Proof: NsnTaskMarket Tasks (max_values: None, max_size: Some(200), added: 2675, mode: MaxEncodedLen)
-    fn complete_task() -> Weight {
-        // PoV size: Tasks(200) + overhead(64) = 264 bytes
-        Weight::from_parts(50_000_000, 2739)
+    fn start_task() -> Weight {
+        Weight::from_parts(35_000_000, 2500)
             .saturating_add(T::DbWeight::get().reads(1))
             .saturating_add(T::DbWeight::get().writes(1))
     }
 
     /// Storage: NsnTaskMarket Tasks (r:1 w:1)
     /// Proof: NsnTaskMarket Tasks (max_values: None, max_size: Some(200), added: 2675, mode: MaxEncodedLen)
-    /// Storage: NsnTaskMarket OpenTasks (r:1 w:1)
-    /// Proof: NsnTaskMarket OpenTasks (max_values: Some(1), max_size: Some(800), added: 1295, mode: MaxEncodedLen)
-    fn fail_task() -> Weight {
-        // PoV size: Tasks(200) + OpenTasks(800) + overhead(128) = 1128 bytes
-        Weight::from_parts(45_000_000, 3970)
+    fn complete_task() -> Weight {
+        Weight::from_parts(60_000_000, 3500)
             .saturating_add(T::DbWeight::get().reads(2))
             .saturating_add(T::DbWeight::get().writes(2))
+    }
+
+    /// Storage: NsnTaskMarket Tasks (r:1 w:1)
+    /// Proof: NsnTaskMarket Tasks (max_values: None, max_size: Some(200), added: 2675, mode: MaxEncodedLen)
+    /// Storage: NsnTaskMarket OpenLane0Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket OpenLane1Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket AssignedLane1Tasks (r:1 w:1)
+    fn fail_task() -> Weight {
+        Weight::from_parts(50_000_000, 4000)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(3))
     }
 }
 
 // For backwards compatibility and tests
 impl WeightInfo for () {
     fn create_task_intent() -> Weight {
-        Weight::from_parts(45_000_000, 4473)
+        Weight::from_parts(50_000_000, 5000)
     }
     fn accept_assignment() -> Weight {
-        Weight::from_parts(40_000_000, 3970)
+        Weight::from_parts(55_000_000, 5500)
+    }
+    fn start_task() -> Weight {
+        Weight::from_parts(35_000_000, 2500)
     }
     fn complete_task() -> Weight {
-        Weight::from_parts(50_000_000, 2739)
+        Weight::from_parts(60_000_000, 3500)
     }
     fn fail_task() -> Weight {
-        Weight::from_parts(45_000_000, 3970)
+        Weight::from_parts(50_000_000, 4000)
     }
 }

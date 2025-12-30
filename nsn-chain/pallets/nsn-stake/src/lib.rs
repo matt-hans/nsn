@@ -46,6 +46,16 @@ mod benchmarking;
 pub mod weights;
 pub use weights::WeightInfo;
 
+/// Trait for updating node operational mode from other pallets.
+pub trait NodeModeUpdater<AccountId> {
+    fn set_mode(account: &AccountId, mode: NodeMode) -> Weight;
+}
+
+/// Trait for updating node operational role from other pallets.
+pub trait NodeRoleUpdater<AccountId> {
+    fn set_role(account: &AccountId, role: NodeRole) -> Weight;
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -373,8 +383,8 @@ pub mod pallet {
                 new_total,
             )?;
 
-            // Determine role based on new stake amount
-            let role = Self::determine_role(new_total);
+            // Determine role based on new stake amount while preserving director state
+            let role = Self::adjust_role_for_amount(current_stake.role.clone(), new_total);
 
             // Calculate unlock block (never shorten an existing lock)
             let requested_unlock = <frame_system::Pallet<T>>::block_number()
@@ -517,8 +527,8 @@ pub mod pallet {
                 )?;
             }
 
-            // Update role based on new amount
-            let new_role = Self::determine_role(new_amount);
+            // Update role based on new amount while preserving director state
+            let new_role = Self::adjust_role_for_amount(stake_info.role.clone(), new_amount);
 
             // Update storage
             stake_info.amount = new_amount;
@@ -599,53 +609,7 @@ pub mod pallet {
             reason: SlashReason,
         ) -> DispatchResult {
             ensure_root(origin)?;
-
-            let mut stake_info = Self::stakes(&offender);
-            let slash_amount = amount.min(stake_info.amount);
-
-            if slash_amount.is_zero() {
-                return Ok(());
-            }
-
-            // Calculate new amount after slashing
-            let new_amount = stake_info.amount.saturating_sub(slash_amount);
-
-            // Enforce delegation cap after slashing
-            let max_delegation = new_amount.saturating_mul(T::DelegationMultiplier::get().into());
-            ensure!(
-                stake_info.delegated_to_me <= max_delegation,
-                Error::<T>::DelegationCapExceeded
-            );
-
-            // Burn slashed tokens by reducing freeze and burning balance
-            T::Currency::set_freeze(
-                &T::RuntimeFreezeReason::from(FreezeReason::Staking),
-                &offender,
-                new_amount,
-            )?;
-            T::Currency::burn_from(
-                &offender,
-                slash_amount,
-                frame_support::traits::tokens::Preservation::Expendable,
-                frame_support::traits::tokens::Precision::Exact,
-                frame_support::traits::tokens::Fortitude::Force,
-            )?;
-
-            // Update stake info
-            stake_info.amount = new_amount;
-            stake_info.role = Self::determine_role(new_amount);
-            Stakes::<T>::insert(&offender, stake_info.clone());
-
-            // Update totals
-            TotalStaked::<T>::mutate(|t| *t = t.saturating_sub(slash_amount));
-            RegionStakes::<T>::mutate(stake_info.region, |r| *r = r.saturating_sub(slash_amount));
-
-            Self::deposit_event(Event::StakeSlashed {
-                offender,
-                amount: slash_amount,
-                reason,
-            });
-            Ok(())
+            Self::slash_internal(&offender, amount, reason)
         }
 
         /// Set node operational mode (root only)
@@ -688,6 +652,28 @@ pub mod pallet {
 
     // Helper functions
     impl<T: Config> Pallet<T> {
+        fn set_node_mode_internal(account: &T::AccountId, mode: NodeMode) -> Weight {
+            if !Stakes::<T>::contains_key(account) {
+                return T::DbWeight::get().reads(1);
+            }
+            NodeModes::<T>::insert(account, mode.clone());
+            Self::deposit_event(Event::NodeModeChanged {
+                account: account.clone(),
+                new_mode: mode,
+            });
+            T::DbWeight::get().reads_writes(1, 1)
+        }
+
+        fn set_node_role_internal(account: &T::AccountId, role: NodeRole) -> Weight {
+            if !Stakes::<T>::contains_key(account) {
+                return T::DbWeight::get().reads(1);
+            }
+            Stakes::<T>::mutate(account, |stake| {
+                stake.role = role;
+            });
+            T::DbWeight::get().reads_writes(1, 1)
+        }
+
         /// Determine node role based on stake amount.
         ///
         /// Uses threshold comparison against configured minimum stakes for each role:
@@ -716,6 +702,80 @@ pub mod pallet {
             }
         }
 
+        /// Determine role based on stake while preserving director state (Active/Reserve).
+        fn adjust_role_for_amount(current_role: NodeRole, new_amount: BalanceOf<T>) -> NodeRole {
+            let base_role = Self::determine_role(new_amount);
+            match current_role {
+                NodeRole::ActiveDirector | NodeRole::Reserve if base_role == NodeRole::Director => {
+                    current_role
+                }
+                _ => base_role,
+            }
+        }
+
+        /// Slash stake internally without requiring root origin.
+        fn slash_internal(
+            offender: &T::AccountId,
+            amount: BalanceOf<T>,
+            reason: SlashReason,
+        ) -> DispatchResult {
+            let mut stake_info = Self::stakes(offender);
+            let slash_amount = amount.min(stake_info.amount);
+
+            if slash_amount.is_zero() {
+                return Ok(());
+            }
+
+            // Calculate new amount after slashing
+            let new_amount = stake_info.amount.saturating_sub(slash_amount);
+
+            // Enforce delegation cap after slashing
+            let max_delegation = new_amount.saturating_mul(T::DelegationMultiplier::get().into());
+            ensure!(
+                stake_info.delegated_to_me <= max_delegation,
+                Error::<T>::DelegationCapExceeded
+            );
+
+            // Burn slashed tokens by reducing freeze and burning balance
+            T::Currency::set_freeze(
+                &T::RuntimeFreezeReason::from(FreezeReason::Staking),
+                offender,
+                new_amount,
+            )?;
+            T::Currency::burn_from(
+                offender,
+                slash_amount,
+                frame_support::traits::tokens::Preservation::Expendable,
+                frame_support::traits::tokens::Precision::Exact,
+                frame_support::traits::tokens::Fortitude::Force,
+            )?;
+
+            // Update stake info
+            stake_info.amount = new_amount;
+            stake_info.role = Self::adjust_role_for_amount(stake_info.role.clone(), new_amount);
+            Stakes::<T>::insert(offender, stake_info.clone());
+
+            // Update totals
+            TotalStaked::<T>::mutate(|t| *t = t.saturating_sub(slash_amount));
+            RegionStakes::<T>::mutate(stake_info.region, |r| *r = r.saturating_sub(slash_amount));
+
+            Self::deposit_event(Event::StakeSlashed {
+                offender: offender.clone(),
+                amount: slash_amount,
+                reason,
+            });
+
+            Ok(())
+        }
+
+        /// Slash for task abandonment without requiring root.
+        pub fn slash_for_abandonment(
+            offender: &T::AccountId,
+            amount: BalanceOf<T>,
+        ) -> DispatchResult {
+            Self::slash_internal(offender, amount, SlashReason::TaskAbandonment)
+        }
+
         /// Calculate total delegations across all validators for a given delegator.
         ///
         /// This iterates over all delegations from the delegator and sums them.
@@ -736,5 +796,17 @@ pub mod pallet {
                 .take(max_delegations) // L0: Bounded iteration
                 .fold(Zero::zero(), |acc, (_, amount)| acc.saturating_add(amount))
         }
+    }
+}
+
+impl<T: pallet::Config> NodeModeUpdater<T::AccountId> for pallet::Pallet<T> {
+    fn set_mode(account: &T::AccountId, mode: NodeMode) -> Weight {
+        pallet::Pallet::<T>::set_node_mode_internal(account, mode)
+    }
+}
+
+impl<T: pallet::Config> NodeRoleUpdater<T::AccountId> for pallet::Pallet<T> {
+    fn set_role(account: &T::AccountId, role: NodeRole) -> Weight {
+        pallet::Pallet::<T>::set_node_role_internal(account, role)
     }
 }

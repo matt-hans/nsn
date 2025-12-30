@@ -283,6 +283,8 @@ mod runtime {
 	pub type Balances = pallet_balances;
 	#[runtime::pallet_index(11)]
 	pub type TransactionPayment = pallet_transaction_payment;
+	#[runtime::pallet_index(12)]
+	pub type RandomnessCollectiveFlip = pallet_insecure_randomness_collective_flip;
 
 	// Governance
 	#[runtime::pallet_index(15)]

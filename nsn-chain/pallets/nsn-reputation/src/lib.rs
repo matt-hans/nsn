@@ -367,44 +367,7 @@ pub mod pallet {
 		) -> DispatchResult {
 			ensure_root(origin)?;
 
-			let current_block = <frame_system::Pallet<T>>::block_number();
-			let current_block_u64 = current_block.saturated_into::<u64>();
-
-			// Apply score change using helper
-			let delta = event_type.delta();
-
-			// Determine which component to update
-			let component = if event_type.is_director_event() {
-				0
-			} else if event_type.is_validator_event() {
-				1
-			} else {
-				2
-			};
-
-			// Add to pending events for Merkle tree (L0: bounded)
-			let event = ReputationEvent {
-				account: account.clone(),
-				event_type: event_type.clone(),
-				slot,
-				block: current_block,
-			};
-
-			PendingEvents::<T>::try_mutate(|events| -> DispatchResult {
-				events
-					.try_push(event)
-					.map_err(|_| Error::<T>::MaxEventsExceeded)?;
-				Ok(())
-			})?;
-
-			// Update reputation score (L2: saturating arithmetic)
-			ReputationScores::<T>::mutate(&account, |score| {
-				score.apply_delta(delta, component);
-				score.update_activity(current_block_u64);
-			});
-
-			Self::deposit_event(Event::ReputationRecorded { account, event_type, slot });
-			Ok(())
+			Self::record_event_internal(&account, event_type, slot)
 		}
 
 		/// Record a batch of reputation events for a single account (root only).
@@ -512,6 +475,73 @@ pub mod pallet {
 			RetentionPeriod::<T>::put(new_period);
 
 			Self::deposit_event(Event::RetentionPeriodUpdated { old_period, new_period });
+			Ok(())
+		}
+	}
+
+	// Helper functions
+	impl<T: Config> Pallet<T> {
+		/// Record a task outcome as a reputation event.
+		///
+		/// Used by the task market via a loose-coupled trait implementation.
+		pub fn record_task_outcome(account: &T::AccountId, success: bool) -> DispatchResult {
+			let event_type = if success {
+				ReputationEventType::TaskCompleted
+			} else {
+				ReputationEventType::TaskFailed
+			};
+			let current_block = <frame_system::Pallet<T>>::block_number();
+			let slot = current_block.saturated_into::<u64>();
+			Self::record_event_internal(account, event_type, slot)
+		}
+
+		fn record_event_internal(
+			account: &T::AccountId,
+			event_type: ReputationEventType,
+			slot: u64,
+		) -> DispatchResult {
+			let current_block = <frame_system::Pallet<T>>::block_number();
+			let current_block_u64 = current_block.saturated_into::<u64>();
+
+			// Apply score change using helper
+			let delta = event_type.delta();
+
+			// Determine which component to update
+			let component = if event_type.is_director_event() {
+				0
+			} else if event_type.is_validator_event() {
+				1
+			} else {
+				2
+			};
+
+			// Add to pending events for Merkle tree (L0: bounded)
+			let event = ReputationEvent {
+				account: account.clone(),
+				event_type: event_type.clone(),
+				slot,
+				block: current_block,
+			};
+
+			PendingEvents::<T>::try_mutate(|events| -> DispatchResult {
+				events
+					.try_push(event)
+					.map_err(|_| Error::<T>::MaxEventsExceeded)?;
+				Ok(())
+			})?;
+
+			// Update reputation score (L2: saturating arithmetic)
+			ReputationScores::<T>::mutate(account, |score| {
+				score.apply_delta(delta, component);
+				score.update_activity(current_block_u64);
+			});
+
+			Self::deposit_event(Event::ReputationRecorded {
+				account: account.clone(),
+				event_type,
+				slot,
+			});
+
 			Ok(())
 		}
 	}
