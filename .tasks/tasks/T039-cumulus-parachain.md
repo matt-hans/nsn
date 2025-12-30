@@ -16,10 +16,10 @@ updated_at: 2025-12-24
 
 ## Description
 
-**PHASE C TASK** - Add Cumulus integration to ICN Chain for optional migration to Polkadot parachain status. This enables ICN to inherit Polkadot relay chain's ~$20B economic security when adoption justifies the operational complexity and cost.
+**PHASE C TASK** - Add Cumulus integration to NSN Chain for optional migration to Polkadot parachain status. This enables NSN to inherit Polkadot relay chain's ~$20B economic security when adoption justifies the operational complexity and cost.
 
 This task is **NOT required for MVP** and should only be executed when:
-- ICN Testnet/Mainnet has proven adoption
+- NSN Testnet/Mainnet has proven adoption
 - Economic value justifies shared security cost
 - Team has capacity for parachain operations
 
@@ -32,18 +32,18 @@ This task is **NOT required for MVP** and should only be executed when:
 - **Ecosystem Recognition**: Legitimacy as Polkadot ecosystem member
 
 **When to do this**:
-- After successful ICN Mainnet launch
+- After successful NSN Mainnet launch
 - When TVL or adoption justifies parachain costs
 - When team has operational capacity
 
 ## Acceptance Criteria
 
-1. Cumulus dependencies added to ICN runtime
+1. Cumulus dependencies added to NSN runtime
 2. Collator node implementation functional
 3. Runtime compatible with relay chain validation
 4. XCM configuration for cross-chain messaging (basic)
 5. Parachain ID registered (on Rococo testnet initially)
-6. ICN Chain syncs with relay chain
+6. NSN Chain syncs with relay chain
 7. Blocks validated by relay chain validators
 8. Migration path from solochain documented
 9. Tested on Rococo/Westend before production

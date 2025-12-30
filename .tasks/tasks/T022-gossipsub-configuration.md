@@ -25,10 +25,10 @@ actual_tokens: null
 
 ## Description
 
-Implement GossipSub pub/sub messaging protocol with ICN-specific topic configuration and on-chain reputation-integrated peer scoring (v8.0.1 enhancement). This enables efficient broadcast of recipes, video chunks, BFT signals, attestations, and challenges across the hierarchical P2P swarm.
+Implement GossipSub pub/sub messaging protocol with NSN-specific topic configuration and on-chain reputation-integrated peer scoring (v10.0 dual-lane architecture). This enables efficient broadcast of recipes, video chunks, BFT signals, attestations, challenges, and Lane 1 task messages across the hierarchical P2P swarm.
 
 **Technical Approach:**
-- Configure libp2p GossipSub with ICN topic definitions
+- Configure libp2p GossipSub with NSN topic definitions (Lane 0 video + Lane 1 general compute)
 - Set mesh parameters for optimal message propagation (n=6, n_low=4, n_high=12)
 - Implement peer scoring with topic weights and invalid message penalties
 - Create ReputationOracle to integrate on-chain reputation scores into GossipSub peer scoring
@@ -38,12 +38,12 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
 
 **Integration Points:**
 - Builds on T021 (libp2p core setup)
-- Integrates with T003 (pallet-icn-reputation) via subxt RPC client
+- Integrates with T003 (pallet-nsn-reputation) via subxt RPC client
 - Used by all off-chain nodes for message propagation
 
 ## Business Context
 
-**User Story:** As an ICN Director, I want to broadcast BFT signals and video chunks efficiently to the network, so that consensus can be reached quickly and viewers receive content with low latency.
+**User Story:** As an NSN Director, I want to broadcast BFT signals and video chunks efficiently to the network, so that consensus can be reached quickly and viewers receive content with low latency.
 
 **Why This Matters:**
 - Core messaging layer for off-chain coordination (BFT, video distribution, challenges)
@@ -60,12 +60,13 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
 
 ## Acceptance Criteria
 
-- [ ] **Topic Definitions**: 5 topics defined with correct names and versions:
-  - `/icn/recipes/1.0.0`
-  - `/icn/video/1.0.0`
-  - `/icn/bft/1.0.0`
-  - `/icn/attestations/1.0.0`
-  - `/icn/challenges/1.0.0`
+- [ ] **Topic Definitions**: 6 topics defined with correct names and versions:
+  - `/nsn/recipes/1.0.0` (Lane 0)
+  - `/nsn/video/1.0.0` (Lane 0)
+  - `/nsn/bft/1.0.0` (Lane 0)
+  - `/nsn/attestations/1.0.0` (Lane 0)
+  - `/nsn/challenges/1.0.0` (Lane 0)
+  - `/nsn/tasks/1.0.0` (Lane 1 - general compute marketplace)
 - [ ] **Topic Subscription**: Node can subscribe to topics and receive messages
 - [ ] **Message Publishing**: Node can publish messages to topics with Ed25519 signature
 - [ ] **Message Validation**: Strict validation mode rejects unsigned or invalid messages
@@ -83,14 +84,14 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
 
 **Test Case 1: Topic Subscription and Message Propagation**
 - Given: Three nodes (A, B, C) connected in a mesh
-- When: Node A subscribes to `/icn/recipes/1.0.0` and Node B publishes a recipe message
+- When: Node A subscribes to `/nsn/recipes/1.0.0` and Node B publishes a recipe message
 - Then:
   - Node A receives the recipe message
   - Node C forwards the message (gossip)
   - Message delivery latency < 500ms
 
 **Test Case 2: Message Signing and Validation**
-- Given: Node A publishes a message to `/icn/bft/1.0.0`
+- Given: Node A publishes a message to `/nsn/bft/1.0.0`
 - When: Node B receives the message
 - Then:
   - Message signature is verified using Node A's PeerId public key
@@ -98,16 +99,16 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
   - Metrics show valid_messages_received +1
 
 **Test Case 3: Invalid Message Rejection**
-- Given: Node A receives a message with invalid signature on `/icn/bft/1.0.0`
+- Given: Node A receives a message with invalid signature on `/nsn/bft/1.0.0`
 - When: Validation is performed
 - Then:
   - Message is rejected
   - Sender peer score decreases by -20
   - Metrics show invalid_messages_rejected +1
-  - Warning logged: "Invalid message from <peer_id> on topic /icn/bft/1.0.0"
+  - Warning logged: "Invalid message from <peer_id> on topic /nsn/bft/1.0.0"
 
 **Test Case 4: Mesh Size Maintenance**
-- Given: Node A subscribed to `/icn/video/1.0.0` with 15 potential peers
+- Given: Node A subscribed to `/nsn/video/1.0.0` with 15 potential peers
 - When: GossipSub runs heartbeat (every 1 second)
 - Then:
   - Mesh size stabilizes between 6-12 peers
@@ -128,13 +129,13 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
 - Given: ReputationOracle with empty cache
 - When: Background sync loop runs
 - Then:
-  - Oracle queries pallet-icn-reputation via subxt
+  - Oracle queries pallet-nsn-reputation via subxt
   - All account reputation scores fetched
   - PeerIds mapped to reputation scores
   - Cache populated within 5 seconds
 
 **Test Case 7: Flood Publishing for BFT Signals**
-- Given: Node A in mesh with 8 peers on `/icn/bft/1.0.0`
+- Given: Node A in mesh with 8 peers on `/nsn/bft/1.0.0`
 - When: Node A publishes BFT signal (CLIP embedding)
 - Then:
   - Message sent immediately to all 8 peers (no gossip delay)
@@ -142,7 +143,7 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
   - All peers receive message
 
 **Test Case 8: Large Video Chunk Transmission**
-- Given: Node A publishes 15MB video chunk on `/icn/video/1.0.0`
+- Given: Node A publishes 15MB video chunk on `/nsn/video/1.0.0`
 - When: Node B receives the message
 - Then:
   - Message accepted (within 16MB max_transmit_size)
@@ -162,13 +163,13 @@ Implement GossipSub pub/sub messaging protocol with ICN-specific topic configura
 **Required Components:**
 
 ```
-off-chain/src/p2p/
+nsn-nodes/common/src/p2p/
 ├── gossipsub.rs            # GossipSub configuration and behavior
 ├── topics.rs               # Topic definitions and constants
 ├── reputation_oracle.rs    # On-chain reputation sync
 └── scoring.rs              # Custom peer scoring logic
 
-off-chain/tests/
+nsn-nodes/common/tests/
 └── integration_gossipsub.rs  # GossipSub integration tests
 ```
 
@@ -176,11 +177,16 @@ off-chain/tests/
 
 ```rust
 // src/p2p/topics.rs
-pub const RECIPES_TOPIC: &str = "/icn/recipes/1.0.0";
-pub const VIDEO_CHUNKS_TOPIC: &str = "/icn/video/1.0.0";
-pub const BFT_SIGNALS_TOPIC: &str = "/icn/bft/1.0.0";
-pub const ATTESTATIONS_TOPIC: &str = "/icn/attestations/1.0.0";
-pub const CHALLENGES_TOPIC: &str = "/icn/challenges/1.0.0";
+
+// Lane 0 topics (video generation)
+pub const RECIPES_TOPIC: &str = "/nsn/recipes/1.0.0";
+pub const VIDEO_CHUNKS_TOPIC: &str = "/nsn/video/1.0.0";
+pub const BFT_SIGNALS_TOPIC: &str = "/nsn/bft/1.0.0";
+pub const ATTESTATIONS_TOPIC: &str = "/nsn/attestations/1.0.0";
+pub const CHALLENGES_TOPIC: &str = "/nsn/challenges/1.0.0";
+
+// Lane 1 topics (general compute marketplace)
+pub const TASKS_TOPIC: &str = "/nsn/tasks/1.0.0";
 
 pub fn all_topics() -> Vec<IdentTopic> {
     vec![
@@ -189,6 +195,7 @@ pub fn all_topics() -> Vec<IdentTopic> {
         IdentTopic::new(BFT_SIGNALS_TOPIC),
         IdentTopic::new(ATTESTATIONS_TOPIC),
         IdentTopic::new(CHALLENGES_TOPIC),
+        IdentTopic::new(TASKS_TOPIC),
     ]
 }
 
@@ -229,8 +236,8 @@ impl ReputationOracle {
     }
 
     async fn fetch_all_reputations(&self) -> Result<(), Error> {
-        // Query pallet-icn-reputation storage
-        let storage_query = icn_reputation::storage().reputation_scores_root();
+        // Query pallet-nsn-reputation storage
+        let storage_query = nsn_reputation::storage().reputation_scores_root();
 
         let mut iter = self.chain_client
             .storage()
@@ -407,10 +414,10 @@ impl P2pService {
 
 ```bash
 # Build with GossipSub
-cargo build --release -p icn-off-chain --features gossipsub
+cargo build --release -p nsn-common --features gossipsub
 
 # Run unit tests
-cargo test -p icn-off-chain gossipsub::
+cargo test -p nsn-common gossipsub::
 
 # Run integration tests (requires chain and 3 nodes)
 cargo test --test integration_gossipsub -- --nocapture
@@ -419,7 +426,7 @@ cargo test --test integration_gossipsub -- --nocapture
 RUST_LOG=debug cargo run --release -- \
   --port 9000 \
   --rpc-url ws://localhost:9944 \
-  --subscribe recipes,video,bft
+  --subscribe recipes,video,bft,tasks
 
 # Check GossipSub metrics
 curl http://localhost:9100/metrics | grep gossipsub
@@ -436,7 +443,7 @@ curl http://localhost:9100/metrics | grep gossipsub
 
 **Hard Dependencies** (must be complete first):
 - [T021] libp2p Core Setup - provides transport, encryption, PeerId
-- [T003] pallet-icn-reputation - on-chain reputation scores
+- [T003] pallet-nsn-reputation - on-chain reputation scores
 
 **Soft Dependencies:**
 - None
@@ -493,7 +500,7 @@ curl http://localhost:9100/metrics | grep gossipsub
 
 **Created By:** task-creator agent
 **Reason:** User request for P2P networking layer tasks (Phase 1)
-**Dependencies:** T021 (libp2p core), T003 (pallet-icn-reputation)
+**Dependencies:** T021 (libp2p core), T003 (pallet-nsn-reputation)
 **Estimated Complexity:** Standard (well-defined GossipSub + custom reputation integration)
 
 ## Completion Checklist
@@ -516,4 +523,4 @@ curl http://localhost:9100/metrics | grep gossipsub
 - [ ] Monitoring alerts configured
 
 **Definition of Done:**
-Task is complete when ALL acceptance criteria met, GossipSub configured with 5 topics, on-chain reputation integrated into peer scoring, integration tests demonstrate message propagation with reputation-based prioritization, and production-ready with metrics and graceful shutdown.
+Task is complete when ALL acceptance criteria met, GossipSub configured with 6 topics (5 Lane 0 + 1 Lane 1), on-chain reputation integrated into peer scoring, integration tests demonstrate message propagation with reputation-based prioritization, and production-ready with metrics and graceful shutdown.

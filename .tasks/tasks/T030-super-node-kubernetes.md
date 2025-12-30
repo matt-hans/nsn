@@ -45,7 +45,7 @@ This deployment must handle PersistentVolumeClaims for storage, horizontal pod a
 
 ## Business Context
 
-**User Story:** As an ICN operator, I want Super-Nodes deployed across 7 regions with automatic failover, so that video content remains available even during regional outages.
+**User Story:** As an NSN operator, I want Super-Nodes deployed across 7 regions with automatic failover, so that video content remains available even during regional outages.
 
 **Why This Matters:**
 - Ensures 99.5% availability through geographic redundancy
@@ -59,11 +59,11 @@ This deployment must handle PersistentVolumeClaims for storage, horizontal pod a
 - Regional compliance (data sovereignty)
 - Community node operator participation
 
-**Priority Justification:** P2 - Critical for mainnet but depends on Super-Node implementation (T011). Required before public launch but can be tested on ICN Testnet with 3 regions initially.
+**Priority Justification:** P2 - Critical for mainnet but depends on Super-Node implementation (T011). Required before public launch but can be tested on NSN Testnet with 3 regions initially.
 
 ## Acceptance Criteria
 
-- [ ] Helm chart successfully installs with `helm install icn-super-nodes ./charts/super-node`
+- [ ] Helm chart successfully installs with `helm install nsn-super-nodes ./charts/super-node`
 - [ ] 14 total pods running (7 regions × 2 replicas)
 - [ ] Each pod has 10TB PersistentVolumeClaim attached and mounted
 - [ ] All pods show "Ready" status within 5 minutes of deployment
@@ -71,7 +71,7 @@ This deployment must handle PersistentVolumeClaims for storage, horizontal pod a
 - [ ] HorizontalPodAutoscaler scales up when bandwidth >80% utilization
 - [ ] Service mesh routes traffic to nearest healthy Super-Node based on latency
 - [ ] Pod disruption budgets prevent simultaneous failure of both regional replicas
-- [ ] StatefulSet maintains stable network identities (icn-super-node-na-west-0, icn-super-node-na-west-1, ...)
+- [ ] StatefulSet maintains stable network identities (nsn-super-node-na-west-0, nsn-super-node-na-west-1, ...)
 - [ ] Prometheus ServiceMonitor configured for all Super-Node pods
 - [ ] ConfigMap includes all required P2P bootstrap nodes
 - [ ] Secrets contain Super-Node staking keys (securely managed)
@@ -81,18 +81,18 @@ This deployment must handle PersistentVolumeClaims for storage, horizontal pod a
 
 **Test Case 1: Clean Deployment**
 - Given: Kubernetes cluster with 7+ nodes across regions, Helm installed
-- When: `helm install icn-super-nodes ./charts/super-node --set global.regions=all`
+- When: `helm install nsn-super-nodes ./charts/super-node --set global.regions=all`
 - Then: 14 pods deploy, all reach "Running" status, PVCs bound, services created
 
 **Test Case 2: Regional Pod Affinity**
 - Given: Helm chart deployed with all regions
-- When: Inspect pod placement: `kubectl get pods -o wide | grep icn-super-node`
+- When: Inspect pod placement: `kubectl get pods -o wide | grep nsn-super-node`
 - Then: Pods with same region prefix never on same Kubernetes node, spread across 7+ nodes
 
 **Test Case 3: Storage Persistence**
 - Given: Super-Node pod running with 10TB PVC
-- When: Write test data: `kubectl exec icn-super-node-na-west-0 -- dd if=/dev/zero of=/data/test.dat bs=1M count=1000`
-- Then: Data persists after pod restart, `kubectl exec icn-super-node-na-west-0 -- ls -lh /data/test.dat` shows 1GB file
+- When: Write test data: `kubectl exec nsn-super-node-na-west-0 -- dd if=/dev/zero of=/data/test.dat bs=1M count=1000`
+- Then: Data persists after pod restart, `kubectl exec nsn-super-node-na-west-0 -- ls -lh /data/test.dat` shows 1GB file
 
 **Test Case 4: Autoscaling**
 - Given: HPA configured with network I/O target (80% bandwidth utilization)
@@ -111,7 +111,7 @@ This deployment must handle PersistentVolumeClaims for storage, horizontal pod a
 
 **Test Case 7: Rolling Update**
 - Given: 14 pods running version v1.0.0
-- When: `helm upgrade icn-super-nodes ./charts/super-node --set image.tag=v1.1.0`
+- When: `helm upgrade nsn-super-nodes ./charts/super-node --set image.tag=v1.1.0`
 - Then: Pods update one region at a time, always 1 replica available per region during rollout
 
 ## Technical Implementation
@@ -144,8 +144,8 @@ charts/super-node/
 
 ```yaml
 apiVersion: v2
-name: icn-super-node
-description: Helm chart for ICN Super-Node tier (7 regions)
+name: nsn-super-node
+description: Helm chart for NSN Super-Node tier (7 regions)
 type: application
 version: 0.1.0
 appVersion: "1.0.0"
@@ -163,7 +163,7 @@ dependencies:
 ```yaml
 # Global configuration
 global:
-  registry: ghcr.io/icn
+  registry: ghcr.io/nsn
   imagePullSecrets: []
   regions:
     - na-west
@@ -202,8 +202,8 @@ storage:
 p2p:
   port: 9000
   bootstrapNodes:
-    - "/dns4/boot1.icn.network/tcp/9000/p2p/12D3KooW..."
-    - "/dns4/boot2.icn.network/tcp/9000/p2p/12D3KooW..."
+    - "/dns4/boot1.nsn.network/tcp/9000/p2p/12D3KooW..."
+    - "/dns4/boot2.nsn.network/tcp/9000/p2p/12D3KooW..."
 
 # Horizontal Pod Autoscaler
 autoscaling:
@@ -235,7 +235,7 @@ serviceMesh:
   enabled: true
   istio:
     enabled: true
-    gateway: icn-gateway
+    gateway: nsn-gateway
 
 # Monitoring
 prometheus:
@@ -245,7 +245,7 @@ prometheus:
 
 # Secrets (managed externally)
 secrets:
-  stakingKeys: icn-staking-keys  # K8s Secret name
+  stakingKeys: nsn-staking-keys  # K8s Secret name
 ```
 
 ### 4. StatefulSet Template
@@ -257,16 +257,16 @@ secrets:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: icn-super-node-{{ . }}
+  name: nsn-super-node-{{ . }}
   labels:
-    app: icn-super-node
+    app: nsn-super-node
     region: {{ . }}
 spec:
-  serviceName: icn-super-node-{{ . }}
+  serviceName: nsn-super-node-{{ . }}
   replicas: {{ $.Values.replicasPerRegion }}
   selector:
     matchLabels:
-      app: icn-super-node
+      app: nsn-super-node
       region: {{ . }}
 
   # Pod Management
@@ -279,7 +279,7 @@ spec:
   template:
     metadata:
       labels:
-        app: icn-super-node
+        app: nsn-super-node
         region: {{ . }}
       annotations:
         prometheus.io/scrape: "true"
@@ -295,7 +295,7 @@ spec:
                   - key: app
                     operator: In
                     values:
-                      - icn-super-node
+                      - nsn-super-node
                   - key: region
                     operator: In
                     values:
@@ -384,12 +384,12 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: icn-super-node-{{ . }}
+  name: nsn-super-node-{{ . }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: StatefulSet
-    name: icn-super-node-{{ . }}
+    name: nsn-super-node-{{ . }}
   minReplicas: {{ $.Values.autoscaling.minReplicas }}
   maxReplicas: {{ $.Values.autoscaling.maxReplicas }}
   metrics:
@@ -408,12 +408,12 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: icn-super-node-{{ . }}
+  name: nsn-super-node-{{ . }}
 spec:
   minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
   selector:
     matchLabels:
-      app: icn-super-node
+      app: nsn-super-node
       region: {{ . }}
 {{- end }}
 {{- end }}
@@ -427,10 +427,10 @@ spec:
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  name: icn-super-node
+  name: nsn-super-node
 spec:
   hosts:
-    - super-node.icn.svc.cluster.local
+    - super-node.nsn.svc.cluster.local
   http:
     - match:
         - headers:
@@ -438,10 +438,10 @@ spec:
               exact: na-west
       route:
         - destination:
-            host: icn-super-node-na-west
+            host: nsn-super-node-na-west
           weight: 90
         - destination:
-            host: icn-super-node-na-east
+            host: nsn-super-node-na-east
           weight: 10
 
     # ... similar rules for other regions ...
@@ -450,7 +450,7 @@ spec:
     - route:
         {{- range .Values.global.regions }}
         - destination:
-            host: icn-super-node-{{ . }}
+            host: nsn-super-node-{{ . }}
           weight: {{ div 100 (len $.Values.global.regions) }}
         {{- end }}
 {{- end }}
@@ -463,7 +463,7 @@ spec:
 #!/bin/bash
 set -euo pipefail
 
-NAMESPACE=${NAMESPACE:-icn}
+NAMESPACE=${NAMESPACE:-nsn}
 ENVIRONMENT=${1:-prod}
 
 echo "Deploying Super-Nodes to namespace: $NAMESPACE (environment: $ENVIRONMENT)"
@@ -472,7 +472,7 @@ echo "Deploying Super-Nodes to namespace: $NAMESPACE (environment: $ENVIRONMENT)
 kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
 # Deploy with environment-specific values
-helm upgrade --install icn-super-nodes ./charts/super-node \
+helm upgrade --install nsn-super-nodes ./charts/super-node \
   --namespace $NAMESPACE \
   --values charts/super-node/values.yaml \
   --values charts/super-node/values-${ENVIRONMENT}.yaml \
@@ -482,41 +482,41 @@ helm upgrade --install icn-super-nodes ./charts/super-node \
 # Wait for all pods to be ready
 echo "Waiting for all pods to be ready..."
 kubectl wait --for=condition=Ready pod \
-  -l app=icn-super-node \
+  -l app=nsn-super-node \
   -n $NAMESPACE \
   --timeout=300s
 
 echo "✅ Super-Nodes deployed successfully"
-kubectl get pods -n $NAMESPACE -l app=icn-super-node -o wide
+kubectl get pods -n $NAMESPACE -l app=nsn-super-node -o wide
 ```
 
 ### Validation Commands
 
 ```bash
 # Install Helm chart
-helm install icn-super-nodes ./charts/super-node --namespace icn --create-namespace
+helm install nsn-super-nodes ./charts/super-node --namespace nsn --create-namespace
 
 # Check pod status
-kubectl get pods -n icn -l app=icn-super-node
+kubectl get pods -n nsn -l app=nsn-super-node
 
 # Verify PVCs bound
-kubectl get pvc -n icn
+kubectl get pvc -n nsn
 
 # Check HPA status
-kubectl get hpa -n icn
+kubectl get hpa -n nsn
 
 # Test service mesh routing
 kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
-  curl -H "x-client-region: eu-west" http://icn-super-node.icn.svc.cluster.local/health
+  curl -H "x-client-region: eu-west" http://nsn-super-node.nsn.svc.cluster.local/health
 
 # Monitor pod logs
-kubectl logs -n icn icn-super-node-na-west-0 --follow
+kubectl logs -n nsn nsn-super-node-na-west-0 --follow
 
 # Simulate pod failure (test PDB)
-kubectl delete pod icn-super-node-na-west-0 -n icn
+kubectl delete pod nsn-super-node-na-west-0 -n nsn
 
 # Upgrade to new version
-helm upgrade icn-super-nodes ./charts/super-node --set image.tag=v1.1.0 -n icn
+helm upgrade nsn-super-nodes ./charts/super-node --set image.tag=v1.1.0 -n nsn
 ```
 
 ## Dependencies
@@ -605,4 +605,4 @@ helm upgrade icn-super-nodes ./charts/super-node --set image.tag=v1.1.0 -n icn
 - [ ] Backup/restore procedure documented
 
 **Definition of Done:**
-Task is complete when `helm install icn-super-nodes ./charts/super-node` successfully deploys 14 Super-Node pods across 7 regions, all PVCs bound with 10TB storage, HPA configured for autoscaling, and Istio routing traffic to nearest healthy pods based on client region.
+Task is complete when `helm install nsn-super-nodes ./charts/super-node` successfully deploys 14 Super-Node pods across 7 regions, all PVCs bound with 10TB storage, HPA configured for autoscaling, and Istio routing traffic to nearest healthy pods based on client region.

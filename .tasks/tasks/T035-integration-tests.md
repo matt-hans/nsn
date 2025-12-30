@@ -14,7 +14,7 @@ context_refs:
   - context/acceptance-templates.md
 
 docs_refs:
-  - PRD Section 29 (Success Criteria - ICN Testnet)
+  - PRD Section 29 (Success Criteria - NSN Testnet)
 
 est_tokens: 8000
 actual_tokens: null
@@ -22,7 +22,7 @@ actual_tokens: null
 
 ## Description
 
-Implement end-to-end integration tests that verify the complete ICN protocol flow: accounts stake tokens → directors elected via VRF → BFT consensus coordinated → reputation updated → challenges resolved. Tests run against local Substrate node with all pallets deployed, simulating 10+ participant nodes.
+Implement end-to-end integration tests that verify the complete NSN protocol flow: accounts stake tokens → directors elected via VRF → BFT consensus coordinated → reputation updated → challenges resolved. Tests run against local Substrate node with all pallets deployed, simulating 10+ participant nodes.
 
 **Technical Approach:**
 - Local Substrate node from T028 docker-compose setup
@@ -252,7 +252,7 @@ RUST_LOG=debug cargo test --features integration-tests
 
 ## Design Decisions
 
-**Decision 1: Local Node vs. ICN Testnet Testnet**
+**Decision 1: Local Node vs. NSN Testnet**
 - **Rationale:** Local node is faster (no network latency), deterministic, free
 - **Trade-offs:** (+) Fast, isolated. (-) Doesn't test real network conditions
 

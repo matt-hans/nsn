@@ -25,7 +25,7 @@ actual_tokens: null
 
 ## Description
 
-Implement comprehensive security configuration for P2P networking layer including rate limiting, bandwidth throttling, connection timeouts, and DoS protection mechanisms. Ensures ICN nodes are resilient against network-level attacks.
+Implement comprehensive security configuration for P2P networking layer including rate limiting, bandwidth throttling, connection timeouts, and DoS protection mechanisms. Ensures NSN nodes are resilient against network-level attacks.
 
 **Technical Approach:**
 - Rate limit incoming requests (100 requests/min per peer)
@@ -43,7 +43,7 @@ Implement comprehensive security configuration for P2P networking layer includin
 
 ## Business Context
 
-**User Story:** As an ICN node operator, I want protection against DoS attacks and resource exhaustion, so that my node remains stable and responsive under adversarial conditions.
+**User Story:** As an NSN node operator, I want protection against DoS attacks and resource exhaustion, so that my node remains stable and responsive under adversarial conditions.
 
 **Why This Matters:**
 - Prevents network-layer attacks (bandwidth exhaustion, connection flooding)
@@ -515,10 +515,10 @@ impl P2pService {
 
 ```bash
 # Build with security features
-cargo build --release -p icn-off-chain --features security
+cargo build --release -p nsn-off-chain --features security
 
 # Run unit tests
-cargo test -p icn-off-chain security::
+cargo test -p nsn-off-chain security::
 
 # Run integration tests
 cargo test --test integration_security -- --nocapture

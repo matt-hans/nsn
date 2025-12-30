@@ -49,16 +49,19 @@ cargo clippy --all-features -- -D warnings
 cargo fmt -- --check
 
 # Build runtime WASM
-cargo build --release --target wasm32-unknown-unknown -p icn-chain-runtime
+cargo build --release --target wasm32-unknown-unknown -p nsn-runtime
 
 # Verify runtime weights
-cargo run --release -p icn-weights-check
+cargo run --release -p nsn-weights-check
 ```
 
 ### Off-Chain Rust Components
 ```bash
 # Build director node
-cargo build --release -p icn-director
+cargo build --release -p nsn-director
+
+# Build node-core (Lane 1)
+cargo build --release -p scheduler -p sidecar
 
 # Run integration tests
 cargo test --features integration-tests
@@ -106,35 +109,51 @@ npx tsc --noEmit
 
 ## Test Scenario Format (Given/When/Then)
 
-### Example: Director Election
+### Example: Director Election (Lane 0 - Epoch-Based)
 ```gherkin
-GIVEN a network with 10 staked Directors across 3 regions
-  AND current slot number is 100
+GIVEN a network with 20 Directors in On-Deck set across 5 regions
+  AND current epoch is 10 (block 1000)
   AND all Directors have reputation scores >500
-WHEN the on_initialize hook triggers for slot 101
-THEN exactly 5 Directors are elected
+WHEN the new epoch begins at block 1001
+THEN exactly 5 Directors are elected from On-Deck set
   AND no more than 2 Directors are from the same region
-  AND all elected Directors have stake ≥100 ICN
-  AND DirectorsElected event is emitted
-  AND elected Directors are different from slot 100
+  AND all elected Directors have stake ≥100 NSN
+  AND DirectorsElected event is emitted with epoch number
+  AND new On-Deck set is prepared for epoch 12
 ```
 
-### Example: BFT Consensus with Challenge
+### Example: BFT Consensus with Challenge (Lane 0)
 ```gherkin
-GIVEN 5 elected Directors for slot 50
+GIVEN 5 elected Directors for epoch 10
   AND all Directors have generated video with CLIP score >0.75
   AND 3 Directors agree on canonical embedding hash 0xABCD
-WHEN submitter calls submit_bft_result(slot=50, hash=0xABCD, agreeing=[D1,D2,D3])
+WHEN submitter calls submit_bft_result(epoch=10, hash=0xABCD, agreeing=[D1,D2,D3])
 THEN BFT result is stored as PENDING
   AND challenge period starts (50 blocks)
-  AND FinalizedSlots[50] = false
+  AND FinalizedEpochs[10] = false
 
 GIVEN the above pending BFT result
   AND 5 minutes (50 blocks) pass with no challenge
-WHEN on_finalize runs after block 50
-THEN slot 50 is auto-finalized
-  AND FinalizedSlots[50] = true
+WHEN on_finalize runs after challenge period
+THEN epoch 10 is auto-finalized
+  AND FinalizedEpochs[10] = true
   AND reputation events recorded for D1, D2, D3 (+100 each)
+```
+
+### Example: Task Marketplace (Lane 1)
+```gherkin
+GIVEN a task submitter with 50 NSN balance
+  AND model "flux-schnell" registered in model-registry
+WHEN submitter calls create_task(model="flux-schnell", input_cid="Qm...", max_price=10)
+THEN task is created with status PENDING
+  AND TaskCreated event is emitted
+  AND 10 NSN is reserved from submitter balance
+
+GIVEN a pending task with matching capabilities
+  AND a node operator with model "flux-schnell" loaded
+WHEN operator calls accept_task(task_id)
+THEN task status changes to ASSIGNED
+  AND TaskAssigned event is emitted with operator account
 ```
 
 ## Definition of Done

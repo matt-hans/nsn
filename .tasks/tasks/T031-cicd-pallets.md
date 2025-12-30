@@ -25,20 +25,20 @@ actual_tokens: null
 
 ## Description
 
-Implement comprehensive CI/CD pipeline for ICN Chain runtime and pallets using GitHub Actions. Pipeline includes Rust compilation, unit/integration tests, Clippy linting, security auditing (cargo-audit, cargo-deny), runtime WASM build, and automated ICN Testnet deployment on merge to develop branch.
+Implement comprehensive CI/CD pipeline for NSN Chain runtime and pallets using GitHub Actions. Pipeline includes Rust compilation, unit/integration tests, Clippy linting, security auditing (cargo-audit, cargo-deny), runtime WASM build, and automated NSN Testnet deployment on merge to develop branch.
 
 **Technical Approach:**
 - GitHub Actions workflow with matrix strategy for pallet testing
 - Rust nightly toolchain pinned to nightly-2024-01-01
 - wasm32-unknown-unknown target for runtime builds
-- Parallel test execution across pallets
+- Parallel test execution across pallets (8 pallets: stake, reputation, director, bft, storage, treasury, task-market, model-registry)
 - Cached dependencies for faster builds (<5 min)
-- Automated runtime upgrade submission to ICN Testnet
+- Automated runtime upgrade submission to NSN Testnet
 
 **Integration Points:**
 - Triggered on PR, push to main/develop
 - Artifacts: Runtime WASM, benchmarks, coverage reports
-- Deploys to ICN Testnet on develop branch merge
+- Deploys to NSN Testnet on develop branch merge
 
 ## Business Context
 
@@ -48,7 +48,7 @@ Implement comprehensive CI/CD pipeline for ICN Chain runtime and pallets using G
 - Reduces time-to-deployment from hours to minutes
 - Catches bugs before code review
 - Ensures runtime WASM always builds successfully
-- Automates ICN Testnet deployments
+- Automates NSN Testnet deployments
 
 **What It Unblocks:**
 - Rapid pallet iteration (Phase 1)
@@ -61,7 +61,7 @@ Implement comprehensive CI/CD pipeline for ICN Chain runtime and pallets using G
 
 - [ ] GitHub Actions workflow file `.github/workflows/pallets.yml` exists
 - [ ] Workflow triggers on: push to main/develop, pull requests, manual dispatch
-- [ ] All 6 pallets build successfully in parallel matrix
+- [ ] All 8 pallets build successfully in parallel matrix (stake, reputation, director, bft, storage, treasury, task-market, model-registry)
 - [ ] Unit tests run with coverage report generated (>85% target)
 - [ ] Integration tests execute with local Substrate node
 - [ ] Clippy linting passes with `-D warnings` (no warnings allowed)
@@ -69,16 +69,16 @@ Implement comprehensive CI/CD pipeline for ICN Chain runtime and pallets using G
 - [ ] cargo-deny checks pass (licenses, advisories, bans)
 - [ ] Runtime WASM builds successfully for wasm32-unknown-unknown target
 - [ ] Benchmark weights checked for excessive growth (>10% increase fails)
-- [ ] Automated ICN Testnet runtime upgrade on develop branch merge
+- [ ] Automated NSN Testnet runtime upgrade on develop branch merge
 - [ ] Build time <10 minutes (with caching)
 - [ ] Artifacts uploaded: WASM, coverage, benchmarks
 
 ## Test Scenarios
 
 **Test Case 1: PR Build**
-- Given: Developer opens PR modifying pallet-icn-stake
+- Given: Developer opens PR modifying pallet-nsn-stake
 - When: GitHub Actions workflow triggers
-- Then: Only icn-stake pallet builds/tests (optimized), Clippy passes, unit tests pass
+- Then: Only nsn-stake pallet builds/tests (optimized), Clippy passes, unit tests pass
 
 **Test Case 2: Security Vulnerability Detection**
 - Given: Dependency has known CVE
@@ -90,10 +90,10 @@ Implement comprehensive CI/CD pipeline for ICN Chain runtime and pallets using G
 - When: Benchmarks run and compare to baseline
 - Then: If weights increase >10%, build fails with "Weight regression detected" error
 
-**Test Case 4: Automated ICN Testnet Deployment**
+**Test Case 4: Automated NSN Testnet Deployment**
 - Given: PR merged to develop branch
 - When: CI/CD pipeline completes all checks
-- Then: Runtime WASM submitted to ICN Testnet via `submit-runtime-upgrade.sh`, upgrade proposed on-chain
+- Then: Runtime WASM submitted to NSN Testnet via `submit-runtime-upgrade.sh`, upgrade proposed on-chain
 
 **Test Case 5: Caching Effectiveness**
 - Given: Two sequential builds with no dependency changes
@@ -162,12 +162,14 @@ jobs:
     strategy:
       matrix:
         pallet:
-          - icn-stake
-          - icn-reputation
-          - icn-director
-          - icn-bft
-          - icn-pinning
-          - icn-treasury
+          - nsn-stake
+          - nsn-reputation
+          - nsn-director
+          - nsn-bft
+          - nsn-storage
+          - nsn-treasury
+          - nsn-task-market
+          - nsn-model-registry
     steps:
       - uses: actions/checkout@v4
 
@@ -266,19 +268,19 @@ jobs:
 
       - name: Build WASM
         run: |
-          cargo build --release --target wasm32-unknown-unknown -p icn-runtime
+          cargo build --release --target wasm32-unknown-unknown -p nsn-runtime
 
       - name: Upload WASM Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: icn-runtime-wasm
-          path: target/wasm32-unknown-unknown/release/icn_runtime.wasm
+          name: nsn-runtime-wasm
+          path: target/wasm32-unknown-unknown/release/nsn_runtime.wasm
 
       - name: Check Weight Benchmarks
-        run: cargo run --release -p icn-weights-check
+        run: cargo run --release -p nsn-weights-check
 
-  deploy-icn-testnet:
-    name: Deploy to ICN Testnet
+  deploy-nsn-testnet:
+    name: Deploy to NSN Testnet
     runs-on: ubuntu-latest
     needs: [build-wasm, security]
     if: github.ref == 'refs/heads/develop'
@@ -288,7 +290,7 @@ jobs:
       - name: Download WASM
         uses: actions/download-artifact@v3
         with:
-          name: icn-runtime-wasm
+          name: nsn-runtime-wasm
           path: ./wasm
 
       - name: Setup Substrate Tools
@@ -299,12 +301,12 @@ jobs:
 
       - name: Submit Runtime Upgrade
         env:
-          MOONRIVER_SUDO_KEY: ${{ secrets.MOONRIVER_SUDO_KEY }}
+          NSN_SUDO_KEY: ${{ secrets.NSN_SUDO_KEY }}
         run: |
           ./scripts/submit-runtime-upgrade.sh \
-            --network icn-testnet \
-            --wasm ./wasm/icn_runtime.wasm \
-            --sudo-seed "$MOONRIVER_SUDO_KEY"
+            --network nsn-testnet \
+            --wasm ./wasm/nsn_runtime.wasm \
+            --sudo-seed "$NSN_SUDO_KEY"
 ```
 
 ### 2. Runtime Upgrade Script
@@ -327,10 +329,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$NETWORK" == "icn-testnet" ]]; then
-  WS_URL="wss://testnet.icn.example.com"
-elif [[ "$NETWORK" == "icn-mainnet" ]]; then
-  WS_URL="wss://mainnet.icn.example.com"
+if [[ "$NETWORK" == "nsn-testnet" ]]; then
+  WS_URL="wss://testnet.nsn.network"
+elif [[ "$NETWORK" == "nsn-mainnet" ]]; then
+  WS_URL="wss://mainnet.nsn.network"
 else
   echo "Invalid network: $NETWORK"
   exit 1
@@ -350,7 +352,7 @@ echo "✅ Runtime upgrade proposed on $NETWORK"
 ```
 
 ### 3. Weight Check Tool
-**File:** `crates/icn-weights-check/src/main.rs`
+**File:** `crates/nsn-weights-check/src/main.rs`
 
 ```rust
 use std::fs;
@@ -418,13 +420,13 @@ gh run download <run_id>
 ## Dependencies
 
 **Hard Dependencies:**
-- [T001] ICN Chain Bootstrap - provides pallet code
-- [T002] pallet-icn-stake - first pallet to test
+- [T001] NSN Chain Bootstrap - provides pallet code
+- [T002] pallet-nsn-stake - first pallet to test
 
 **External Dependencies:**
 - GitHub Actions runner with 4 CPU cores
-- ICN Testnet access (our own chain)
-- MOONRIVER_SUDO_KEY secret in GitHub repo
+- NSN Testnet access (our own chain)
+- NSN_SUDO_KEY secret in GitHub repo
 
 ## Design Decisions
 
@@ -447,7 +449,7 @@ gh run download <run_id>
 | Nightly toolchain breaks | High | Low | Pin to specific nightly (nightly-2024-01-01), test upgrades in separate PR |
 | CI queue time >30 min | Medium | High | Use GitHub Actions matrix parallelism, aggressive caching |
 | False positive security alerts | Low | Medium | Maintain cargo-deny allowlist for false positives |
-| ICN Testnet upgrade fails | High | Low | Test on local node first, require manual approval step for mainnet |
+| NSN Testnet upgrade fails | High | Low | Test on local node first, require manual approval step for mainnet |
 
 ## Progress Log
 
@@ -463,12 +465,12 @@ gh run download <run_id>
 ### Code Complete
 - [ ] `.github/workflows/pallets.yml` workflow file
 - [ ] `scripts/submit-runtime-upgrade.sh` deployment script
-- [ ] `crates/icn-weights-check/` weight regression tool
+- [ ] `crates/nsn-weights-check/` weight regression tool
 - [ ] `benchmarks/baseline.json` baseline weights
 
 ### Testing
 - [ ] Workflow runs successfully on sample PR
-- [ ] All 6 pallets build in <10 minutes
+- [ ] All 8 pallets build in <10 minutes
 - [ ] Coverage reports upload to Codecov
 - [ ] Security scans detect intentional vulnerable dependency
 - [ ] Weight check fails on >10% regression
@@ -478,4 +480,4 @@ gh run download <run_id>
 - [ ] Troubleshooting common CI failures
 
 **Definition of Done:**
-Task is complete when GitHub Actions workflow automatically builds, tests, and deploys all 6 pallets on every PR/merge, with full test coverage reporting, security scanning, and automated ICN Testnet runtime upgrades on develop branch.
+Task is complete when GitHub Actions workflow automatically builds, tests, and deploys all 8 pallets on every PR/merge, with full test coverage reporting, security scanning, and automated NSN Testnet runtime upgrades on develop branch.

@@ -16,14 +16,14 @@ updated_at: 2025-12-24
 
 ## Description
 
-**PHASE C TASK** - Plan and implement coretime acquisition strategy for ICN Chain once it becomes a Polkadot parachain. Coretime is Polkadot's execution allocation model managed by the Broker pallet on the Coretime system chain.
+**PHASE C TASK** - Plan and implement coretime acquisition strategy for NSN Chain once it becomes a Polkadot parachain. Coretime is Polkadot's execution allocation model managed by the Broker pallet on the Coretime system chain.
 
 This task is **NOT required for MVP** and only relevant after T039 (Cumulus integration) is complete.
 
 ## Business Context
 
 **Why Coretime**:
-- **Elastic Scaling**: Acquire more coretime as ICN adoption grows
+- **Elastic Scaling**: Acquire more coretime as NSN adoption grows
 - **Cost Efficiency**: Pay only for execution time needed
 - **On-Demand Option**: Start with on-demand coretime, move to bulk as usage increases
 - **Multi-Core Future**: JAM architecture will expand coretime capabilities
@@ -53,7 +53,7 @@ This task is **NOT required for MVP** and only relevant after T039 (Cumulus inte
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    ICN PARACHAIN                                 │
+│                    NSN PARACHAIN                                 │
 │  Uses coretime allocation for block production/validation       │
 └─────────────────────────────────────────────────────────────────┘
 ```

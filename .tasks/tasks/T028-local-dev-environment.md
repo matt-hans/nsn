@@ -25,13 +25,13 @@ actual_tokens: null
 
 ## Description
 
-Create a comprehensive local development environment using Docker Compose that enables developers to test the entire ICN stack locally. This environment includes a local ICN Chain node, mock STUN/TURN servers, GPU passthrough for Vortex testing, and pre-configured model weights volume.
+Create a comprehensive local development environment using Docker Compose that enables developers to test the entire NSN stack locally. This environment includes a local NSN Chain node, mock STUN/TURN servers, GPU passthrough for Vortex testing, and pre-configured model weights volume.
 
 This is the foundation for all developer workflows and enables rapid iteration on pallets, off-chain nodes, and AI generation logic without cloud infrastructure costs.
 
 **Technical Approach:**
 - Multi-service Docker Compose configuration with GPU support
-- Local Substrate node with ICN custom pallets pre-deployed
+- Local Substrate node with NSN custom pallets pre-deployed
 - Mock STUN/TURN servers for NAT traversal testing
 - Shared volume for AI model weights (~15GB)
 - Prometheus + Grafana for local observability
@@ -44,7 +44,7 @@ This is the foundation for all developer workflows and enables rapid iteration o
 
 ## Business Context
 
-**User Story:** As a developer, I want to run the entire ICN stack locally, so that I can test changes without deploying to ICN Testnet or requiring expensive cloud infrastructure.
+**User Story:** As a developer, I want to run the entire NSN stack locally, so that I can test changes without deploying to NSN Testnet or requiring expensive cloud infrastructure.
 
 **Why This Matters:**
 - Reduces development cycle time from hours (deploy to testnet) to minutes (local testing)
@@ -63,13 +63,13 @@ This is the foundation for all developer workflows and enables rapid iteration o
 ## Acceptance Criteria
 
 - [ ] `docker-compose.yml` successfully brings up all services with single `docker-compose up` command
-- [ ] Local Substrate node starts with ICN pallets pre-deployed and accessible on port 9944
+- [ ] Local Substrate node starts with NSN pallets pre-deployed and accessible on port 9944
 - [ ] Mock STUN/TURN servers respond to ICE negotiation requests
 - [ ] GPU passthrough works for Vortex container (verified via `nvidia-smi` inside container)
 - [ ] Model weights volume auto-downloads on first startup (or provides clear instructions)
 - [ ] Prometheus scrapes metrics from all services (verified in http://localhost:9090)
-- [ ] Grafana dashboards load with ICN-specific panels (http://localhost:3000)
-- [ ] Test accounts pre-funded with 1000 ICN tokens each
+- [ ] Grafana dashboards load with NSN-specific panels (http://localhost:3000)
+- [ ] Test accounts pre-funded with 1000 NSN tokens each
 - [ ] All services start within 120 seconds on developer laptop (16GB RAM, RTX 3060)
 - [ ] `docker-compose down` cleanly shuts down all services without orphaned processes
 - [ ] README.md includes setup, troubleshooting, and common workflows
@@ -123,7 +123,7 @@ This is the foundation for all developer workflows and enables rapid iteration o
 version: '3.8'
 
 services:
-  # Local Substrate node with ICN pallets
+  # Local Substrate node with NSN pallets
   substrate-node:
     build:
       context: .
@@ -180,8 +180,8 @@ services:
       --listening-port=3478
       --fingerprint
       --lt-cred-mech
-      --user=icn:password
-      --realm=icn.local
+      --user=nsn:password
+      --realm=nsn.local
 
   # Mock TURN server (fallback)
   turn-server:
@@ -195,8 +195,8 @@ services:
       --listening-port=3479
       --fingerprint
       --lt-cred-mech
-      --user=icn:password
-      --realm=icn.local
+      --user=nsn:password
+      --realm=nsn.local
       --relay-ip=127.0.0.1
 
   # Prometheus
@@ -253,7 +253,7 @@ FROM paritytech/substrate-relay:latest
 WORKDIR /app
 
 # Copy built runtime (assumes cargo build completed)
-COPY --from=builder /app/target/release/icn_runtime.wasm /app/runtime.wasm
+COPY --from=builder /app/target/release/nsn_runtime.wasm /app/runtime.wasm
 
 # Pre-fund development accounts
 COPY docker/chain-spec-dev.json /app/chain-spec.json
@@ -319,7 +319,7 @@ scrape_configs:
 apiVersion: 1
 
 providers:
-  - name: 'ICN Local Dashboards'
+  - name: 'NSN Local Dashboards'
     orgId: 1
     folder: ''
     type: file
@@ -345,7 +345,7 @@ VORTEX_MAX_VRAM_GB=11.8
 # STUN/TURN
 STUN_SERVER=stun://localhost:3478
 TURN_SERVER=turn://localhost:3479
-TURN_USER=icn
+TURN_USER=nsn
 TURN_PASSWORD=password
 
 # Observability
@@ -416,7 +416,7 @@ python3 vortex/scripts/download_models.py --output volumes/models
 ### Test a Pallet Change
 ```bash
 # 1. Edit pallet code
-vim pallets/icn-stake/src/lib.rs
+vim pallets/nsn-stake/src/lib.rs
 
 # 2. Rebuild and restart Substrate node
 docker-compose build substrate-node
@@ -578,7 +578,7 @@ fi
 - [ ] Substrate node Dockerfile with dev chain spec
 - [ ] Vortex Dockerfile with GPU support and model downloads
 - [ ] Prometheus config scraping all services
-- [ ] Grafana dashboard provisioning with ICN panels
+- [ ] Grafana dashboard provisioning with NSN panels
 - [ ] Mock STUN/TURN server configuration
 - [ ] `.env.example` with all required variables
 - [ ] `docs/local-development.md` with setup and troubleshooting
@@ -591,7 +591,7 @@ fi
 - [ ] Prometheus shows all targets "Up"
 - [ ] Grafana dashboards load with live data
 - [ ] Model weights download successfully (or manual setup works)
-- [ ] Test accounts pre-funded with 1000 ICN
+- [ ] Test accounts pre-funded with 1000 NSN
 
 ### Documentation
 - [ ] README includes prerequisites
@@ -608,4 +608,4 @@ fi
 - [ ] Resource limits documented
 
 **Definition of Done:**
-Task is complete when a new developer can clone the repository, run `docker-compose up`, and have a fully functional ICN development environment within 5 minutes (excluding model download time), with all services healthy and test accounts ready for pallet interaction.
+Task is complete when a new developer can clone the repository, run `docker-compose up`, and have a fully functional NSN development environment within 5 minutes (excluding model download time), with all services healthy and test accounts ready for pallet interaction.

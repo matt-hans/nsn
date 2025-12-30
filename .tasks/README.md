@@ -1,8 +1,8 @@
-# ICN Task Management System
+# NSN Task Management System
 
 ## Overview
 
-This directory contains the task management system for the Interdimensional Cable Network (ICN) project. Tasks are organized into phases matching the PRD roadmap, with detailed specifications for ICN Chain pallet development, off-chain infrastructure, and AI/ML pipeline implementation.
+This directory contains the task management system for the Nueral Sovereign Network (NSN) project. Tasks are organized into phases matching the PRD roadmap, with detailed specifications for NSN Chain pallet development, off-chain infrastructure, and AI/ML pipeline implementation.
 
 ## Directory Structure
 

@@ -25,9 +25,9 @@ actual_tokens: null
 
 ## Description
 
-Build a production-ready Docker image for ICN Director nodes that includes the Rust binary (core runtime), Python sidecar (Vortex engine), pre-loaded AI model weights, and all necessary dependencies. The image must support GPU passthrough for CUDA operations and expose required ports for P2P networking, metrics, and gRPC communication.
+Build a production-ready Docker image for NSN Director nodes that includes the Rust binary (core runtime), Python sidecar (Vortex engine), pre-loaded AI model weights, and all necessary dependencies. The image must support GPU passthrough for CUDA operations and expose required ports for P2P networking, metrics, and gRPC communication.
 
-This image is the deployable artifact for all Director nodes on ICN Testnet/ICN Chain and must be optimized for size, startup time, and runtime performance.
+This image is the deployable artifact for all Director nodes on NSN Testnet/NSN Chain and must be optimized for size, startup time, and runtime performance.
 
 **Technical Approach:**
 - Multi-stage Docker build to minimize final image size
@@ -40,13 +40,13 @@ This image is the deployable artifact for all Director nodes on ICN Testnet/ICN 
 
 **Integration Points:**
 - Deployed by Kubernetes (T030) or bare metal operators
-- Connects to ICN Chain RPC endpoints
+- Connects to NSN Chain RPC endpoints
 - Publishes to P2P mesh (libp2p)
 - Exposes metrics to Prometheus (T033)
 
 ## Business Context
 
-**User Story:** As a node operator, I want a single Docker image that runs a complete Director node, so that I can deploy ICN infrastructure without complex multi-step setup.
+**User Story:** As a node operator, I want a single Docker image that runs a complete Director node, so that I can deploy NSN infrastructure without complex multi-step setup.
 
 **Why This Matters:**
 - Simplifies deployment for community node operators
@@ -55,16 +55,16 @@ This image is the deployable artifact for all Director nodes on ICN Testnet/ICN 
 - Reduces support burden (single artifact vs. multi-component setup)
 
 **What It Unblocks:**
-- ICN Testnet testnet deployment (end of Phase 1)
+- NSN Testnet deployment (end of Phase 1)
 - Community node operator onboarding
 - Kubernetes orchestration (T030)
 - Production mainnet launch (Phase 2)
 
-**Priority Justification:** P2 - Critical for deployment but depends on Director node implementation (T009). Must be ready before ICN Testnet deployment in Week 8.
+**Priority Justification:** P2 - Critical for deployment but depends on Director node implementation (T009). Must be ready before NSN Testnet deployment in Week 8.
 
 ## Acceptance Criteria
 
-- [ ] Multi-stage Dockerfile builds successfully with `docker build -t icn-director:latest .`
+- [ ] Multi-stage Dockerfile builds successfully with `docker build -t nsn-director:latest .`
 - [ ] Final image size <10GB (excluding model weights if mounted separately)
 - [ ] Image startup time <60s from cold start to healthy P2P connections
 - [ ] GPU visible inside container (`nvidia-smi` works)
@@ -74,8 +74,8 @@ This image is the deployable artifact for all Director nodes on ICN Testnet/ICN 
 - [ ] Health check endpoint responds on `/health` (port 9100)
 - [ ] P2P port (9000) accepts connections
 - [ ] gRPC server (50051) responds to BFT coordination requests
-- [ ] Prometheus metrics exposed on port 9100 with all ICN-specific metrics
-- [ ] Image published to GitHub Container Registry (`ghcr.io/icn/director:latest`)
+- [ ] Prometheus metrics exposed on port 9100 with all NSN-specific metrics
+- [ ] Image published to GitHub Container Registry (`ghcr.io/nsn/director:latest`)
 - [ ] Multi-architecture support (amd64, arm64 for future Apple Silicon support)
 - [ ] Security scanning passes (no critical CVEs)
 
@@ -83,7 +83,7 @@ This image is the deployable artifact for all Director nodes on ICN Testnet/ICN 
 
 **Test Case 1: Clean Build and Startup**
 - Given: Clean Docker environment, Dockerfile in repository root
-- When: Developer runs `docker build -t icn-director:latest . && docker run --gpus all -p 9000:9000 icn-director:latest`
+- When: Developer runs `docker build -t nsn-director:latest . && docker run --gpus all -p 9000:9000 nsn-director:latest`
 - Then: Container starts, models load, P2P service binds to port 9000, health check returns 200 within 60s
 
 **Test Case 2: GPU Passthrough Verification**
@@ -104,7 +104,7 @@ This image is the deployable artifact for all Director nodes on ICN Testnet/ICN 
 **Test Case 5: Metrics Endpoint**
 - Given: Container running
 - When: `curl http://localhost:9100/metrics`
-- Then: Response includes Prometheus-format metrics: `icn_vortex_vram_usage_bytes`, `icn_p2p_connected_peers`, `icn_bft_round_duration_seconds`
+- Then: Response includes Prometheus-format metrics: `nsn_vortex_vram_usage_bytes`, `nsn_p2p_connected_peers`, `nsn_bft_round_duration_seconds`
 
 **Test Case 6: Graceful Shutdown**
 - Given: Container running with active P2P connections
@@ -117,8 +117,8 @@ This image is the deployable artifact for all Director nodes on ICN Testnet/ICN 
 - Then: No OOM kills, CPU stays <100% per core average, VRAM stable at ~11.7GB
 
 **Test Case 8: Image Security Scan**
-- Given: Built image `icn-director:latest`
-- When: Run `docker scan icn-director:latest` or Trivy scan
+- Given: Built image `nsn-director:latest`
+- When: Run `docker scan nsn-director:latest` or Trivy scan
 - Then: No critical CVEs reported, all base packages up-to-date
 
 ## Technical Implementation
@@ -154,7 +154,7 @@ COPY off-chain ./off-chain
 ENV CARGO_PROFILE_RELEASE_LTO=true
 ENV CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 
-RUN cargo build --release -p icn-director
+RUN cargo build --release -p nsn-director
 
 # ============================================================================
 # Stage 2: Python Model Downloader
@@ -186,21 +186,21 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -m -u 1000 -s /bin/bash icn
+RUN useradd -m -u 1000 -s /bin/bash nsn
 
 WORKDIR /app
 
 # Copy Rust binary from builder
-COPY --from=rust-builder --chown=icn:icn /build/target/release/icn-director /app/icn-director
+COPY --from=rust-builder --chown=nsn:nsn /build/target/release/nsn-director /app/nsn-director
 
 # Copy Vortex Python code
-COPY --chown=icn:icn vortex ./vortex
+COPY --chown=nsn:nsn vortex ./vortex
 
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r vortex/requirements.txt
 
 # Copy pre-downloaded models (or mount as volume in production)
-COPY --from=model-downloader --chown=icn:icn /models /models
+COPY --from=model-downloader --chown=nsn:nsn /models /models
 
 # Expose ports
 EXPOSE 9000   # P2P (libp2p)
@@ -212,7 +212,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:9100/health || exit 1
 
 # Switch to non-root user
-USER icn
+USER nsn
 
 # Environment variables (override via docker run -e)
 ENV RUST_LOG=info
@@ -223,7 +223,7 @@ ENV METRICS_PORT=9100
 ENV GRPC_PORT=50051
 
 # Entrypoint
-ENTRYPOINT ["/app/icn-director"]
+ENTRYPOINT ["/app/nsn-director"]
 CMD ["--p2p-port", "9000", "--metrics-port", "9100", "--grpc-port", "50051"]
 ```
 
@@ -233,7 +233,7 @@ CMD ["--p2p-port", "9000", "--metrics-port", "9100", "--grpc-port", "50051"]
 ```python
 #!/usr/bin/env python3
 """
-Download ICN Vortex AI models from Hugging Face Hub with checksum verification.
+Download NSN Vortex AI models from Hugging Face Hub with checksum verification.
 """
 import argparse
 import hashlib
@@ -354,7 +354,7 @@ def download_models(output_dir: Path, verify: bool = True):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download ICN Vortex models")
+    parser = argparse.ArgumentParser(description="Download NSN Vortex models")
     parser.add_argument("--output", type=Path, required=True, help="Output directory")
     parser.add_argument("--verify-checksums", action="store_true", help="Verify checksums")
     args = parser.parse_args()
@@ -363,7 +363,7 @@ if __name__ == "__main__":
 ```
 
 ### 3. Health Check Endpoint
-**File:** `off-chain/icn-director/src/health.rs`
+**File:** `nsn-nodes/director/src/health.rs`
 
 ```rust
 use axum::{response::Json, routing::get, Router};
@@ -411,7 +411,7 @@ pub fn health_router(state: HealthState) -> Router {
 set -euo pipefail
 
 VERSION=${1:-latest}
-REGISTRY=${REGISTRY:-ghcr.io/icn}
+REGISTRY=${REGISTRY:-ghcr.io/nsn}
 
 echo "Building Director image version: $VERSION"
 
@@ -440,7 +440,7 @@ on:
   pull_request:
     paths:
       - 'Dockerfile.director'
-      - 'off-chain/icn-director/**'
+      - 'nsn-nodes/director/**'
       - 'vortex/**'
 
 env:
@@ -509,7 +509,7 @@ jobs:
 
 ```bash
 # Build image locally
-docker build -t icn-director:test -f Dockerfile.director .
+docker build -t nsn-director:test -f Dockerfile.director .
 
 # Run with GPU passthrough
 docker run --rm --gpus all \
@@ -517,7 +517,7 @@ docker run --rm --gpus all \
   -p 9100:9100 \
   -p 50051:50051 \
   -e SUBSTRATE_WS_URL=ws://localhost:9944 \
-  icn-director:test
+  nsn-director:test
 
 # Test health check
 curl http://localhost:9100/health | jq .
@@ -529,10 +529,10 @@ docker exec -it <container_id> nvidia-smi
 docker exec <container_id> python3 -c "import torch; print(f'VRAM: {torch.cuda.memory_allocated() / 1e9:.2f} GB')"
 
 # Scan for vulnerabilities
-docker scan icn-director:test
+docker scan nsn-director:test
 
 # Test multi-architecture build
-docker buildx build --platform linux/amd64,linux/arm64 -t icn-director:test -f Dockerfile.director .
+docker buildx build --platform linux/amd64,linux/arm64 -t nsn-director:test -f Dockerfile.director .
 ```
 
 ## Dependencies
@@ -636,13 +636,13 @@ def download_with_retry(url, output_path, max_retries=5):
 - [ ] Documentation in `docs/deployment/director-node.md`
 
 ### Testing
-- [ ] Local build succeeds: `docker build -t icn-director:test .`
+- [ ] Local build succeeds: `docker build -t nsn-director:test .`
 - [ ] Container starts and becomes healthy within 60s
 - [ ] GPU visible: `nvidia-smi` works inside container
 - [ ] All models load, VRAM <11.8GB
 - [ ] Health check returns 200
 - [ ] P2P service binds to port 9000
-- [ ] Metrics endpoint exposes all ICN metrics
+- [ ] Metrics endpoint exposes all NSN metrics
 - [ ] Graceful shutdown on SIGTERM
 - [ ] Multi-architecture build succeeds (amd64, arm64)
 - [ ] Trivy scan shows no critical CVEs
@@ -662,4 +662,4 @@ def download_with_retry(url, output_path, max_retries=5):
 - [ ] Build cache optimization configured
 
 **Definition of Done:**
-Task is complete when a node operator can run `docker pull ghcr.io/icn/director:latest && docker run --gpus all -p 9000:9000 ghcr.io/icn/director:latest`, and within 60 seconds have a fully functional Director node connected to ICN Chain mainnet, with all AI models loaded and P2P networking active.
+Task is complete when a node operator can run `docker pull ghcr.io/nsn/director:latest && docker run --gpus all -p 9000:9000 ghcr.io/nsn/director:latest`, and within 60 seconds have a fully functional Director node connected to NSN Chain mainnet, with all AI models loaded and P2P networking active.

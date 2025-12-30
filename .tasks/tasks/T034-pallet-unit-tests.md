@@ -22,7 +22,7 @@ actual_tokens: null
 
 ## Description
 
-Implement comprehensive unit tests for all 6 ICN pallets with 85%+ code coverage target. Tests must cover all extrinsics (success and failure paths), storage mutations, event emissions, error conditions, slashing scenarios, election edge cases, and BFT challenge/resolution flows.
+Implement comprehensive unit tests for all 8 NSN pallets with 85%+ code coverage target. Tests must cover all extrinsics (success and failure paths), storage mutations, event emissions, error conditions, slashing scenarios, election edge cases, and BFT challenge/resolution flows.
 
 **Technical Approach:**
 - Substrate `mock.rs` runtime for isolated testing
@@ -32,12 +32,14 @@ Implement comprehensive unit tests for all 6 ICN pallets with 85%+ code coverage
 - Coverage measured with tarpaulin
 
 **Coverage Targets:**
-- pallet-icn-stake: 90%
-- pallet-icn-reputation: 85%
-- pallet-icn-director: 88%
-- pallet-icn-bft: 85%
-- pallet-icn-pinning: 87%
-- pallet-icn-treasury: 85%
+- pallet-nsn-stake: 90%
+- pallet-nsn-reputation: 85%
+- pallet-nsn-epochs: 88%
+- pallet-nsn-bft: 85%
+- pallet-nsn-storage: 87%
+- pallet-nsn-treasury: 85%
+- pallet-nsn-task-market: 85%
+- pallet-nsn-model-registry: 85%
 
 ## Acceptance Criteria
 
@@ -64,10 +66,10 @@ fn deposit_stake_success() {
         let alice = 1;
         let amount = 100 * UNIT;
 
-        assert_ok!(IcnStake::deposit_stake(Origin::signed(alice), amount, 1000, Region::NaWest));
+        assert_ok!(NsnStake::deposit_stake(Origin::signed(alice), amount, 1000, Region::NaWest));
 
-        assert_eq!(IcnStake::stakes(alice).amount, amount);
-        assert_eq!(IcnStake::stakes(alice).role, NodeRole::Director);
+        assert_eq!(NsnStake::stakes(alice).amount, amount);
+        assert_eq!(NsnStake::stakes(alice).role, NodeRole::Director);
         assert_last_event!(Event::StakeDeposited(alice, amount, NodeRole::Director));
     });
 }
@@ -83,7 +85,7 @@ fn deposit_stake_region_cap_exceeded() {
 
         // Attempt to stake more in NA-WEST (would exceed 20%)
         assert_noop!(
-            IcnStake::deposit_stake(Origin::signed(alice), 100 * UNIT, 1000, Region::NaWest),
+            NsnStake::deposit_stake(Origin::signed(alice), 100 * UNIT, 1000, Region::NaWest),
             Error::<Test>::RegionCapExceeded
         );
     });
@@ -98,7 +100,7 @@ fn elect_directors_multi_region() {
         // Setup 10 directors across 3 regions
         setup_directors_multi_region();
 
-        let directors = IcnDirector::elect_directors(100);
+        let directors = NsnEpochs::elect_directors(100);
 
         assert_eq!(directors.len(), 5);
         // Assert no more than 2 from same region
@@ -117,17 +119,17 @@ fn bft_challenge_upheld_slashes_directors() {
         submit_bft_result(slot, directors, fraudulent_hash);
 
         // Challenge with validator attestations
-        assert_ok!(IcnDirector::challenge_bft_result(Origin::signed(challenger), slot, evidence));
+        assert_ok!(NsnBft::challenge_bft_result(Origin::signed(challenger), slot, evidence));
 
         // Advance past challenge period
         run_to_block(System::block_number() + 51);
 
         // Resolve challenge (upheld)
-        assert_ok!(IcnDirector::resolve_challenge(Origin::root(), slot, validator_attestations));
+        assert_ok!(NsnBft::resolve_challenge(Origin::root(), slot, validator_attestations));
 
         // Verify directors slashed
         for director in &directors {
-            assert_eq!(IcnStake::stakes(director).amount, initial_stake - 100 * UNIT);
+            assert_eq!(NsnStake::stakes(director).amount, initial_stake - 100 * UNIT);
         }
 
         // Verify challenger refunded + rewarded
@@ -144,14 +146,14 @@ fn reputation_decays_weekly() {
         let alice = 1;
 
         // Record initial reputation
-        IcnReputation::record_event(Origin::root(), alice, DirectorSlotAccepted, 1)?;
-        assert_eq!(IcnReputation::reputation_scores(alice).director_score, 100);
+        NsnReputation::record_event(Origin::root(), alice, DirectorSlotAccepted, 1)?;
+        assert_eq!(NsnReputation::reputation_scores(alice).director_score, 100);
 
         // Advance 4 weeks with no activity
         run_to_block(4 * WEEKS_IN_BLOCKS);
 
         // Apply decay (10% per week compounding)
-        let mut score = IcnReputation::reputation_scores(alice);
+        let mut score = NsnReputation::reputation_scores(alice);
         score.apply_decay(System::block_number(), 10);
 
         // 100 * 0.9^4 = 65.61
@@ -162,7 +164,7 @@ fn reputation_decays_weekly() {
 
 ## Technical Implementation
 
-**File:** `pallets/icn-stake/src/tests.rs`
+**File:** `pallets/nsn-stake/src/tests.rs`
 
 ```rust
 use super::*;
@@ -180,7 +182,7 @@ frame_support::construct_runtime!(
     {
         System: frame_system,
         Balances: pallet_balances,
-        IcnStake: pallet_icn_stake,
+        NsnStake: pallet_nsn_stake,
     }
 );
 
@@ -203,13 +205,13 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 #[test]
 fn deposit_stake_basic() {
     new_test_ext().execute_with(|| {
-        assert_ok!(IcnStake::deposit_stake(
+        assert_ok!(NsnStake::deposit_stake(
             Origin::signed(1),
             100 * UNIT,
             1000,
             Region::NaWest
         ));
-        assert_eq!(IcnStake::stakes(1).amount, 100 * UNIT);
+        assert_eq!(NsnStake::stakes(1).amount, 100 * UNIT);
     });
 }
 
@@ -250,7 +252,7 @@ jobs:
 cargo test --all-features -- --nocapture
 
 # Run tests for specific pallet
-cargo test -p pallet-icn-stake --all-features
+cargo test -p pallet-nsn-stake --all-features
 
 # Generate coverage report
 cargo tarpaulin --all-features --workspace --out Html --output-dir coverage/
@@ -285,7 +287,7 @@ cargo tarpaulin --all-features --workspace | grep "^Coverage:"
 
 ## Completion Checklist
 
-- [ ] tests.rs for all 6 pallets
+- [ ] tests.rs for all 8 pallets
 - [ ] 85%+ coverage achieved
 - [ ] All extrinsics tested (success + errors)
 - [ ] Slashing, elections, BFT, reputation tests passing

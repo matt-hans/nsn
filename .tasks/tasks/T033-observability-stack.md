@@ -24,11 +24,11 @@ actual_tokens: null
 
 ## Description
 
-Deploy production-grade observability stack including Prometheus (metrics), Grafana (dashboards), Jaeger (distributed tracing), and AlertManager (alerting). Configure scraping of all ICN components (Substrate node, Director/Super-Nodes, Vortex engine) with ICN-specific dashboards and critical alerts.
+Deploy production-grade observability stack including Prometheus (metrics), Grafana (dashboards), Jaeger (distributed tracing), and AlertManager (alerting). Configure scraping of all NSN components (Substrate node, Director/Super-Nodes, Vortex engine) with NSN-specific dashboards and critical alerts.
 
 **Technical Approach:**
 - Prometheus with 15s scrape interval, 30d retention
-- Grafana with pre-configured ICN dashboards (block production, P2P mesh, VRAM usage, BFT latency)
+- Grafana with pre-configured NSN dashboards (block production, P2P mesh, VRAM usage, BFT latency)
 - Jaeger for OpenTelemetry traces (10% sampling)
 - AlertManager with critical/warning alert rules
 - Vector + Loki for structured log aggregation (7d retention)
@@ -41,32 +41,32 @@ Deploy production-grade observability stack including Prometheus (metrics), Graf
 ## Acceptance Criteria
 
 - [ ] Prometheus deployed with persistent storage (30d retention)
-- [ ] Grafana accessible with ICN dashboards provisioned
+- [ ] Grafana accessible with NSN dashboards provisioned
 - [ ] Jaeger UI shows traces from Director nodes
 - [ ] AlertManager routes alerts to configured channels
 - [ ] Vector aggregates logs from all pods/containers
 - [ ] Loki stores logs for 7 days
 - [ ] Key metrics defined and scraped:
-  - `icn_vortex_generation_time_seconds` (P99 <15s)
-  - `icn_bft_round_duration_seconds` (P99 <10s)
-  - `icn_p2p_connected_peers` (>10)
-  - `icn_total_staked_tokens`
-  - `icn_slashing_events_total`
+  - `nsn_vortex_generation_time_seconds` (P99 <15s)
+  - `nsn_bft_round_duration_seconds` (P99 <10s)
+  - `nsn_p2p_connected_peers` (>10)
+  - `nsn_total_staked_tokens`
+  - `nsn_slashing_events_total`
 - [ ] Critical alerts configured:
   - DirectorSlotMissed
   - VortexOOM (VRAM >11.5GB)
   - ChainDisconnected
   - StakeConcentration (region >25%)
-- [ ] ServiceMonitors auto-discover ICN pods
+- [ ] ServiceMonitors auto-discover NSN pods
 
 ## Test Scenarios
 
 **Test Case 1: Metrics Scraping**
 - When: Director node starts
-- Then: Prometheus shows icn-director target as "Up", metrics appear within 30s
+- Then: Prometheus shows nsn-director target as "Up", metrics appear within 30s
 
 **Test Case 2: Dashboard Visualization**
-- When: Open Grafana → ICN Overview dashboard
+- When: Open Grafana → NSN Overview dashboard
 - Then: See live block production, P2P peer count, VRAM usage graphs
 
 **Test Case 3: Alert Triggering**
@@ -104,7 +104,7 @@ prometheus:
             - role: pod
           relabel_configs:
             - source_labels: [__meta_kubernetes_pod_label_app]
-              regex: icn-.*
+              regex: nsn-.*
               action: keep
             - source_labels: [__meta_kubernetes_pod_container_port_name]
               regex: metrics
@@ -112,13 +112,13 @@ prometheus:
 
         - job_name: 'director-nodes'
           static_configs:
-            - targets: ['icn-director:9100']
+            - targets: ['nsn-director:9100']
 
         - job_name: 'super-nodes'
           static_configs:
             - targets:
-                - 'icn-super-node-na-west:9100'
-                - 'icn-super-node-eu-west:9100'
+                - 'nsn-super-node-na-west:9100'
+                - 'nsn-super-node-eu-west:9100'
                 # ... all regions
 
 grafana:
@@ -146,11 +146,11 @@ grafana:
     dashboardproviders.yaml:
       apiVersion: 1
       providers:
-        - name: 'icn'
-          folder: 'ICN'
+        - name: 'nsn'
+          folder: 'NSN'
           type: file
           options:
-            path: /var/lib/grafana/dashboards/icn
+            path: /var/lib/grafana/dashboards/nsn
 
 jaeger:
   allInOne:
@@ -173,7 +173,7 @@ alertmanager:
       - name: 'slack'
         slack_configs:
           - api_url: '$SLACK_WEBHOOK_URL'
-            channel: '#icn-alerts'
+            channel: '#nsn-alerts'
 
       - name: 'pagerduty'
         pagerduty_configs:
@@ -188,12 +188,12 @@ loki:
       retention_period: 168h  # 7 days
 ```
 
-**File:** `charts/observability/dashboards/icn-overview.json`
+**File:** `charts/observability/dashboards/nsn-overview.json`
 
 ```json
 {
   "dashboard": {
-    "title": "ICN System Overview",
+    "title": "NSN System Overview",
     "panels": [
       {
         "title": "Block Production Rate",
@@ -207,7 +207,7 @@ loki:
         "title": "P2P Connected Peers",
         "targets": [
           {
-            "expr": "icn_p2p_connected_peers"
+            "expr": "nsn_p2p_connected_peers"
           }
         ]
       },
@@ -215,7 +215,7 @@ loki:
         "title": "Vortex Generation Time (P99)",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, icn_vortex_generation_time_seconds_bucket)"
+            "expr": "histogram_quantile(0.99, nsn_vortex_generation_time_seconds_bucket)"
           }
         ],
         "alert": {
@@ -227,7 +227,7 @@ loki:
         "title": "BFT Round Duration (P99)",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, icn_bft_round_duration_seconds_bucket)"
+            "expr": "histogram_quantile(0.99, nsn_bft_round_duration_seconds_bucket)"
           }
         ]
       },
@@ -235,7 +235,7 @@ loki:
         "title": "Total Staked Tokens by Region",
         "targets": [
           {
-            "expr": "sum(icn_staked_amount) by (region)"
+            "expr": "sum(nsn_staked_amount) by (region)"
           }
         ]
       },
@@ -243,7 +243,7 @@ loki:
         "title": "Slashing Events (Last 24h)",
         "targets": [
           {
-            "expr": "increase(icn_slashing_events_total[24h])"
+            "expr": "increase(nsn_slashing_events_total[24h])"
           }
         ]
       }
@@ -252,15 +252,15 @@ loki:
 }
 ```
 
-**File:** `charts/observability/alerts/icn-rules.yaml`
+**File:** `charts/observability/alerts/nsn-rules.yaml`
 
 ```yaml
 groups:
-  - name: icn-critical
+  - name: nsn-critical
     interval: 30s
     rules:
       - alert: DirectorSlotMissed
-        expr: increase(icn_bft_failures_total[5m]) > 0
+        expr: increase(nsn_bft_failures_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -268,7 +268,7 @@ groups:
           summary: "Director slot missed - BFT consensus failed"
 
       - alert: VortexOOM
-        expr: icn_vortex_vram_usage_bytes > 11.5e9
+        expr: nsn_vortex_vram_usage_bytes > 11.5e9
         for: 1m
         labels:
           severity: critical
@@ -283,11 +283,11 @@ groups:
         annotations:
           summary: "No new blocks in 60 seconds"
 
-  - name: icn-warning
+  - name: nsn-warning
     interval: 1m
     rules:
       - alert: StakeConcentration
-        expr: (sum by (region) (icn_staked_amount)) / sum(icn_staked_amount) > 0.25
+        expr: (sum by (region) (nsn_staked_amount)) / sum(nsn_staked_amount) > 0.25
         for: 10m
         labels:
           severity: warning
@@ -295,7 +295,7 @@ groups:
           summary: "Region has >25% of total stake"
 
       - alert: BftLatencyHigh
-        expr: histogram_quantile(0.99, icn_bft_round_duration_seconds_bucket) > 10
+        expr: histogram_quantile(0.99, nsn_bft_round_duration_seconds_bucket) > 10
         for: 5m
         labels:
           severity: warning
@@ -347,13 +347,13 @@ curl http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.
 kubectl port-forward -n monitoring svc/grafana 3000:80
 
 # Query metrics
-curl -G http://localhost:9090/api/v1/query --data-urlencode 'query=icn_vortex_generation_time_seconds' | jq .
+curl -G http://localhost:9090/api/v1/query --data-urlencode 'query=nsn_vortex_generation_time_seconds' | jq .
 
 # Trigger test alert
 kubectl exec -it <director-pod> -- python -c "import torch; torch.cuda.empty_cache(); torch.zeros(12e9, device='cuda')"
 
 # View logs in Loki
-logcli query '{app="icn-director"}' --limit=100 --since=1h
+logcli query '{app="nsn-director"}' --limit=100 --since=1h
 ```
 
 ## Dependencies
@@ -393,10 +393,10 @@ logcli query '{app="icn-director"}' --limit=100 --since=1h
 ## Completion Checklist
 
 - [ ] Helm charts for Prometheus, Grafana, Jaeger, Loki
-- [ ] ICN dashboards provisioned
+- [ ] NSN dashboards provisioned
 - [ ] Alert rules configured
 - [ ] ServiceMonitors for auto-discovery
 - [ ] Deployment script tested
 
 **Definition of Done:**
-Observability stack deployed to Kubernetes, scraping all ICN components, dashboards show live metrics, critical alerts configured and tested.
+Observability stack deployed to Kubernetes, scraping all NSN components, dashboards show live metrics, critical alerts configured and tested.

@@ -25,13 +25,13 @@ actual_tokens: null
 
 ## Description
 
-Implement a comprehensive NAT traversal stack to enable P2P connectivity for ICN nodes behind firewalls and NATs. Uses a priority-based strategy: Direct → STUN → UPnP → Circuit Relay → TURN, with automatic fallback between methods.
+Implement a comprehensive NAT traversal stack to enable P2P connectivity for NSN nodes behind firewalls and NATs. Uses a priority-based strategy: Direct → STUN → UPnP → Circuit Relay → TURN, with automatic fallback between methods.
 
 **Technical Approach:**
 - Attempt direct connection first (no NAT or port forwarding configured)
 - Use STUN for UDP hole punching (ICE-like behavior)
 - Attempt UPnP port mapping for automatic firewall configuration
-- Fallback to libp2p Circuit Relay (incentivized with ICN token rewards)
+- Fallback to libp2p Circuit Relay (incentivized with NSN token rewards)
 - Ultimate fallback to TURN relay for severely restricted networks
 - Implement connection strategy prioritization and automatic retry logic
 - Expose metrics for NAT traversal success rates per method
@@ -43,7 +43,7 @@ Implement a comprehensive NAT traversal stack to enable P2P connectivity for ICN
 
 ## Business Context
 
-**User Story:** As an ICN node operator behind a NAT or firewall, I want automatic connection to the P2P network, so that I can participate without manual port forwarding or network configuration.
+**User Story:** As an NSN node operator behind a NAT or firewall, I want automatic connection to the P2P network, so that I can participate without manual port forwarding or network configuration.
 
 **Why This Matters:**
 - 70-80% of residential nodes are behind NATs (unavoidable reality)
@@ -68,7 +68,7 @@ Implement a comprehensive NAT traversal stack to enable P2P connectivity for ICN
 - [ ] **Strategy Prioritization**: Tries strategies in order (Direct → STUN → UPnP → Relay → TURN)
 - [ ] **Automatic Retry**: Retries failed strategies with exponential backoff
 - [ ] **Connection Timeout**: Each strategy times out after 10 seconds
-- [ ] **Relay Incentives**: Circuit Relay nodes earn 0.01 ICN/hour (tracked off-chain for now)
+- [ ] **Relay Incentives**: Circuit Relay nodes earn 0.01 NSN/hour (tracked off-chain for now)
 - [ ] **Metrics Exposed**: NAT traversal attempts, success rate per method, current connection type
 - [ ] **Graceful Degradation**: Node remains functional even if only TURN is available (degraded performance acceptable)
 
@@ -110,7 +110,7 @@ Implement a comprehensive NAT traversal stack to enable P2P connectivity for ICN
   - Circuit relay connection established
   - Node A can send/receive messages via relay
   - Metrics show nat_traversal_method="circuit_relay"
-  - Relay node earns 0.01 ICN/hour (tracked)
+  - Relay node earns 0.01 NSN/hour (tracked)
 
 **Test Case 5: TURN Fallback**
 - Given: Node A behind strict corporate firewall, all P2P methods failed
@@ -211,12 +211,12 @@ impl NATTraversalStack {
             ],
             turn_servers: vec![
                 TurnServer {
-                    url: "turn:turn.icn.network:3478".to_string(),
-                    username: "icn".to_string(),
+                    url: "turn:turn.nsn.network:3478".to_string(),
+                    username: "nsn".to_string(),
                     credential: "secret".to_string(),  // TODO: secure storage
                 },
             ],
-            relay_reward_per_hour: Decimal::new(1, 2),  // 0.01 ICN
+            relay_reward_per_hour: Decimal::new(1, 2),  // 0.01 NSN
             circuit_relay_priority: 1.5,
         }
     }
@@ -315,7 +315,7 @@ impl NATTraversalStack {
             local_port,
             igd::SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), local_port)),
             0,  // Infinite lease
-            "ICN P2P",
+            "NSN P2P",
         ).map_err(|e| NATError::UPnPFailed(e.to_string()))?;
 
         tracing::info!("UPnP port mapping: {} -> {}", local_port, external_port);
@@ -357,7 +357,7 @@ impl NATTraversalStack {
 
     async fn find_best_relay(&self) -> Result<PeerId, NATError> {
         // Query DHT for relay nodes
-        let relays = self.dht_find_providers("/icn/circuit-relay").await?;
+        let relays = self.dht_find_providers("/nsn/circuit-relay").await?;
 
         // Select relay with best reputation
         let best_relay = relays.iter()
@@ -401,7 +401,7 @@ impl RelayServer {
     pub fn track_relay_usage(&self, peer: &PeerId, duration: Duration) {
         // Track relay usage for reward calculation
         let hours = duration.as_secs_f64() / 3600.0;
-        let reward = hours * 0.01;  // 0.01 ICN/hour
+        let reward = hours * 0.01;  // 0.01 NSN/hour
 
         tracing::info!("Relay usage by {}: {:.2}h = {:.4} ICN", peer, hours, reward);
         self.metrics.relay_rewards.inc_by(reward, &[peer.to_string().as_str()]);
@@ -428,10 +428,10 @@ pub fn build_autonat() -> AutoNat {
 
 ```bash
 # Build NAT traversal module
-cargo build --release -p icn-off-chain --features nat-traversal
+cargo build --release -p nsn-off-chain --features nat-traversal
 
 # Run unit tests
-cargo test -p icn-off-chain nat::
+cargo test -p nsn-off-chain nat::
 
 # Run integration tests (requires 2+ nodes, NAT simulation)
 cargo test --test integration_nat -- --nocapture
@@ -471,7 +471,7 @@ cargo run --example upnp_test
 - libp2p-dcutr (Direct Connection Upgrade through Relay)
 - igd (UPnP port mapping)
 - STUN servers (public Google STUN or self-hosted)
-- TURN servers (self-hosted for ICN)
+- TURN servers (self-hosted for NSN)
 
 ## Design Decisions
 
@@ -483,7 +483,7 @@ cargo run --example upnp_test
 - **Trade-offs:** STUN may fail for symmetric NATs (fallback to Circuit Relay)
 
 **Decision 2: Incentivized Circuit Relay over TURN**
-- **Rationale:** Circuit Relay uses ICN's P2P infrastructure (no external servers), and relay operators are incentivized with ICN rewards
+- **Rationale:** Circuit Relay uses NSN's P2P infrastructure (no external servers), and relay operators are incentivized with NSN rewards
 - **Alternatives:**
   - TURN only: Requires centralized TURN servers, higher operational cost
   - No relay: Many nodes would be unreachable
@@ -507,7 +507,7 @@ cargo run --example upnp_test
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| STUN servers unavailable | High | Low | Use multiple STUN servers (Google, ICN self-hosted), fallback to UPnP/Relay if all fail |
+| STUN servers unavailable | High | Low | Use multiple STUN servers (Google, NSN self-hosted), fallback to UPnP/Relay if all fail |
 | UPnP security vulnerability | Medium | Medium | Only enable UPnP if user opts in, log all port mappings, close mappings on shutdown |
 | Circuit Relay abuse (free-loading) | Medium | Medium | Limit circuits per peer (4 max), track usage for rewards, reputation-based relay selection |
 | TURN server cost | Medium | Low | Only use TURN for nodes that fail all other methods (~5%), consider community-operated TURN servers |

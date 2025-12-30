@@ -16,22 +16,22 @@ updated_at: 2025-12-24
 
 ## Description
 
-**PHASE D TASK** - Plan and implement Snowbridge integration for trustless Ethereum ↔ ICN bridging once ICN is a Polkadot parachain. This provides Ethereum mainnet access without adding Frontier EVM directly to ICN Chain.
+**PHASE D TASK** - Plan and implement Snowbridge integration for trustless Ethereum ↔ NSN bridging once NSN is a Polkadot parachain. This provides Ethereum mainnet access without adding Frontier EVM directly to NSN Chain.
 
-**Alternative to T008**: Instead of adding EVM to ICN Chain, use Snowbridge for Ethereum ecosystem access.
+**Alternative to T008**: Instead of adding EVM to NSN Chain, use Snowbridge for Ethereum ecosystem access.
 
 This task is **NOT required for MVP** and only relevant after T039 (Cumulus integration) is complete.
 
 ## Business Context
 
 **Why Snowbridge**:
-- **Ethereum Access**: Bridge ICN tokens to Ethereum for DeFi, CEX listings
+- **Ethereum Access**: Bridge NSN tokens to Ethereum for DeFi, CEX listings
 - **Trustless**: Decentralized bridge, not custodial
-- **No EVM Overhead**: Don't need Frontier on ICN Chain
+- **No EVM Overhead**: Don't need Frontier on NSN Chain
 - **Existing Infrastructure**: Uses Polkadot's Bridge Hub system chain
 
 **When to do this**:
-- After ICN is parachain (T039)
+- After NSN is parachain (T039)
 - When Ethereum ecosystem access is needed
 - When token bridging demand exists
 
@@ -71,28 +71,28 @@ This task is **NOT required for MVP** and only relevant after T039 (Cumulus inte
                               │ XCM Messages
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      ICN PARACHAIN                               │
+│                      NSN PARACHAIN                               │
 │  - Receives bridged assets                                      │
 │  - Sends assets to Bridge Hub for Ethereum                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Bridge Flow: ICN → Ethereum
+## Bridge Flow: NSN → Ethereum
 
-1. User initiates transfer on ICN Chain
-2. ICN locked on ICN Chain
+1. User initiates transfer on NSN Chain
+2. NSN locked on NSN Chain
 3. XCM message sent to Bridge Hub
 4. Bridge Hub sends message to Ethereum Gateway
-5. Gateway mints wrapped ICN (wICN) on Ethereum
-6. User receives wICN in their Ethereum wallet
+5. Gateway mints wrapped NSN (wNSN) on Ethereum
+6. User receives wNSN in their Ethereum wallet
 
-## Bridge Flow: Ethereum → ICN
+## Bridge Flow: Ethereum → NSN
 
-1. User deposits wICN to Gateway contract
+1. User deposits wNSN to Gateway contract
 2. Gateway sends message to Bridge Hub
-3. Bridge Hub routes XCM to ICN Chain
-4. ICN unlocked on ICN Chain
-5. User receives native ICN
+3. Bridge Hub routes XCM to NSN Chain
+4. NSN unlocked on NSN Chain
+5. User receives native NSN
 
 ## Technical Implementation
 
@@ -140,8 +140,8 @@ interface IGateway {
 
 | Direction | Fee Components |
 |-----------|---------------|
-| ICN → ETH | XCM fee + Bridge fee + Ethereum gas |
-| ETH → ICN | Ethereum gas + Bridge fee + XCM fee |
+| NSN → ETH | XCM fee + Bridge fee + Ethereum gas |
+| ETH → NSN | Ethereum gas + Bridge fee + XCM fee |
 
 Estimated total: ~$5-20 depending on Ethereum gas prices
 
@@ -150,11 +150,11 @@ Estimated total: ~$5-20 depending on Ethereum gas prices
 1. **Light Client Security**: Snowbridge uses Ethereum light client on Bridge Hub
 2. **Message Verification**: All messages cryptographically verified
 3. **Rate Limiting**: Bridge may have per-period limits
-4. **Finality**: Wait for Ethereum finality (~15 min) before ICN unlock
+4. **Finality**: Wait for Ethereum finality (~15 min) before NSN unlock
 
 ## Testing Plan
 
-1. Deploy ICN test token on testnet
+1. Deploy NSN test token on testnet
 2. Register with Snowbridge on Rococo
 3. Test transfers in both directions
 4. Verify token accounting
@@ -170,7 +170,7 @@ Estimated total: ~$5-20 depending on Ethereum gas prices
 ## Alternatives
 
 ### Alternative: T008 (Frontier EVM)
-- Add EVM to ICN Chain directly
+- Add EVM to NSN Chain directly
 - Simpler for EVM dApp deployment
 - More runtime complexity
 - **Recommendation**: Use if EVM tooling critical for developers
@@ -179,10 +179,10 @@ Estimated total: ~$5-20 depending on Ethereum gas prices
 
 | Aspect | T008 (Frontier) | T041 (Snowbridge) |
 |--------|-----------------|-------------------|
-| EVM Contracts on ICN | ✅ Yes | ❌ No |
-| Ethereum Mainnet Access | ❌ Indirect | ✅ Direct |
+| EVM Contracts on NSN | Yes | No |
+| Ethereum Mainnet Access | Indirect | Direct |
 | Runtime Complexity | Higher | Lower |
-| Token on Ethereum | Via bridge from ICN | Native on ETH |
+| Token on Ethereum | Via bridge from NSN | Native on ETH |
 | Use Case | EVM dev convenience | ETH ecosystem access |
 
 ## Risks & Mitigations

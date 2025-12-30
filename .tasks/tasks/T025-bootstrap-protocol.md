@@ -43,7 +43,7 @@ Implement a multi-layer bootstrap protocol with trust-tiered peer discovery: har
 
 ## Business Context
 
-**User Story:** As a new ICN node joining the network, I want to discover trustworthy peers automatically, so that I can participate without manual configuration and without risk of eclipse attacks.
+**User Story:** As a new NSN node joining the network, I want to discover trustworthy peers automatically, so that I can participate without manual configuration and without risk of eclipse attacks.
 
 **Why This Matters:**
 - First-run experience for new nodes (critical for decentralization)
@@ -60,9 +60,9 @@ Implement a multi-layer bootstrap protocol with trust-tiered peer discovery: har
 ## Acceptance Criteria
 
 - [ ] **Hardcoded Peers**: 3+ hardcoded bootstrap peers compiled into binary
-- [ ] **DNS Resolution**: Resolves DNS TXT records from `_icn-bootstrap._tcp.icn.network`
+- [ ] **DNS Resolution**: Resolves DNS TXT records from `_nsn-bootstrap._tcp.nsn.network`
 - [ ] **DNS Signature Verification**: Verifies Ed25519 signatures on DNS TXT records
-- [ ] **HTTP Fetch**: Fetches peer manifest from `https://bootstrap.icn.network/peers.json`
+- [ ] **HTTP Fetch**: Fetches peer manifest from `https://bootstrap.nsn.network/peers.json`
 - [ ] **HTTP Signature Verification**: Verifies Ed25519 signatures on JSON manifests
 - [ ] **Trusted Signers**: Maintains list of trusted signer public keys (foundation keypairs)
 - [ ] **DHT Walk**: Performs DHT walk after connecting to ≥3 bootstrap peers
@@ -83,11 +83,11 @@ Implement a multi-layer bootstrap protocol with trust-tiered peer discovery: har
   - Connection established within 5 seconds
 
 **Test Case 2: DNS Seed Resolution**
-- Given: DNS TXT records at `_icn-bootstrap._tcp.icn.network` with 5 peer entries
+- Given: DNS TXT records at `_nsn-bootstrap._tcp.nsn.network` with 5 peer entries
 - When: Node queries DNS seeds
 - Then:
   - 5 TXT records returned
-  - Each record parsed: `icn:peer:<multiaddr>:sig:<hex_signature>`
+  - Each record parsed: `nsn:peer:<multiaddr>:sig:<hex_signature>`
   - Signatures verified with trusted signer public key
   - Valid peers added to discovered list
 
@@ -101,7 +101,7 @@ Implement a multi-layer bootstrap protocol with trust-tiered peer discovery: har
   - Bootstrap continues with other DNS records
 
 **Test Case 4: HTTP Manifest Fetch**
-- Given: HTTPS endpoint `https://bootstrap.icn.network/peers.json`
+- Given: HTTPS endpoint `https://bootstrap.nsn.network/peers.json`
 - When: Node fetches manifest
 - Then:
   - JSON parsed successfully
@@ -202,21 +202,21 @@ impl BootstrapProtocol {
         Self {
             hardcoded_peers: vec![
                 // Hardcoded bootstrap peers (foundation-operated)
-                ("/dns4/boot1.icn.network/tcp/9000/p2p/12D3KooWRzCVDwHUkgdK...".parse().unwrap(),
+                ("/dns4/boot1.nsn.network/tcp/9000/p2p/12D3KooWRzCVDwHUkgdK...".parse().unwrap(),
                  "12D3KooWRzCVDwHUkgdK...".parse().unwrap()),
-                ("/dns4/boot2.icn.network/tcp/9000/p2p/12D3KooWAbCdEfGhIj...".parse().unwrap(),
+                ("/dns4/boot2.nsn.network/tcp/9000/p2p/12D3KooWAbCdEfGhIj...".parse().unwrap(),
                  "12D3KooWAbCdEfGhIj...".parse().unwrap()),
-                ("/dns4/boot3.icn.network/tcp/9000/p2p/12D3KooWXyZ123456...".parse().unwrap(),
+                ("/dns4/boot3.nsn.network/tcp/9000/p2p/12D3KooWXyZ123456...".parse().unwrap(),
                  "12D3KooWXyZ123456...".parse().unwrap()),
             ],
             dns_seeds: vec![
-                "_icn-bootstrap._tcp.icn.network".to_string(),
+                "_nsn-bootstrap._tcp.nsn.network".to_string(),
             ],
             http_endpoints: vec![
-                "https://bootstrap.icn.network/peers.json".to_string(),
-                "https://backup.icn.network/peers.json".to_string(),
+                "https://bootstrap.nsn.network/peers.json".to_string(),
+                "https://backup.nsn.network/peers.json".to_string(),
             ],
-            dht_topic: "/icn/bootstrap/dht".to_string(),
+            dht_topic: "/nsn/bootstrap/dht".to_string(),
             require_signed_manifests: true,
             manifest_signers: Self::trusted_signers(),
             metrics: Arc::new(BootstrapMetrics::new()),
@@ -316,10 +316,10 @@ impl BootstrapProtocol {
     }
 
     fn parse_dns_record(&self, record: &str) -> Result<Option<PeerInfo>, Error> {
-        // Format: "icn:peer:<multiaddr>:sig:<hex_signature>"
+        // Format: "nsn:peer:<multiaddr>:sig:<hex_signature>"
         let parts: Vec<&str> = record.split(':').collect();
 
-        if parts.len() != 5 || parts[0] != "icn" || parts[1] != "peer" {
+        if parts.len() != 5 || parts[0] != "nsn" || parts[1] != "peer" {
             return Ok(None);
         }
 
@@ -486,19 +486,19 @@ impl PeerInfo {
 
 ```bash
 # Build bootstrap module
-cargo build --release -p icn-off-chain --features bootstrap
+cargo build --release -p nsn-off-chain --features bootstrap
 
 # Run unit tests
-cargo test -p icn-off-chain bootstrap::
+cargo test -p nsn-off-chain bootstrap::
 
 # Run integration tests
 cargo test --test integration_bootstrap -- --nocapture
 
 # Test DNS resolution
-cargo run --example bootstrap_dns -- --dns-seed _icn-bootstrap._tcp.icn.network
+cargo run --example bootstrap_dns -- --dns-seed _nsn-bootstrap._tcp.nsn.network
 
 # Test HTTP fetch
-cargo run --example bootstrap_http -- --endpoint https://bootstrap.icn.network/peers.json
+cargo run --example bootstrap_http -- --endpoint https://bootstrap.nsn.network/peers.json
 
 # Full bootstrap
 RUST_LOG=debug cargo run --release -- --bootstrap

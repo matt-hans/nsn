@@ -375,6 +375,7 @@ impl pallet_nsn_stake::Config for Runtime {
 }
 
 impl pallet_nsn_reputation::Config for Runtime {
+	type RuntimeEvent = RuntimeEvent;
 	type MaxEventsPerBlock = ReputationMaxEventsPerBlock;
 	type DefaultRetentionPeriod = ReputationDefaultRetentionPeriod;
 	type CheckpointInterval = ReputationCheckpointInterval;

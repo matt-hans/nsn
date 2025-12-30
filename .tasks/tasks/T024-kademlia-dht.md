@@ -28,7 +28,7 @@ actual_tokens: null
 Implement Kademlia Distributed Hash Table (DHT) for decentralized peer discovery, content addressing, and provider records for erasure-coded video shards. Enables nodes to find each other without centralized bootstrap servers.
 
 **Technical Approach:**
-- Configure libp2p Kademlia DHT with ICN-specific protocol ID
+- Configure libp2p Kademlia DHT with NSN-specific protocol ID
 - Use DHT for peer discovery (find other Directors, Super-Nodes, Relays)
 - Store and retrieve provider records for video shard assignments
 - Implement content addressing for shard hashes
@@ -43,7 +43,7 @@ Implement Kademlia Distributed Hash Table (DHT) for decentralized peer discovery
 
 ## Business Context
 
-**User Story:** As an ICN Super-Node, I want to discover which peers have specific video shards, so that I can retrieve content for distribution and handle shard redundancy.
+**User Story:** As an NSN Super-Node, I want to discover which peers have specific video shards, so that I can retrieve content for distribution and handle shard redundancy.
 
 **Why This Matters:**
 - Decentralized peer discovery (no central directory)
@@ -59,7 +59,7 @@ Implement Kademlia Distributed Hash Table (DHT) for decentralized peer discovery
 
 ## Acceptance Criteria
 
-- [ ] **DHT Initialization**: Kademlia DHT initialized with ICN protocol ID `/icn/kad/1.0.0`
+- [ ] **DHT Initialization**: Kademlia DHT initialized with NSN protocol ID `/nsn/kad/1.0.0`
 - [ ] **Peer Discovery**: Node can discover peers via DHT `get_closest_peers` query
 - [ ] **Provider Records**: Node can publish provider record for shard hash
 - [ ] **Provider Lookup**: Node can query providers for specific shard hash
@@ -171,7 +171,7 @@ use std::time::Duration;
 
 pub fn build_kademlia(local_peer_id: PeerId) -> Kademlia<MemoryStore> {
     let mut config = KademliaConfig::default();
-    config.set_protocol_names(vec![b"/icn/kad/1.0.0".to_vec()]);
+    config.set_protocol_names(vec![b"/nsn/kad/1.0.0".to_vec()]);
     config.set_query_timeout(Duration::from_secs(10));
     config.set_replication_factor(20);  // k-bucket size
     config.set_publication_interval(Some(Duration::from_secs(12 * 3600)));  // 12h
@@ -370,10 +370,10 @@ impl P2pService {
 
 ```bash
 # Build with Kademlia DHT
-cargo build --release -p icn-off-chain --features kademlia
+cargo build --release -p nsn-off-chain --features kademlia
 
 # Run unit tests
-cargo test -p icn-off-chain kademlia::
+cargo test -p nsn-off-chain kademlia::
 
 # Run integration tests (requires 3+ nodes)
 cargo test --test integration_kademlia -- --nocapture
@@ -477,4 +477,4 @@ cargo run --example dht_query -- --shard-hash 0xabcd...
 - [ ] Monitoring alerts configured
 
 **Definition of Done:**
-Task is complete when ALL acceptance criteria met, Kademlia DHT configured with ICN protocol ID, peer discovery and provider records functional, integration tests demonstrate multi-node DHT queries, and production-ready with metrics and periodic refresh.
+Task is complete when ALL acceptance criteria met, Kademlia DHT configured with NSN protocol ID, peer discovery and provider records functional, integration tests demonstrate multi-node DHT queries, and production-ready with metrics and periodic refresh.

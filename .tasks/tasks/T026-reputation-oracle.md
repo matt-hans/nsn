@@ -25,10 +25,10 @@ actual_tokens: null
 
 ## Description
 
-Implement ReputationOracle service that synchronizes on-chain reputation scores from pallet-icn-reputation to local cache for integration with GossipSub peer scoring. Runs background sync every 60 seconds to keep scores current.
+Implement ReputationOracle service that synchronizes on-chain reputation scores from pallet-nsn-reputation to local cache for integration with GossipSub peer scoring. Runs background sync every 60 seconds to keep scores current.
 
 **Technical Approach:**
-- Use subxt client to query pallet-icn-reputation storage (ReputationScores)
+- Use subxt client to query pallet-nsn-reputation storage (ReputationScores)
 - Cache reputation scores locally (HashMap<PeerId, u64>)
 - Background tokio task for periodic sync (every 60 seconds)
 - Map AccountId32 to PeerId (same Ed25519 keypair)
@@ -36,7 +36,7 @@ Implement ReputationOracle service that synchronizes on-chain reputation scores 
 - Handle chain disconnections gracefully (use stale cache)
 
 **Integration Points:**
-- Builds on T003 (pallet-icn-reputation)
+- Builds on T003 (pallet-nsn-reputation)
 - Used by T022 (GossipSub reputation-integrated scoring)
 - Requires chain client (subxt)
 
@@ -58,8 +58,8 @@ Implement ReputationOracle service that synchronizes on-chain reputation scores 
 
 ## Acceptance Criteria
 
-- [ ] **Chain Client**: subxt OnlineClient connected to ICN Chain RPC
-- [ ] **Storage Query**: Queries pallet-icn-reputation::ReputationScores storage
+- [ ] **Chain Client**: subxt OnlineClient connected to NSN Chain RPC
+- [ ] **Storage Query**: Queries pallet-nsn-reputation::ReputationScores storage
 - [ ] **Cache Update**: Updates local cache with fetched scores
 - [ ] **PeerId Mapping**: Maps AccountId32 to PeerId correctly
 - [ ] **Background Sync**: Runs sync loop every 60 seconds in background task
@@ -226,7 +226,7 @@ impl ReputationOracle {
     }
 
     async fn fetch_all_reputations(&self) -> Result<usize, Error> {
-        use icn_reputation_pallet as pallet;
+        use nsn_reputation_pallet as pallet;
 
         // Query storage iterator for ReputationScores
         let storage_query = pallet::storage().reputation_scores_root();
@@ -285,19 +285,19 @@ impl ReputationMetrics {
     pub fn new() -> Self {
         Self {
             sync_success: IntCounter::new(
-                "icn_reputation_sync_success_total",
+                "nsn_reputation_sync_success_total",
                 "Total successful reputation syncs"
             ).unwrap(),
             sync_failures: IntCounter::new(
-                "icn_reputation_sync_failures_total",
+                "nsn_reputation_sync_failures_total",
                 "Total failed reputation syncs"
             ).unwrap(),
             cache_size: Gauge::new(
-                "icn_reputation_cache_size",
+                "nsn_reputation_cache_size",
                 "Number of cached reputation scores"
             ).unwrap(),
             unknown_peer_queries: IntCounter::new(
-                "icn_reputation_unknown_peer_queries_total",
+                "nsn_reputation_unknown_peer_queries_total",
                 "Queries for peers with unknown reputation"
             ).unwrap(),
         }
@@ -343,10 +343,10 @@ impl P2pService {
 
 ```bash
 # Build reputation oracle module
-cargo build --release -p icn-off-chain --features reputation-oracle
+cargo build --release -p nsn-off-chain --features reputation-oracle
 
 # Run unit tests
-cargo test -p icn-off-chain reputation::
+cargo test -p nsn-off-chain reputation::
 
 # Run integration tests (requires running chain)
 cargo test --test integration_reputation_oracle -- --nocapture
@@ -373,7 +373,7 @@ cargo run --example query_reputation -- --peer-id 12D3KooW...
 ## Dependencies
 
 **Hard Dependencies** (must be complete first):
-- [T003] pallet-icn-reputation - on-chain reputation storage
+- [T003] pallet-nsn-reputation - on-chain reputation storage
 - [T021] libp2p Core Setup - PeerId and AccountId mapping
 
 **Soft Dependencies:**
@@ -430,7 +430,7 @@ cargo run --example query_reputation -- --peer-id 12D3KooW...
 
 **Created By:** task-creator agent
 **Reason:** User request for P2P networking layer tasks (Phase 1)
-**Dependencies:** T003 (pallet-icn-reputation), T021 (libp2p core)
+**Dependencies:** T003 (pallet-nsn-reputation), T021 (libp2p core)
 **Estimated Complexity:** Standard (chain sync, caching, background task)
 
 ## Completion Checklist

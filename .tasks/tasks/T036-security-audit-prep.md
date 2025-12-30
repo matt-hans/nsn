@@ -23,10 +23,10 @@ actual_tokens: null
 
 ## Description
 
-Prepare comprehensive documentation and materials for third-party security audit of ICN pallets by Oak Security or SRLabs. Includes threat model documentation, attack surface analysis, critical path identification, test coverage reports, and security-focused code comments. Establishes audit engagement process and remediation workflow.
+Prepare comprehensive documentation and materials for third-party security audit of NSN pallets by Oak Security or SRLabs. Includes threat model documentation, attack surface analysis, critical path identification, test coverage reports, and security-focused code comments. Establishes audit engagement process and remediation workflow.
 
 **Audit Scope:**
-- All 6 custom pallets (stake, reputation, director, bft, pinning, treasury)
+- All 8 custom pallets (stake, reputation, epochs, bft, storage, treasury, task-market, model-registry)
 - Inter-pallet communication paths
 - Economic attack vectors (slashing, collusion, Sybil)
 - Cryptographic primitives (VRF, Ed25519, Merkle trees)
@@ -69,11 +69,11 @@ Prepare comprehensive documentation and materials for third-party security audit
 
 **Mitigations:**
 - Multi-region requirement reduces single-entity control
-- Challenge mechanism with stake slashing (100 ICN per director = 300 ICN loss)
+- Challenge mechanism with stake slashing (100 NSN per director = 300 NSN loss)
 - Statistical anomaly detection on voting patterns
 - VRF election jitter prevents pre-coordination
 
-**Audit Question:** Is 100 ICN slash sufficient deterrent? Should it scale with stake?
+**Audit Question:** Is 100 NSN slash sufficient deterrent? Should it scale with stake?
 ```
 
 **Scenario 2: Cryptographic Attack - VRF Bias**
@@ -90,11 +90,11 @@ Prepare comprehensive documentation and materials for third-party security audit
 3. Increase election frequency
 
 **Mitigations:**
-- ICN Chain's randomness source is verifiable and unpredictable
+- NSN Chain's randomness source is verifiable and unpredictable
 - VRF output includes block hash (uncontrollable)
 - Grinding attack requires >50% stake (expensive)
 
-**Audit Question:** Are we correctly using ICN Chain's randomness source? Any implementation bugs?
+**Audit Question:** Are we correctly using NSN Chain's randomness source? Any implementation bugs?
 ```
 
 **Scenario 3: DoS Attack - Challenge Spam**
@@ -102,7 +102,7 @@ Prepare comprehensive documentation and materials for third-party security audit
 **Attack:** Malicious actor spams challenges to disrupt consensus
 
 **Preconditions:**
-- Attacker has 25 ICN per challenge (bond)
+- Attacker has 25 NSN per challenge (bond)
 
 **Attack Steps:**
 1. Submit challenges for every BFT result
@@ -110,11 +110,11 @@ Prepare comprehensive documentation and materials for third-party security audit
 3. Disrupt reputation updates
 
 **Mitigations:**
-- 25 ICN bond per challenge (slashed if rejected)
+- 25 NSN bond per challenge (slashed if rejected)
 - Challenge must include evidence hash (non-trivial)
 - Rate limiting (1 challenge per account per 100 blocks)
 
-**Audit Question:** Is 25 ICN bond sufficient? Can we add reputation-based rate limiting?
+**Audit Question:** Is 25 NSN bond sufficient? Can we add reputation-based rate limiting?
 ```
 
 ## Technical Implementation
@@ -122,7 +122,7 @@ Prepare comprehensive documentation and materials for third-party security audit
 **File:** `docs/security/threat-model.md`
 
 ```markdown
-# ICN Threat Model
+# NSN Threat Model
 
 ## Assets
 
@@ -190,7 +190,7 @@ Prepare comprehensive documentation and materials for third-party security audit
 
 ## On-Chain Surface
 
-### pallet-icn-stake
+### pallet-nsn-stake
 
 **Entry Points:**
 - `deposit_stake(amount, lock_blocks, region)` - ✅ Origin checked
@@ -201,7 +201,7 @@ Prepare comprehensive documentation and materials for third-party security audit
 - Integer overflow on stake accumulation → **MITIGATED** (saturating math)
 - Region cap bypass via rapid deposits → **MITIGATED** (atomic check-and-set)
 
-### pallet-icn-director
+### pallet-nsn-epochs
 
 **Entry Points:**
 - `submit_bft_result(slot, directors, hash)` - ✅ Elected check
@@ -211,6 +211,26 @@ Prepare comprehensive documentation and materials for third-party security audit
 **Risks:**
 - Double submission (same slot) → **MITIGATED** (slot uniqueness check)
 - Challenge after finalization → **MITIGATED** (finalized flag check)
+
+### pallet-nsn-task-market
+
+**Entry Points:**
+- `submit_task(task_spec, payment)` - ✅ Origin checked
+- `accept_task(task_id)` - ✅ Stake/capability verified
+- `complete_task(task_id, result)` - ✅ Executor check
+
+**Risks:**
+- Payment manipulation → **MITIGATED** (escrow pattern)
+- Task spam → **MITIGATED** (minimum payment requirement)
+
+### pallet-nsn-model-registry
+
+**Entry Points:**
+- `register_model(model_info)` - ✅ Origin checked
+- `update_capability(model_id, capability)` - ✅ Owner check
+
+**Risks:**
+- False capability claims → **MITIGATED** (verification requirements)
 
 ## Off-Chain Surface
 
@@ -242,7 +262,7 @@ Prepare comprehensive documentation and materials for third-party security audit
 #!/bin/bash
 set -euo pipefail
 
-echo "ICN Security Audit Preparation Checklist"
+echo "NSN Security Audit Preparation Checklist"
 echo "========================================"
 
 # Check documentation exists
@@ -308,7 +328,7 @@ cargo clippy --all-features -- -W clippy::all
 cargo deny check
 
 # Package audit materials
-tar -czf icn-audit-materials.tar.gz \
+tar -czf nsn-audit-materials.tar.gz \
   docs/security/ \
   pallets/ \
   coverage/ \
@@ -331,7 +351,7 @@ tar -czf icn-audit-materials.tar.gz \
 - **Trade-offs:** Oak cheaper ($20k-$40k), Trail of Bits more comprehensive ($60k+)
 
 **Decision 2: Pre-Audit vs. Post-Audit Timeline**
-- **Rationale:** Audit before mainnet launch (Phase B), after ICN Testnet validation
+- **Rationale:** Audit before mainnet launch (Phase B), after NSN Testnet validation
 - **Trade-offs:** (+) Finds bugs early. (-) Delays mainnet launch by 2-4 weeks
 
 ## Risks & Mitigations

@@ -7,7 +7,7 @@
   "completions": [
     {
       "task_id": "T001",
-      "title": "ICN Polkadot SDK Chain Bootstrap",
+      "title": "NSN Polkadot SDK Chain Bootstrap",
       "estimated_tokens": 8000,
       "actual_tokens": 9200,
       "variance": 1200,

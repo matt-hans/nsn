@@ -55,7 +55,6 @@ polkadot-sdk = { version = "2512.0.0", default-features = false }
 prometheus-endpoint = { version = "0.17.7", default-features = false, package = "substrate-prometheus-endpoint" }
 serde = { version = "1.0.214", default-features = false }
 codec = { version = "3.7.4", default-features = false, package = "parity-scale-codec" }
-cumulus-pallet-parachain-system = { version = "0.20.0", default-features = false }
 hex-literal = { version = "0.4.1", default-features = false }
 scale-info = { version = "2.11.6", default-features = false }
 serde_json = { version = "1.0.132", default-features = false }
