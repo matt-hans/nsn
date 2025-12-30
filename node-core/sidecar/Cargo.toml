@@ -11,8 +11,12 @@ tonic = { workspace = true }
 prost = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+thiserror = { workspace = true }
 
 nsn-types = { workspace = true }
 
 [build-dependencies]
 tonic-build = "0.10"
+
+[dev-dependencies]
+tokio-test = "0.4"

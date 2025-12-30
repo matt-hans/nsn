@@ -1,0 +1,255 @@
+// NSN Sidecar gRPC Service Definition
+//
+// This service bridges the Rust scheduler with Python AI model containers.
+// The sidecar handles container lifecycle, model management, task execution,
+// and VRAM status reporting.
+
+syntax = "proto3";
+package nsn.sidecar;
+
+// Sidecar service - bridges Rust scheduler with Python AI containers
+service Sidecar {
+  // Container lifecycle management
+  rpc StartContainer(StartContainerRequest) returns (StartContainerResponse);
+  rpc StopContainer(StopContainerRequest) returns (StopContainerResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Model management
+  rpc LoadModel(LoadModelRequest) returns (LoadModelResponse);
+  rpc UnloadModel(UnloadModelRequest) returns (UnloadModelResponse);
+  rpc GetLoadedModels(GetLoadedModelsRequest) returns (GetLoadedModelsResponse);
+
+  // Task execution
+  rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskResponse);
+  rpc GetTaskStatus(GetTaskStatusRequest) returns (GetTaskStatusResponse);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+
+  // Resource monitoring
+  rpc GetVramStatus(GetVramStatusRequest) returns (GetVramStatusResponse);
+}
+
+// =============================================================================
+// Container Lifecycle Messages
+// =============================================================================
+
+message StartContainerRequest {
+  // Unique identifier for the container
+  string container_id = 1;
+  // Content ID of the container image (IPFS CID or registry reference)
+  string image_cid = 2;
+  // GPU device IDs to assign to this container
+  repeated string gpu_ids = 3;
+  // Optional environment variables
+  map<string, string> env_vars = 4;
+  // Optional resource limits
+  ResourceLimits resource_limits = 5;
+}
+
+message StartContainerResponse {
+  bool success = 1;
+  string error_message = 2;
+  // gRPC endpoint for communicating with the container
+  string container_endpoint = 3;
+}
+
+message StopContainerRequest {
+  string container_id = 1;
+  // If true, force kill the container without graceful shutdown
+  bool force = 2;
+  // Graceful shutdown timeout in seconds (default: 30)
+  uint32 timeout_seconds = 3;
+}
+
+message StopContainerResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message HealthCheckRequest {
+  string container_id = 1;
+  // Include detailed metrics in response
+  bool include_metrics = 2;
+}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  // Status message (e.g., "running", "starting", "unhealthy")
+  string status = 2;
+  // Uptime in seconds
+  uint64 uptime_seconds = 3;
+  // Optional metrics if requested
+  ContainerMetrics metrics = 4;
+}
+
+message ContainerMetrics {
+  float cpu_usage_percent = 1;
+  uint64 memory_used_bytes = 2;
+  uint64 memory_limit_bytes = 3;
+  float gpu_utilization_percent = 4;
+}
+
+message ResourceLimits {
+  // Memory limit in bytes
+  uint64 memory_bytes = 1;
+  // CPU shares (relative weight)
+  uint32 cpu_shares = 2;
+  // VRAM limit in GB (informational)
+  float vram_limit_gb = 3;
+}
+
+// =============================================================================
+// Model Management Messages
+// =============================================================================
+
+message LoadModelRequest {
+  // Unique identifier for the model (e.g., "flux-schnell", "clip-vit-l-14")
+  string model_id = 1;
+  // Container to load the model into
+  string container_id = 2;
+  // Loading priority (0 = critical, 1 = high, 2 = normal, 3 = low)
+  uint32 priority = 3;
+  // Optional model-specific configuration
+  bytes config = 4;
+}
+
+message LoadModelResponse {
+  bool success = 1;
+  string error_message = 2;
+  // VRAM used by this model in GB
+  float vram_used_gb = 3;
+  // Time taken to load in milliseconds
+  uint64 load_time_ms = 4;
+}
+
+message UnloadModelRequest {
+  string model_id = 1;
+  string container_id = 2;
+  // If true, block until model is fully unloaded
+  bool wait = 3;
+}
+
+message UnloadModelResponse {
+  bool success = 1;
+  string error_message = 2;
+  // VRAM freed by unloading in GB
+  float vram_freed_gb = 3;
+}
+
+message GetLoadedModelsRequest {
+  // If empty, return models from all containers
+  string container_id = 1;
+}
+
+message GetLoadedModelsResponse {
+  repeated LoadedModel models = 1;
+}
+
+message LoadedModel {
+  string model_id = 1;
+  string container_id = 2;
+  // VRAM used by this model in GB
+  float vram_gb = 3;
+  // State: "hot" (ready), "warm" (cached), "loading", "unloading"
+  string state = 4;
+  // Priority level
+  uint32 priority = 5;
+  // Last used timestamp (Unix seconds)
+  uint64 last_used_timestamp = 6;
+}
+
+// =============================================================================
+// Task Execution Messages
+// =============================================================================
+
+message ExecuteTaskRequest {
+  // Unique task identifier
+  string task_id = 1;
+  // Model to use for execution
+  string model_id = 2;
+  // Input data CID (IPFS or local reference)
+  string input_cid = 3;
+  // JSON-encoded task parameters
+  bytes parameters = 4;
+  // Task timeout in milliseconds (0 = no timeout)
+  uint64 timeout_ms = 5;
+  // Optional callback endpoint for progress updates
+  string callback_endpoint = 6;
+}
+
+message ExecuteTaskResponse {
+  bool success = 1;
+  string error_message = 2;
+  // Output data CID
+  string output_cid = 3;
+  // Execution time in milliseconds
+  uint64 execution_time_ms = 4;
+  // Additional result metadata
+  bytes result_metadata = 5;
+}
+
+message GetTaskStatusRequest {
+  string task_id = 1;
+}
+
+message GetTaskStatusResponse {
+  // Status: "pending", "queued", "running", "completed", "failed", "cancelled"
+  string status = 1;
+  // Progress percentage (0.0 - 1.0)
+  float progress = 2;
+  // Error message if failed
+  string error_message = 3;
+  // Current execution stage
+  string current_stage = 4;
+  // Estimated time remaining in milliseconds
+  uint64 eta_ms = 5;
+}
+
+message CancelTaskRequest {
+  string task_id = 1;
+  // Reason for cancellation (for logging)
+  string reason = 2;
+}
+
+message CancelTaskResponse {
+  bool success = 1;
+  string error_message = 2;
+  // True if task was running when cancelled
+  bool was_running = 3;
+}
+
+// =============================================================================
+// Resource Monitoring Messages
+// =============================================================================
+
+message GetVramStatusRequest {
+  // Optional: filter by specific GPU ID
+  string gpu_id = 1;
+}
+
+message GetVramStatusResponse {
+  // Total VRAM available across all GPUs
+  float total_vram_gb = 1;
+  // Currently used VRAM
+  float used_vram_gb = 2;
+  // Available VRAM
+  float available_vram_gb = 3;
+  // Per-model allocations
+  repeated ModelVram model_allocations = 4;
+  // Per-GPU status
+  repeated GpuStatus gpu_statuses = 5;
+}
+
+message ModelVram {
+  string model_id = 1;
+  float vram_gb = 2;
+  string container_id = 3;
+}
+
+message GpuStatus {
+  string gpu_id = 1;
+  string gpu_name = 2;
+  float total_vram_gb = 3;
+  float used_vram_gb = 4;
+  float temperature_celsius = 5;
+  float utilization_percent = 6;
+}
