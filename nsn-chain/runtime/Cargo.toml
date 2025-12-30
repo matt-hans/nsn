@@ -30,6 +30,8 @@ pallet-nsn-director = { workspace = true }
 pallet-nsn-bft = { workspace = true }
 pallet-nsn-storage = { workspace = true }
 pallet-nsn-treasury = { workspace = true }
+pallet-nsn-task-market = { workspace = true }
+pallet-nsn-model-registry = { workspace = true }
 
 polkadot-sdk = { workspace = true, features = ["cumulus-pallet-aura-ext", "cumulus-pallet-session-benchmarking", "cumulus-pallet-weight-reclaim", "cumulus-pallet-xcm", "cumulus-pallet-xcmp-queue", "cumulus-primitives-aura", "cumulus-primitives-core", "cumulus-primitives-utility", "pallet-aura", "pallet-authorship", "pallet-balances", "pallet-collator-selection", "pallet-message-queue", "pallet-session", "pallet-sudo", "pallet-timestamp", "pallet-transaction-payment", "pallet-transaction-payment-rpc-runtime-api", "pallet-xcm", "parachains-common", "polkadot-parachain-primitives", "polkadot-runtime-common", "runtime", "staging-parachain-info", "staging-xcm", "staging-xcm-builder", "staging-xcm-executor"], default-features = false }
 scale-info = { features = ["derive"], workspace = true }
@@ -48,6 +50,8 @@ std = [
 	"pallet-nsn-bft/std",
 	"pallet-nsn-storage/std",
 	"pallet-nsn-treasury/std",
+	"pallet-nsn-task-market/std",
+	"pallet-nsn-model-registry/std",
 	"polkadot-sdk/std",
 	"scale-info/std",
 	"serde_json/std",
@@ -63,6 +67,8 @@ runtime-benchmarks = [
 	"pallet-nsn-bft/runtime-benchmarks",
 	"pallet-nsn-storage/runtime-benchmarks",
 	"pallet-nsn-treasury/runtime-benchmarks",
+	"pallet-nsn-task-market/runtime-benchmarks",
+	"pallet-nsn-model-registry/runtime-benchmarks",
 	"polkadot-sdk/runtime-benchmarks",
 ]
 
@@ -74,6 +80,8 @@ try-runtime = [
 	"pallet-nsn-bft/try-runtime",
 	"pallet-nsn-storage/try-runtime",
 	"pallet-nsn-treasury/try-runtime",
+	"pallet-nsn-task-market/try-runtime",
+	"pallet-nsn-model-registry/try-runtime",
 	"polkadot-sdk/try-runtime",
 ]
 

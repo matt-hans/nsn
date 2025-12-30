@@ -342,6 +342,22 @@ parameter_types! {
 	pub const ReputationMaxPrunePerBlock: u32 = 10_000;
 }
 
+parameter_types! {
+	// Task Market parameters (Lane 1 compute marketplace)
+	pub const TaskMarketMaxPendingTasks: u32 = 1_000;
+	pub const TaskMarketMaxModelIdLen: u32 = 64;
+	pub const TaskMarketMaxCidLen: u32 = 128;
+	pub const TaskMarketMinEscrow: Balance = UNIT / 10; // 0.1 NSN minimum
+}
+
+parameter_types! {
+	// Model Registry parameters
+	pub const ModelRegistryMaxModelIdLen: u32 = 64;
+	pub const ModelRegistryMaxCidLen: u32 = 128;
+	pub const ModelRegistryMaxHotModels: u32 = 10;
+	pub const ModelRegistryMaxWarmModels: u32 = 20;
+}
+
 impl pallet_nsn_stake::Config for Runtime {
 	type Currency = Balances;
 	type RuntimeFreezeReason = RuntimeFreezeReason;
@@ -375,3 +391,20 @@ impl pallet_nsn_bft::Config for Runtime {}
 impl pallet_nsn_storage::Config for Runtime {}
 
 impl pallet_nsn_treasury::Config for Runtime {}
+
+impl pallet_nsn_task_market::Config for Runtime {
+	type Currency = Balances;
+	type MaxPendingTasks = TaskMarketMaxPendingTasks;
+	type MaxModelIdLen = TaskMarketMaxModelIdLen;
+	type MaxCidLen = TaskMarketMaxCidLen;
+	type MinEscrow = TaskMarketMinEscrow;
+	type WeightInfo = pallet_nsn_task_market::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_nsn_model_registry::Config for Runtime {
+	type MaxModelIdLen = ModelRegistryMaxModelIdLen;
+	type MaxCidLen = ModelRegistryMaxCidLen;
+	type MaxHotModels = ModelRegistryMaxHotModels;
+	type MaxWarmModels = ModelRegistryMaxWarmModels;
+	type WeightInfo = pallet_nsn_model_registry::weights::SubstrateWeight<Runtime>;
+}

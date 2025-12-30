@@ -323,6 +323,10 @@ mod runtime {
 	pub type NsnStorage = pallet_nsn_storage;
 	#[runtime::pallet_index(55)]
 	pub type NsnTreasury = pallet_nsn_treasury;
+	#[runtime::pallet_index(56)]
+	pub type NsnTaskMarket = pallet_nsn_task_market;
+	#[runtime::pallet_index(57)]
+	pub type NsnModelRegistry = pallet_nsn_model_registry;
 }
 
 #[docify::export(register_validate_block)]
