@@ -29,6 +29,7 @@ mod gossipsub;
 mod identity;
 mod metrics;
 mod reputation_oracle;
+mod scoring;
 mod service;
 #[cfg(test)]
 mod test_helpers;
@@ -42,6 +43,10 @@ pub use identity::{
     generate_keypair, load_keypair, peer_id_to_account_id, save_keypair, IdentityError,
 };
 pub use metrics::{MetricsError, P2pMetrics};
-pub use reputation_oracle::{OracleError, ReputationOracle};
+pub use reputation_oracle::{OracleError, ReputationOracle, DEFAULT_REPUTATION, SYNC_INTERVAL};
+pub use scoring::{
+    build_peer_score_params, compute_app_specific_score, GOSSIP_THRESHOLD, GRAYLIST_THRESHOLD,
+    PUBLISH_THRESHOLD,
+};
 pub use service::{P2pService, ServiceCommand, ServiceError};
 pub use topics::{all_topics, lane_0_topics, lane_1_topics, parse_topic, TopicCategory};

@@ -31,8 +31,14 @@ sp-core = "28.0"
 # Metrics
 prometheus = "0.13"
 
+# Chain client for reputation oracle
+subxt = "0.37"
+
 # Workspace crates
 nsn-types = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.8"
+
+[features]
+test-helpers = []

@@ -264,6 +264,50 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_topic_invalid_inputs() {
+        // Malformed topics should return None
+        assert_eq!(
+            parse_topic("/invalid/topic"),
+            None,
+            "Malformed topic should return None"
+        );
+
+        // Empty string should return None
+        assert_eq!(parse_topic(""), None, "Empty string should return None");
+
+        // Unknown NSN topic should return None
+        assert_eq!(
+            parse_topic("/nsn/unknown/1.0.0"),
+            None,
+            "Unknown NSN topic should return None"
+        );
+
+        // Wrong version should return None
+        assert_eq!(
+            parse_topic("/nsn/recipes/2.0.0"),
+            None,
+            "Wrong version should return None"
+        );
+
+        // Missing version should return None
+        assert_eq!(
+            parse_topic("/nsn/recipes"),
+            None,
+            "Missing version should return None"
+        );
+
+        // Whitespace should return None
+        assert_eq!(parse_topic("   "), None, "Whitespace should return None");
+
+        // Malformed NSN topic should return None
+        assert_eq!(
+            parse_topic("/nsn//1.0.0"),
+            None,
+            "Malformed NSN topic should return None"
+        );
+    }
+
+    #[test]
     fn test_topic_to_ident_topic() {
         let topic = TopicCategory::BftSignals.to_topic();
         // IdentTopic doesn't have as_str, use hash() to verify topic was created

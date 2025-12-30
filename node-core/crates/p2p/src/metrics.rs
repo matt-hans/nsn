@@ -36,6 +36,18 @@ pub struct P2pMetrics {
     /// Connection duration histogram
     pub connection_duration_seconds: Histogram,
 
+    /// Number of GossipSub messages sent
+    pub gossipsub_messages_sent_total: Counter,
+
+    /// Number of GossipSub messages received
+    pub gossipsub_messages_received_total: Counter,
+
+    /// Number of GossipSub messages failed to publish
+    pub gossipsub_publish_failures_total: Counter,
+
+    /// GossipSub mesh size by topic
+    pub gossipsub_mesh_size: Gauge,
+
     /// Prometheus registry for this metrics instance
     pub registry: Registry,
 }
@@ -90,6 +102,30 @@ impl P2pMetrics {
         ))?;
         registry.register(Box::new(connection_duration_seconds.clone()))?;
 
+        let gossipsub_messages_sent_total = Counter::new(
+            "nsn_p2p_gossipsub_messages_sent_total",
+            "Total number of GossipSub messages sent",
+        )?;
+        registry.register(Box::new(gossipsub_messages_sent_total.clone()))?;
+
+        let gossipsub_messages_received_total = Counter::new(
+            "nsn_p2p_gossipsub_messages_received_total",
+            "Total number of GossipSub messages received",
+        )?;
+        registry.register(Box::new(gossipsub_messages_received_total.clone()))?;
+
+        let gossipsub_publish_failures_total = Counter::new(
+            "nsn_p2p_gossipsub_publish_failures_total",
+            "Total number of GossipSub publish failures",
+        )?;
+        registry.register(Box::new(gossipsub_publish_failures_total.clone()))?;
+
+        let gossipsub_mesh_size = Gauge::new(
+            "nsn_p2p_gossipsub_mesh_size",
+            "Current GossipSub mesh size across all topics",
+        )?;
+        registry.register(Box::new(gossipsub_mesh_size.clone()))?;
+
         Ok(Self {
             active_connections,
             connected_peers,
@@ -98,6 +134,10 @@ impl P2pMetrics {
             connections_closed_total,
             connections_failed_total,
             connection_duration_seconds,
+            gossipsub_messages_sent_total,
+            gossipsub_messages_received_total,
+            gossipsub_publish_failures_total,
+            gossipsub_mesh_size,
             registry,
         })
     }

@@ -1,8 +1,8 @@
 {
   "initialized_at": "2025-12-24T00:00:00Z",
-  "tasks_completed": 21,
-  "total_tokens_used": 240500,
-  "average_tokens_per_task": 11452,
+  "tasks_completed": 22,
+  "total_tokens_used": 254700,
+  "average_tokens_per_task": 11577,
   "token_estimate_accuracy": 0.89,
   "completions": [
     {
@@ -184,13 +184,22 @@
       "variance": -3500,
       "accuracy": 0.71,
       "completed_at": "2025-12-30T19:17:06Z"
+    },
+    {
+      "task_id": "T043",
+      "title": "Migrate GossipSub, Reputation Oracle, and P2P Metrics to node-core",
+      "estimated_tokens": 13000,
+      "actual_tokens": 14200,
+      "variance": 1200,
+      "accuracy": 0.91,
+      "completed_at": "2025-12-30T16:45:00Z"
     }
   ],
   "phase_progress": {
     "phase_a_icn_solo": {
       "total_tasks": 33,
-      "completed": 19,
-      "percentage": 57.6
+      "completed": 20,
+      "percentage": 60.6
     },
     "phase_b_icn_mainnet": {
       "total_tasks": 4,

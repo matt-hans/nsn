@@ -382,12 +382,10 @@ mod tests {
             .send(ServiceCommand::Shutdown)
             .expect("Failed to send shutdown");
 
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(TEST_TIMEOUT_SECS),
-            handle,
-        )
-        .await
-        .expect("Service should shutdown within timeout");
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(TEST_TIMEOUT_SECS), handle)
+                .await
+                .expect("Service should shutdown within timeout");
 
         assert!(result.is_ok(), "Service should shutdown gracefully");
     }

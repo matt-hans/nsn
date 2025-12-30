@@ -87,11 +87,7 @@ pub async fn shutdown_service(
         .send(ServiceCommand::Shutdown)
         .expect("Failed to send shutdown command");
 
-    let _ = tokio::time::timeout(
-        std::time::Duration::from_secs(TEST_TIMEOUT_SECS),
-        handle,
-    )
-    .await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(TEST_TIMEOUT_SECS), handle).await;
 }
 
 /// Query peer count from service
