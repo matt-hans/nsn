@@ -202,10 +202,10 @@ The NSN system consists of four primary domains:
 **Decision:** Ethereum compatibility is optional, provided via Frontier (pallet-evm + pallet-ethereum) on NSN Chain when needed. Alternative: Snowbridge for Ethereum mainnet bridging post-parachain.
 
 **Rationale:**
-- Core ICN functionality does not require EVM
-- ICN token is native (not ERC-20)
+- Core NSN functionality does not require EVM
+- NSN token is native (not ERC-20)
 - Frontier available for dApp developer convenience
-- Snowbridge provides Ethereum mainnet reach when ICN becomes parachain
+- Snowbridge provides Ethereum mainnet reach when NSN becomes parachain
 
 ### ADR-010: Hierarchical Swarm Topology
 
@@ -215,7 +215,7 @@ The NSN system consists of four primary domains:
 
 ### ADR-011: Staged Deployment Model
 
-**Decision:** Deploy ICN in stages: Solochain MVP → Parachain (Cumulus) → Coretime Scaling.
+**Decision:** Deploy NSN in stages: Solochain MVP → Parachain (Cumulus) → Coretime Scaling.
 
 **Rationale:**
 - Solochain enables fast MVP with controlled validator set
@@ -332,11 +332,11 @@ The NSN system consists of four primary domains:
 | P2P GossipSub | libp2p | Recipe/video broadcast | Ed25519 signing |
 
 **GossipSub Topics:**
-- `/icn/recipes/1.0.0` - Recipe JSON
-- `/icn/video/1.0.0` - Video Chunks
-- `/icn/bft/1.0.0` - CLIP Embeddings
-- `/icn/attestations/1.0.0` - Validator attestations
-- `/icn/challenges/1.0.0` - Challenges
+- `/nsn/recipes/1.0.0` - Recipe JSON
+- `/nsn/video/1.0.0` - Video Chunks
+- `/nsn/bft/1.0.0` - CLIP Embeddings
+- `/nsn/attestations/1.0.0` - Validator attestations
+- `/nsn/challenges/1.0.0` - Challenges
 
 ---
 
@@ -352,7 +352,7 @@ The NSN system consists of four primary domains:
 - **Python 3.11** + PyTorch 2.1+ + Flux-Schnell (NF4) + LivePortrait (FP16) + Kokoro-82M (FP32) + CLIP (INT8)
 
 ### 5.4 On-Chain
-- **Polkadot SDK** (polkadot-stable2409) + ICN custom pallets + Optional Frontier EVM
+- **Polkadot SDK** (polkadot-stable2409) + NSN custom pallets + Optional Frontier EVM
 
 ### 5.5 Infrastructure
 - Bare metal/Cloud GPU (RTX 3060+) + Docker + Kubernetes (optional) + Coturn (STUN/TURN)
@@ -379,9 +379,9 @@ The NSN system consists of four primary domains:
 
 | Environment | Purpose | Chain |
 |-------------|---------|-------|
-| Local Dev | Developer testing | Local ICN solochain |
-| NSN Testnet | Integration testing | Public ICN testnet |
-| NSN Mainnet | Production | ICN mainnet (solo → parachain) |
+| Local Dev | Developer testing | Local NSN solochain |
+| NSN Testnet | Integration testing | Public NSN testnet |
+| NSN Mainnet | Production | NSN mainnet (solo → parachain) |
 
 ### 6.3 Scalability & Resilience
 
@@ -401,13 +401,13 @@ The NSN system consists of four primary domains:
 
 ### 6.4 Key Observability Metrics
 
-- `icn_vortex_generation_time_seconds` (P99 < 15s)
-- `icn_bft_round_duration_seconds` (P99 < 10s)
-- `icn_p2p_connected_peers` (> 10)
-- `icn_total_staked_tokens`
-- `icn_slashing_events_total`
-- `icn_chain_block_height`
-- `icn_chain_finalized_height`
+- `nsn_vortex_generation_time_seconds` (P99 < 15s)
+- `nsn_bft_round_duration_seconds` (P99 < 10s)
+- `nsn_p2p_connected_peers` (> 10)
+- `nsn_total_staked_tokens`
+- `nsn_slashing_events_total`
+- `nsn_chain_block_height`
+- `nsn_chain_finalized_height`
 
 **Critical Alerts:**
 - DirectorSlotMissed, VortexOOM, ChainDisconnected
@@ -518,16 +518,16 @@ The NSN system consists of four primary domains:
 
 ### 9.1 Phased Implementation
 
-**Phase A: ICN Solochain MVP (Weeks 1-8)**
+**Phase A: NSN Solochain MVP (Weeks 1-8)**
 - Bootstrap NSN Chain from Polkadot SDK template
 - Implement pallet-nsn-stake, pallet-nsn-reputation
 - Implement pallet-nsn-director with VRF election
-- Deploy ICN Public Testnet with 10+ nodes
+- Deploy NSN Public Testnet with 10+ nodes
 
 **Phase B: NSN Mainnet (Weeks 9-16)**
 - Security audit (Oak Security / SRLabs)
 - Validator onboarding and genesis configuration
-- ICN token launch
+- NSN token launch
 - Mainnet launch with 3-5 validators
 
 **Phase C: Parachain Migration (Post-adoption)**
