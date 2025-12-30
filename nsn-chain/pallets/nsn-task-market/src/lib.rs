@@ -60,8 +60,13 @@ pub mod pallet {
         <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
     /// Task intent type alias
-    pub type TaskIntentOf<T> =
-        TaskIntent<<T as frame_system::Config>::AccountId, BalanceOf<T>, BlockNumberFor<T>>;
+    pub type TaskIntentOf<T> = TaskIntent<
+        <T as frame_system::Config>::AccountId,
+        BalanceOf<T>,
+        BlockNumberFor<T>,
+        <T as Config>::MaxModelIdLen,
+        <T as Config>::MaxCidLen,
+    >;
 
     /// The in-code storage version.
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
@@ -79,6 +84,18 @@ pub mod pallet {
         /// Maximum number of pending (open) tasks
         #[pallet::constant]
         type MaxPendingTasks: Get<u32>;
+
+        /// Maximum length of model identifier
+        #[pallet::constant]
+        type MaxModelIdLen: Get<u32>;
+
+        /// Maximum length of content identifier (CID)
+        #[pallet::constant]
+        type MaxCidLen: Get<u32>;
+
+        /// Minimum escrow amount required for task creation
+        #[pallet::constant]
+        type MinEscrow: Get<BalanceOf<Self>>;
 
         /// Weight information
         type WeightInfo: WeightInfo;
@@ -123,6 +140,7 @@ pub mod pallet {
             requester: T::AccountId,
             escrow: BalanceOf<T>,
             deadline: BlockNumberFor<T>,
+            model_id: BoundedVec<u8, T::MaxModelIdLen>,
         },
         /// A task was assigned to an executor
         TaskAssigned {
@@ -134,6 +152,7 @@ pub mod pallet {
             task_id: u64,
             executor: T::AccountId,
             payment: BalanceOf<T>,
+            output_cid: BoundedVec<u8, T::MaxCidLen>,
         },
         /// A task failed
         TaskFailed { task_id: u64, reason: FailReason },
@@ -158,6 +177,8 @@ pub mod pallet {
         Overflow,
         /// Insufficient balance for escrow
         InsufficientBalance,
+        /// Escrow amount is below the minimum required
+        InsufficientEscrow,
         /// Invalid deadline (must be in the future)
         InvalidDeadline,
         /// Task already assigned
@@ -179,19 +200,26 @@ pub mod pallet {
         /// Create a new task intent with escrow deposit
         ///
         /// # Arguments
-        /// * `escrow_amount` - Amount to escrow for payment
+        /// * `model_id` - AI model identifier for task execution
+        /// * `input_cid` - Content identifier for input data
+        /// * `max_compute_units` - Maximum compute units budget
         /// * `deadline_blocks` - Number of blocks until deadline (relative)
+        /// * `escrow_amount` - Amount to escrow for payment
         ///
         /// # Errors
         /// * `TooManyPendingTasks` - Open tasks queue is full
         /// * `InsufficientBalance` - Not enough balance for escrow
+        /// * `InsufficientEscrow` - Escrow amount below minimum
         /// * `InvalidDeadline` - Deadline must be > 0
         #[pallet::call_index(0)]
         #[pallet::weight(T::WeightInfo::create_task_intent())]
         pub fn create_task_intent(
             origin: OriginFor<T>,
-            escrow_amount: BalanceOf<T>,
+            model_id: BoundedVec<u8, T::MaxModelIdLen>,
+            input_cid: BoundedVec<u8, T::MaxCidLen>,
+            max_compute_units: u32,
             deadline_blocks: BlockNumberFor<T>,
+            escrow_amount: BalanceOf<T>,
         ) -> DispatchResult {
             let requester = ensure_signed(origin)?;
 
@@ -199,6 +227,12 @@ pub mod pallet {
             ensure!(
                 deadline_blocks > BlockNumberFor::<T>::zero(),
                 Error::<T>::InvalidDeadline
+            );
+
+            // Validate minimum escrow
+            ensure!(
+                escrow_amount >= T::MinEscrow::get(),
+                Error::<T>::InsufficientEscrow
             );
 
             // Reserve escrow from requester
@@ -224,6 +258,10 @@ pub mod pallet {
                 escrow: escrow_amount,
                 created_at: current_block,
                 deadline,
+                model_id: model_id.clone(),
+                input_cid,
+                max_compute_units,
+                output_cid: None,
             };
 
             // Add to open tasks queue (bounded)
@@ -240,6 +278,7 @@ pub mod pallet {
                 requester,
                 escrow: escrow_amount,
                 deadline,
+                model_id,
             });
 
             Ok(())
@@ -291,6 +330,7 @@ pub mod pallet {
         ///
         /// # Arguments
         /// * `task_id` - ID of the task to complete
+        /// * `output_cid` - Content identifier for the output data
         ///
         /// # Errors
         /// * `TaskNotFound` - Task does not exist
@@ -298,7 +338,11 @@ pub mod pallet {
         /// * `NotExecutor` - Caller is not the assigned executor
         #[pallet::call_index(2)]
         #[pallet::weight(T::WeightInfo::complete_task())]
-        pub fn complete_task(origin: OriginFor<T>, task_id: u64) -> DispatchResult {
+        pub fn complete_task(
+            origin: OriginFor<T>,
+            task_id: u64,
+            output_cid: BoundedVec<u8, T::MaxCidLen>,
+        ) -> DispatchResult {
             let caller = ensure_signed(origin)?;
 
             // Get and validate task
@@ -325,13 +369,15 @@ pub mod pallet {
                     ExistenceRequirement::AllowDeath,
                 )?;
 
-                // Update status
+                // Update status and store output
                 task.status = TaskStatus::Completed;
+                task.output_cid = Some(output_cid.clone());
 
                 Self::deposit_event(Event::TaskCompleted {
                     task_id,
                     executor: caller,
                     payment: escrow,
+                    output_cid,
                 });
 
                 Ok(())
@@ -382,8 +428,8 @@ pub mod pallet {
                             Error::<T>::NotExecutor
                         );
                     }
-                    TaskStatus::Completed | TaskStatus::Failed => {
-                        // Cannot fail a completed or already failed task
+                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Expired => {
+                        // Cannot fail a completed, already failed, or expired task
                         return Err(Error::<T>::TaskNotAssigned.into());
                     }
                 }

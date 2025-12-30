@@ -4,7 +4,29 @@
 //! Unit tests for pallet-nsn-task-market
 
 use crate::{mock::*, Error, Event, FailReason, TaskStatus};
-use frame_support::{assert_noop, assert_ok};
+use frame_support::{assert_noop, assert_ok, BoundedVec};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Create a default model_id for testing
+fn default_model_id() -> BoundedVec<u8, MaxModelIdLen> {
+    BoundedVec::try_from(b"flux-schnell".to_vec()).unwrap()
+}
+
+/// Create a default input_cid for testing
+fn default_input_cid() -> BoundedVec<u8, MaxCidLen> {
+    BoundedVec::try_from(b"QmInputCid123456789".to_vec()).unwrap()
+}
+
+/// Create a default output_cid for testing
+fn default_output_cid() -> BoundedVec<u8, MaxCidLen> {
+    BoundedVec::try_from(b"QmOutputCid123456789".to_vec()).unwrap()
+}
+
+/// Default max compute units for testing
+const DEFAULT_COMPUTE_UNITS: u32 = 1000;
 
 // ============================================================================
 // Green Path Tests (Happy Flows)
@@ -20,6 +42,9 @@ fn create_task_intent_succeeds() {
         // WHEN: Alice creates a task with 100 escrow and 100 block deadline
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -33,6 +58,10 @@ fn create_task_intent_succeeds() {
         assert_eq!(task.escrow, 100);
         assert_eq!(task.created_at, 1);
         assert_eq!(task.deadline, 101); // current_block (1) + deadline_blocks (100)
+        assert_eq!(task.model_id, default_model_id());
+        assert_eq!(task.input_cid, default_input_cid());
+        assert_eq!(task.max_compute_units, DEFAULT_COMPUTE_UNITS);
+        assert_eq!(task.output_cid, None);
 
         // Verify escrow reserved
         assert_eq!(Balances::free_balance(ALICE), 9_900);
@@ -53,7 +82,8 @@ fn create_task_intent_succeeds() {
                 task_id: 0,
                 requester: ALICE,
                 escrow: 100,
-                deadline: 101
+                deadline: 101,
+                model_id: _
             })
         ));
     });
@@ -65,6 +95,9 @@ fn accept_assignment_succeeds() {
         // GIVEN: Alice has created a task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -101,6 +134,9 @@ fn complete_task_succeeds() {
         // GIVEN: Alice created a task, Bob accepted it
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -112,12 +148,17 @@ fn complete_task_succeeds() {
         let alice_balance_before = Balances::free_balance(ALICE);
         let bob_balance_before = Balances::free_balance(BOB);
 
-        // WHEN: Bob completes the task
-        assert_ok!(NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0));
+        // WHEN: Bob completes the task with output_cid
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            default_output_cid()
+        ));
 
         // THEN: Task is completed, payment transferred
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
         assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.output_cid, Some(default_output_cid()));
 
         // Verify payment: unreserved from Alice, transferred to Bob
         assert_eq!(Balances::reserved_balance(ALICE), 0);
@@ -134,7 +175,8 @@ fn complete_task_succeeds() {
             RuntimeEvent::NsnTaskMarket(Event::TaskCompleted {
                 task_id: 0,
                 executor: BOB,
-                payment: 100
+                payment: 100,
+                output_cid: _
             })
         ));
     });
@@ -146,6 +188,9 @@ fn fail_task_by_executor_succeeds() {
         // GIVEN: Alice created a task, Bob accepted it
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -189,6 +234,9 @@ fn fail_task_by_requester_on_assigned_task_succeeds() {
         // GIVEN: Alice created a task, Bob accepted it
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -219,6 +267,9 @@ fn cancel_open_task_succeeds() {
         // GIVEN: Alice created a task (still open)
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -253,10 +304,35 @@ fn create_task_insufficient_balance_fails() {
         .execute_with(|| {
             // WHEN: Alice tries to create a task with more escrow than balance
             assert_noop!(
-                NsnTaskMarket::create_task_intent(RuntimeOrigin::signed(ALICE), 100, 100),
+                NsnTaskMarket::create_task_intent(
+                    RuntimeOrigin::signed(ALICE),
+                    default_model_id(),
+                    default_input_cid(),
+                    DEFAULT_COMPUTE_UNITS,
+                    100,
+                    100
+                ),
                 Error::<Test>::InsufficientBalance
             );
         });
+}
+
+#[test]
+fn create_task_insufficient_escrow_fails() {
+    ExtBuilder::default().build().execute_with(|| {
+        // WHEN: Alice tries to create a task with escrow below minimum (MinEscrow = 10)
+        assert_noop!(
+            NsnTaskMarket::create_task_intent(
+                RuntimeOrigin::signed(ALICE),
+                default_model_id(),
+                default_input_cid(),
+                DEFAULT_COMPUTE_UNITS,
+                100,
+                5 // Below MinEscrow of 10
+            ),
+            Error::<Test>::InsufficientEscrow
+        );
+    });
 }
 
 #[test]
@@ -264,7 +340,14 @@ fn create_task_invalid_deadline_fails() {
     ExtBuilder::default().build().execute_with(|| {
         // WHEN: Alice tries to create a task with zero deadline
         assert_noop!(
-            NsnTaskMarket::create_task_intent(RuntimeOrigin::signed(ALICE), 100, 0),
+            NsnTaskMarket::create_task_intent(
+                RuntimeOrigin::signed(ALICE),
+                default_model_id(),
+                default_input_cid(),
+                DEFAULT_COMPUTE_UNITS,
+                0,
+                100
+            ),
             Error::<Test>::InvalidDeadline
         );
     });
@@ -280,15 +363,25 @@ fn create_task_exceeds_max_pending_fails() {
             for i in 0..100 {
                 assert_ok!(NsnTaskMarket::create_task_intent(
                     RuntimeOrigin::signed(ALICE),
-                    10,
-                    100
+                    default_model_id(),
+                    default_input_cid(),
+                    DEFAULT_COMPUTE_UNITS,
+                    100,
+                    10
                 ));
                 assert_eq!(NsnTaskMarket::next_task_id(), i + 1);
             }
 
             // WHEN: Try to create one more
             assert_noop!(
-                NsnTaskMarket::create_task_intent(RuntimeOrigin::signed(ALICE), 10, 100),
+                NsnTaskMarket::create_task_intent(
+                    RuntimeOrigin::signed(ALICE),
+                    default_model_id(),
+                    default_input_cid(),
+                    DEFAULT_COMPUTE_UNITS,
+                    100,
+                    10
+                ),
                 Error::<Test>::TooManyPendingTasks
             );
         });
@@ -311,6 +404,9 @@ fn accept_assignment_task_not_open_fails() {
         // GIVEN: Task is already assigned
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -332,7 +428,7 @@ fn complete_task_not_found_fails() {
     ExtBuilder::default().build().execute_with(|| {
         // WHEN: Bob tries to complete a non-existent task
         assert_noop!(
-            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 999),
+            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 999, default_output_cid()),
             Error::<Test>::TaskNotFound
         );
     });
@@ -344,13 +440,16 @@ fn complete_task_not_assigned_fails() {
         // GIVEN: Task is open (not assigned)
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
 
         // WHEN: Bob tries to complete an open task
         assert_noop!(
-            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0),
+            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0, default_output_cid()),
             Error::<Test>::TaskNotAssigned
         );
     });
@@ -362,6 +461,9 @@ fn complete_task_not_executor_fails() {
         // GIVEN: Task is assigned to Bob
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -372,7 +474,7 @@ fn complete_task_not_executor_fails() {
 
         // WHEN: Charlie tries to complete Bob's task
         assert_noop!(
-            NsnTaskMarket::complete_task(RuntimeOrigin::signed(CHARLIE), 0),
+            NsnTaskMarket::complete_task(RuntimeOrigin::signed(CHARLIE), 0, default_output_cid()),
             Error::<Test>::NotExecutor
         );
     });
@@ -395,6 +497,9 @@ fn fail_open_task_not_requester_fails() {
         // GIVEN: Alice created an open task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -413,6 +518,9 @@ fn fail_assigned_task_by_third_party_fails() {
         // GIVEN: Alice created a task, Bob accepted it
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -439,6 +547,9 @@ fn complete_already_completed_task_fails() {
         // GIVEN: Task is completed
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -446,11 +557,15 @@ fn complete_already_completed_task_fails() {
             RuntimeOrigin::signed(BOB),
             0
         ));
-        assert_ok!(NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            default_output_cid()
+        ));
 
         // WHEN: Bob tries to complete again
         assert_noop!(
-            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0),
+            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0, default_output_cid()),
             Error::<Test>::TaskNotAssigned
         );
     });
@@ -462,6 +577,9 @@ fn fail_already_failed_task_fails() {
         // GIVEN: Task is failed
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -494,8 +612,11 @@ fn multiple_tasks_created_correctly() {
         for i in 0..5 {
             assert_ok!(NsnTaskMarket::create_task_intent(
                 RuntimeOrigin::signed(ALICE),
-                100 + i as u128,
-                100
+                default_model_id(),
+                default_input_cid(),
+                DEFAULT_COMPUTE_UNITS,
+                100,
+                100 + i as u128
             ));
         }
 
@@ -522,6 +643,9 @@ fn open_tasks_queue_maintained_correctly() {
         for _ in 0..3 {
             assert_ok!(NsnTaskMarket::create_task_intent(
                 RuntimeOrigin::signed(ALICE),
+                default_model_id(),
+                default_input_cid(),
+                DEFAULT_COMPUTE_UNITS,
                 100,
                 100
             ));
@@ -554,31 +678,36 @@ fn open_tasks_queue_maintained_correctly() {
 }
 
 #[test]
-fn task_escrow_zero_value() {
+fn task_minimum_escrow() {
     ExtBuilder::default().build().execute_with(|| {
-        // WHEN: Create task with zero escrow
+        // WHEN: Create task with exactly minimum escrow (MinEscrow = 10)
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            0,
-            100
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            100,
+            10 // Exactly MinEscrow
         ));
 
-        // THEN: Task created, no escrow reserved
+        // THEN: Task created with minimum escrow
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
-        assert_eq!(task.escrow, 0);
-        assert_eq!(Balances::reserved_balance(ALICE), 0);
-        assert_eq!(Balances::free_balance(ALICE), 10_000);
+        assert_eq!(task.escrow, 10);
+        assert_eq!(Balances::reserved_balance(ALICE), 10);
     });
 }
 
 #[test]
-fn complete_task_zero_escrow() {
+fn complete_task_with_minimum_escrow() {
     ExtBuilder::default().build().execute_with(|| {
-        // GIVEN: Task with zero escrow
+        // GIVEN: Task with minimum escrow
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            0,
-            100
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            100,
+            10
         ));
         assert_ok!(NsnTaskMarket::accept_assignment(
             RuntimeOrigin::signed(BOB),
@@ -588,10 +717,14 @@ fn complete_task_zero_escrow() {
         let bob_balance_before = Balances::free_balance(BOB);
 
         // WHEN: Complete task
-        assert_ok!(NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            default_output_cid()
+        ));
 
-        // THEN: No balance change
-        assert_eq!(Balances::free_balance(BOB), bob_balance_before);
+        // THEN: Balance change reflects minimum escrow
+        assert_eq!(Balances::free_balance(BOB), bob_balance_before + 10);
     });
 }
 
@@ -604,8 +737,11 @@ fn deadline_calculation_correct() {
         // WHEN: Create task with 50 block deadline
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            100,
-            50
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            50,
+            100
         ));
 
         // THEN: Deadline is current_block + deadline_blocks
@@ -617,8 +753,11 @@ fn deadline_calculation_correct() {
         roll_to(10);
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            100,
-            50
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            50,
+            100
         ));
 
         let task2 = NsnTaskMarket::tasks(1).expect("Task should exist");
@@ -637,6 +776,9 @@ fn helper_functions_work() {
         // Create task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -662,6 +804,9 @@ fn self_assignment_works() {
         // GIVEN: Alice creates a task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -685,6 +830,9 @@ fn self_completion_works() {
         // GIVEN: Alice creates and accepts her own task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
             100,
             100
         ));
@@ -699,7 +847,8 @@ fn self_completion_works() {
         // WHEN: Alice completes her own task
         assert_ok!(NsnTaskMarket::complete_task(
             RuntimeOrigin::signed(ALICE),
-            0
+            0,
+            default_output_cid()
         ));
 
         // THEN: Escrow is unreserved and "transferred" to self (net zero change)
@@ -718,6 +867,8 @@ fn fail_reasons_are_recorded() {
             FailReason::ExecutorFailed,
             FailReason::Cancelled,
             FailReason::DeadlineExceeded,
+            FailReason::Preempted,
+            FailReason::InvalidInput,
             FailReason::Other,
         ];
 
@@ -725,6 +876,9 @@ fn fail_reasons_are_recorded() {
             // Create and assign task
             assert_ok!(NsnTaskMarket::create_task_intent(
                 RuntimeOrigin::signed(ALICE),
+                default_model_id(),
+                default_input_cid(),
+                DEFAULT_COMPUTE_UNITS,
                 100,
                 100
             ));
@@ -750,6 +904,70 @@ fn fail_reasons_are_recorded() {
     });
 }
 
+#[test]
+fn task_model_id_and_input_cid_stored() {
+    ExtBuilder::default().build().execute_with(|| {
+        let model_id: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"custom-model-v2".to_vec()).unwrap();
+        let input_cid: BoundedVec<u8, MaxCidLen> =
+            BoundedVec::try_from(b"QmCustomInputCid".to_vec()).unwrap();
+        let compute_units = 5000u32;
+
+        // WHEN: Create task with custom model_id, input_cid, compute_units
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            model_id.clone(),
+            input_cid.clone(),
+            compute_units,
+            100,
+            100
+        ));
+
+        // THEN: Task stores the custom values
+        let task = NsnTaskMarket::tasks(0).expect("Task should exist");
+        assert_eq!(task.model_id, model_id);
+        assert_eq!(task.input_cid, input_cid);
+        assert_eq!(task.max_compute_units, compute_units);
+    });
+}
+
+#[test]
+fn task_output_cid_stored_on_completion() {
+    ExtBuilder::default().build().execute_with(|| {
+        let output_cid: BoundedVec<u8, MaxCidLen> =
+            BoundedVec::try_from(b"QmCustomOutputCid".to_vec()).unwrap();
+
+        // GIVEN: Task created and assigned
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            100,
+            100
+        ));
+        assert_ok!(NsnTaskMarket::accept_assignment(
+            RuntimeOrigin::signed(BOB),
+            0
+        ));
+
+        // Verify output_cid is None before completion
+        let task_before = NsnTaskMarket::tasks(0).expect("Task should exist");
+        assert_eq!(task_before.output_cid, None);
+
+        // WHEN: Complete with custom output_cid
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            output_cid.clone()
+        ));
+
+        // THEN: output_cid is stored
+        let task_after = NsnTaskMarket::tasks(0).expect("Task should exist");
+        assert_eq!(task_after.output_cid, Some(output_cid));
+    });
+}
+
 // ============================================================================
 // Integration-Style Tests
 // ============================================================================
@@ -763,8 +981,11 @@ fn full_task_lifecycle_success() {
         // Step 1: Create task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            500,
-            100
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            100,
+            500
         ));
         assert_eq!(Balances::free_balance(ALICE), initial_alice_balance - 500);
         assert_eq!(Balances::reserved_balance(ALICE), 500);
@@ -776,7 +997,11 @@ fn full_task_lifecycle_success() {
         ));
 
         // Step 3: Complete task
-        assert_ok!(NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            default_output_cid()
+        ));
 
         // Final state verification
         assert_eq!(Balances::reserved_balance(ALICE), 0);
@@ -785,6 +1010,7 @@ fn full_task_lifecycle_success() {
 
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
         assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.output_cid, Some(default_output_cid()));
     });
 }
 
@@ -797,8 +1023,11 @@ fn full_task_lifecycle_failure() {
         // Step 1: Create task
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            500,
-            100
+            default_model_id(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_UNITS,
+            100,
+            500
         ));
 
         // Step 2: Accept assignment
@@ -831,6 +1060,9 @@ fn multiple_concurrent_tasks_lifecycle() {
         for _ in 0..3 {
             assert_ok!(NsnTaskMarket::create_task_intent(
                 RuntimeOrigin::signed(ALICE),
+                default_model_id(),
+                default_input_cid(),
+                DEFAULT_COMPUTE_UNITS,
                 100,
                 100
             ));
@@ -847,7 +1079,11 @@ fn multiple_concurrent_tasks_lifecycle() {
         ));
 
         // Bob completes, Charlie fails
-        assert_ok!(NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            default_output_cid()
+        ));
         assert_ok!(NsnTaskMarket::fail_task(
             RuntimeOrigin::signed(CHARLIE),
             1,

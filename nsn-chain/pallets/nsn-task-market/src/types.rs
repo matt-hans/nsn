@@ -31,6 +31,8 @@ pub enum TaskStatus {
     Completed,
     /// Task has failed
     Failed,
+    /// Task has expired (deadline passed without completion)
+    Expired,
 }
 
 /// Reason for task failure
@@ -52,15 +54,24 @@ pub enum FailReason {
     Cancelled,
     /// Task deadline was exceeded
     DeadlineExceeded,
+    /// Task was preempted for Lane 0 video generation
+    Preempted,
+    /// Bad input data
+    InvalidInput,
     /// Other failure reason
     Other,
 }
 
 /// A compute task intent in the task market
 ///
-/// Generic over AccountId, Balance, and BlockNumber types for flexibility.
+/// Generic over AccountId, Balance, BlockNumber, and bounded length types for flexibility.
 #[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo)]
-pub struct TaskIntent<AccountId, Balance, BlockNumber> {
+#[scale_info(skip_type_params(MaxModelIdLen, MaxCidLen))]
+pub struct TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
+where
+    MaxModelIdLen: Get<u32>,
+    MaxCidLen: Get<u32>,
+{
     /// Task identifier (unique)
     pub id: u64,
     /// Account that created the task
@@ -75,10 +86,23 @@ pub struct TaskIntent<AccountId, Balance, BlockNumber> {
     pub created_at: BlockNumber,
     /// Block number deadline for task completion
     pub deadline: BlockNumber,
+    /// AI model identifier for task execution
+    pub model_id: BoundedVec<u8, MaxModelIdLen>,
+    /// Content identifier for input data
+    pub input_cid: BoundedVec<u8, MaxCidLen>,
+    /// Maximum compute units budget for the task
+    pub max_compute_units: u32,
+    /// Content identifier for output data (set on completion)
+    pub output_cid: Option<BoundedVec<u8, MaxCidLen>>,
 }
 
-impl<AccountId: Default, Balance: Default, BlockNumber: Default> Default
-    for TaskIntent<AccountId, Balance, BlockNumber>
+impl<
+        AccountId: Default,
+        Balance: Default,
+        BlockNumber: Default,
+        MaxModelIdLen: Get<u32>,
+        MaxCidLen: Get<u32>,
+    > Default for TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
 {
     fn default() -> Self {
         Self {
@@ -89,13 +113,22 @@ impl<AccountId: Default, Balance: Default, BlockNumber: Default> Default
             escrow: Balance::default(),
             created_at: BlockNumber::default(),
             deadline: BlockNumber::default(),
+            model_id: BoundedVec::default(),
+            input_cid: BoundedVec::default(),
+            max_compute_units: 0,
+            output_cid: None,
         }
     }
 }
 
 // Manual MaxEncodedLen for TaskIntent
-impl<AccountId: MaxEncodedLen, Balance: MaxEncodedLen, BlockNumber: MaxEncodedLen> MaxEncodedLen
-    for TaskIntent<AccountId, Balance, BlockNumber>
+impl<
+        AccountId: MaxEncodedLen,
+        Balance: MaxEncodedLen,
+        BlockNumber: MaxEncodedLen,
+        MaxModelIdLen: Get<u32>,
+        MaxCidLen: Get<u32>,
+    > MaxEncodedLen for TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
 {
     fn max_encoded_len() -> usize {
         u64::max_encoded_len() // id
@@ -105,5 +138,9 @@ impl<AccountId: MaxEncodedLen, Balance: MaxEncodedLen, BlockNumber: MaxEncodedLe
             + Balance::max_encoded_len() // escrow
             + BlockNumber::max_encoded_len() // created_at
             + BlockNumber::max_encoded_len() // deadline
+            + BoundedVec::<u8, MaxModelIdLen>::max_encoded_len() // model_id
+            + BoundedVec::<u8, MaxCidLen>::max_encoded_len() // input_cid
+            + u32::max_encoded_len() // max_compute_units
+            + Option::<BoundedVec<u8, MaxCidLen>>::max_encoded_len() // output_cid
     }
 }

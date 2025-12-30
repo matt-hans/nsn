@@ -92,11 +92,20 @@ impl pallet_balances::Config for Test {
 parameter_types! {
     /// Maximum number of pending (open) tasks
     pub const MaxPendingTasks: u32 = 100;
+    /// Maximum length of model identifier
+    pub const MaxModelIdLen: u32 = 64;
+    /// Maximum length of content identifier (CID)
+    pub const MaxCidLen: u32 = 64;
+    /// Minimum escrow amount required for task creation
+    pub const MinEscrow: Balance = 10;
 }
 
 impl pallet_nsn_task_market::Config for Test {
     type Currency = Balances;
     type MaxPendingTasks = MaxPendingTasks;
+    type MaxModelIdLen = MaxModelIdLen;
+    type MaxCidLen = MaxCidLen;
+    type MinEscrow = MinEscrow;
     type WeightInfo = ();
 }
 
