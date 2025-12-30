@@ -1,34 +1,34 @@
-# Interdimensional Cable Network (ICN)
-# Product Requirements Document v9.0
+# Neural Sovereign Network (NSN)
+# Product Requirements Document v10.0
 
-**Version:** 9.0.0  
-**Date:** 2025-12-24  
-**Status:** Strategic Pivot - ICN Polkadot SDK Chain  
+**Version:** 10.0.0
+**Date:** 2025-12-29
+**Status:** Dual-Lane Architecture - NSN Polkadot SDK Chain
 **Classification:** Approved for Development
 
 ---
 
 ## Document Control
 
-### Strategic Pivot (v8.0 → v9.0)
+### Strategic Evolution (v9.0 → v10.0)
 
-| Aspect | v8.0 Approach | v9.0 Strategic Shift |
-|--------|---------------|---------------------|
-| **On-Chain** | Custom pallets on Moonbeam | **ICN Chain (Polkadot SDK solochain)** |
-| **Deployment** | Moonbeam governance approval | **Permissionless (own chain)** |
-| **Timeline** | 3-6 months + governance risk | **3-6 months (no external dependency)** |
-| **Security** | Polkadot via Moonbeam | **Solo → Parachain → Polkadot shared security** |
-| **Governance** | Moonbeam OpenGov (GLMR votes) | **ICN governance (sudo → multisig → OpenGov)** |
-| **Token** | ERC-20 on Moonbeam Frontier | **Native ICN + optional Frontier EVM** |
-| **Ethereum Access** | Moonbeam Frontier | **Optional: Frontier on ICN or Snowbridge** |
+| Aspect | v9.0 Approach | v10.0 Dual-Lane Architecture |
+|--------|---------------|------------------------------|
+| **Architecture** | Video-only (single lane) | **Dual-lane (Lane 0 video + Lane 1 general AI)** |
+| **Elections** | Per-slot VRF | **Epoch-based with On-Deck protocol (100 blocks)** |
+| **Task Scope** | Video generation only | **Lane 0: video, Lane 1: arbitrary AI compute** |
+| **Marketplace** | N/A | **nsn-task-market pallet for Lane 1** |
+| **Model Discovery** | Hardcoded | **nsn-model-registry pallet** |
+| **Orchestration** | Vortex only | **Vortex (Lane 0) + node-core (Lane 1)** |
 
-### v9.0 Key Changes
+### v10.0 Key Changes
 
-- **Removed Moonbeam Dependency:** ICN is now its own Polkadot SDK chain, eliminating governance approval risk
-- **Staged Deployment Model:** Solochain MVP → Parachain (optional) → Coretime scaling
-- **"Deployable by Anyone":** Full open-source chain artifacts, anyone can run ICN network
-- **Bootstrap Governance:** sudo/multisig initially, transition to OpenGov as network matures
-- **Ethereum Strategy:** Optional Frontier EVM on ICN Chain, or Snowbridge for mainnet bridging
+- **Dual-Lane Architecture:** Separates deterministic video generation (Lane 0) from open compute marketplace (Lane 1)
+- **Epoch-Based Elections:** On-Deck set (20 Directors) with 5 elected per epoch (100 blocks)
+- **Task Marketplace:** nsn-task-market pallet enables arbitrary AI workloads (inference, training, fine-tuning)
+- **Model Registry:** nsn-model-registry pallet for capability discovery and matching
+- **node-core:** Universal compute orchestration layer (scheduler + sidecar) for Lane 1
+- **Unified Infrastructure:** Shared stake, reputation, and P2P systems across both lanes
 
 ### v8.0.1 Enhancements (Retained)
 
@@ -52,7 +52,11 @@
 - Runtime upgrade control lies with external party (Moonbeam token holders)
 - Tight coupling between ICN protocol evolution and external governance
 
-**v9.0 Solution:** Build ICN as its own **Polkadot SDK chain** with custom FRAME pallets, enabling full sovereignty over runtime upgrades and deployment.
+**v9.0 Solution:** Build NSN as its own **Polkadot SDK chain** with custom FRAME pallets, enabling full sovereignty over runtime upgrades and deployment.
+
+**v10.0 Evolution:** Expand NSN from video-only to dual-lane architecture:
+- **Lane 0:** Deterministic video generation with epoch-based elections
+- **Lane 1:** Open marketplace for arbitrary AI compute tasks
 
 ### 1.2 System Architecture Overview
 
@@ -70,8 +74,8 @@
 │                    ICN CHAIN (Polkadot SDK Runtime)                 │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │              ICN CUSTOM PALLETS (Rust/FRAME)                 │   │
-│  │  pallet-icn-stake | pallet-icn-reputation | pallet-icn-pinning │
-│  │  pallet-icn-director | pallet-icn-bft | pallet-icn-treasury   │   │
+│  │  pallet-nsn-stake | pallet-nsn-reputation | pallet-nsn-pinning │
+│  │  pallet-nsn-director | pallet-nsn-bft | pallet-nsn-treasury   │   │
 │  └─────────────────────────────────────────────────────────────┘   │
 │  ┌─────────────────────────────────────────────────────────────┐   │
 │  │       OPTIONAL: FRONTIER EVM (ICN Token ERC-20 Interface)    │   │
@@ -93,7 +97,7 @@
 |--------|--------|
 | Time to MVP | 3-6 months |
 | Development Cost | $80k-$200k |
-| Initial Deployment | ICN Solochain (controlled validators) |
+| Initial Deployment | NSN Solochain (controlled validators) |
 | Future Scaling | Parachain + Coretime (on-demand/bulk) |
 | Ethereum Access | Optional Frontier EVM or Snowbridge |
 
@@ -134,8 +138,8 @@ Phase A: Solochain MVP          Phase B: Parachain           Phase C: Coretime
    Weeks 1-8                       Post-adoption               Post-parachain
 ```
 
-**Phase A: ICN Solochain MVP (Weeks 1-8)**
-- ICN Chain runs with controlled validator set (3-5 trusted operators)
+**Phase A: NSN Solochain MVP (Weeks 1-8)**
+- NSN Chain runs with controlled validator set (3-5 trusted operators)
 - Full pallet functionality operational
 - Fast iteration on chain logic
 - Low operational overhead
@@ -164,12 +168,12 @@ construct_runtime!(
         Sudo: pallet_sudo,  // Bootstrap governance
         
         // ICN custom pallets
-        IcnStake: pallet_icn_stake,
-        IcnReputation: pallet_icn_reputation,
-        IcnDirector: pallet_icn_director,
-        IcnBft: pallet_icn_bft,
-        IcnPinning: pallet_icn_pinning,
-        IcnTreasury: pallet_icn_treasury,
+        IcnStake: pallet_nsn_stake,
+        IcnReputation: pallet_nsn_reputation,
+        IcnDirector: pallet_nsn_director,
+        IcnBft: pallet_nsn_bft,
+        IcnPinning: pallet_nsn_pinning,
+        IcnTreasury: pallet_nsn_treasury,
         
         // Optional: Frontier EVM (Phase D)
         // EVM: pallet_evm,
@@ -191,7 +195,7 @@ construct_runtime!(
 
 ## 3. Custom Pallet Specifications
 
-### 3.1 pallet-icn-stake
+### 3.1 pallet-nsn-stake
 
 **Purpose:** Token staking, slashing, role eligibility, delegation
 
@@ -204,10 +208,10 @@ construct_runtime!(
 **Node Roles & Minimum Stakes:**
 | Role | Min Stake | Max Stake |
 |------|-----------|-----------|
-| Director | 100 ICN | 1,000 ICN |
-| SuperNode | 50 ICN | 500 ICN |
-| Validator | 10 ICN | 100 ICN |
-| Relay | 5 ICN | 50 ICN |
+| Director | 100 NSN | 1,000 ICN |
+| SuperNode | 50 NSN | 500 ICN |
+| Validator | 10 NSN | 100 NSN |
+| Relay | 5 NSN | 50 NSN |
 
 **Key Extrinsics:**
 - `deposit_stake(amount, lock_blocks, region)` - Stake tokens, verify per-node cap (1000 ICN), per-region cap (20%)
@@ -219,7 +223,7 @@ construct_runtime!(
 - Per-region cap: 20% of total stake
 - Delegation cap: 5× validator's own stake
 
-### 3.2 pallet-icn-reputation
+### 3.2 pallet-nsn-reputation
 
 **Purpose:** Verifiable reputation events with Merkle proofs, pruning
 
@@ -250,7 +254,7 @@ construct_runtime!(
 - `record_event()` - Record reputation event, update score, add to Merkle tree
 - `on_finalize()` - Compute Merkle root, create checkpoints, prune old events
 
-### 3.3 pallet-icn-director
+### 3.3 pallet-nsn-director
 
 **Purpose:** Multi-director election, BFT coordination, challenges
 
@@ -260,7 +264,7 @@ construct_runtime!(
 - COOLDOWN_SLOTS = 20
 - JITTER_FACTOR = 20% (±)
 - CHALLENGE_PERIOD_BLOCKS = 50 (~5 minutes)
-- CHALLENGE_STAKE = 25 ICN
+- CHALLENGE_STAKE = 25 NSN
 
 **Key Storage:**
 - `CurrentSlot`: Current slot number
@@ -274,7 +278,7 @@ construct_runtime!(
 1. Get eligible candidates (Director role, past cooldown)
 2. Calculate weights: reputation (sublinear scaling) + jitter
 3. Boost under-represented regions (max 2 directors per region)
-4. Use ICN Chain `T::Randomness` for cryptographically secure selection
+4. Use NSN Chain `T::Randomness` for cryptographically secure selection
 5. Select 5 directors for slot + 2 (pipeline ahead)
 
 **BFT Result Submission:**
@@ -285,19 +289,19 @@ construct_runtime!(
 5. After period (no challenge): finalize and record reputation events
 
 **Challenge Mechanism:**
-- Any staker can challenge with 25 ICN bond
+- Any staker can challenge with 25 NSN bond
 - Validators provide attestations
-- If upheld: Slash 100 ICN per director, refund challenger + 10 ICN reward
+- If upheld: Slash 100 NSN per director, refund challenger + 10 NSN reward
 - If rejected: Slash challenger bond, finalize original result
 
-### 3.4 pallet-icn-pinning
+### 3.4 pallet-nsn-pinning
 
 **Purpose:** Erasure shard pinning deals, rewards, audits
 
 **Key Constants:**
 - REPLICATION_FACTOR = 5
 - SHARD_REWARD_PER_BLOCK = 0.001 ICN
-- AUDIT_SLASH_AMOUNT = 10 ICN
+- AUDIT_SLASH_AMOUNT = 10 NSN
 - BASE_AUDIT_PROBABILITY = 1%/hour
 - Stake-weighted: Higher stake = lower audit frequency
 
@@ -316,9 +320,9 @@ construct_runtime!(
 1. Random audit initiated (stake-weighted probability)
 2. Pinner has 100 blocks (~10 min) to respond
 3. Valid proof → +10 reputation
-4. Invalid/timeout → Slash 10 ICN, -50 reputation
+4. Invalid/timeout → Slash 10 NSN, -50 reputation
 
-### 3.5 pallet-icn-treasury & pallet-icn-bft
+### 3.5 pallet-nsn-treasury & pallet-nsn-bft
 
 **Treasury:** Reward distribution, funding
 
@@ -348,11 +352,11 @@ Off-chain nodes use **subxt** to:
 
 ## 5. Ethereum Access Strategy
 
-### 5.1 Track A: Frontier EVM on ICN Chain (Optional)
+### 5.1 Track A: Frontier EVM on NSN Chain (Optional)
 
 If EVM compatibility desired for dApp developers:
 - Integrate **Frontier** (pallet-evm + pallet-ethereum)
-- EVM execution within ICN Chain
+- EVM execution within NSN Chain
 - Familiar tooling (Hardhat, Foundry, ethers.js)
 - ICN token accessible as ERC-20 via precompile
 
@@ -366,8 +370,8 @@ If Ethereum mainnet bridging needed:
 
 ### 5.3 ICN Token (Native)
 
-ICN is the **native token** of ICN Chain:
-- Total supply: 1B ICN
+ICN is the **native token** of NSN Chain:
+- Total supply: 1B NSN
 - Used for transaction fees, staking, slashing
 - No ERC-20 required for core functionality
 - Optional ERC-20 representation via Frontier (Track A)
@@ -376,18 +380,18 @@ ICN is the **native token** of ICN Chain:
 
 ## 6. Deployment Phases
 
-### Phase A: ICN Solochain MVP (Weeks 1-8)
+### Phase A: NSN Solochain MVP (Weeks 1-8)
 
 | Week | Milestone |
 |------|-----------|
-| 1-2 | ICN Chain bootstrap, dev environment, chain spec |
-| 3-4 | pallet-icn-stake, pallet-icn-reputation |
-| 5-6 | pallet-icn-director, pallet-icn-bft |
-| 7-8 | ICN Testnet deployment, integration testing |
+| 1-2 | NSN Chain bootstrap, dev environment, chain spec |
+| 3-4 | pallet-nsn-stake, pallet-nsn-reputation |
+| 5-6 | pallet-nsn-director, pallet-nsn-bft |
+| 7-8 | NSN Testnet deployment, integration testing |
 
-**Exit Criteria:** All pallets pass tests, ICN Testnet running with 10+ nodes
+**Exit Criteria:** All pallets pass tests, NSN Testnet running with 10+ nodes
 
-### Phase B: ICN Mainnet (Weeks 9-16)
+### Phase B: NSN Mainnet (Weeks 9-16)
 
 | Week | Milestone |
 |------|-----------|
@@ -407,7 +411,7 @@ ICN is the **native token** of ICN Chain:
 
 ### Phase D: Ethereum Integration (When Needed)
 
-- Option A: Enable Frontier EVM on ICN Chain
+- Option A: Enable Frontier EVM on NSN Chain
 - Option B: Snowbridge integration via Bridge Hub
 
 ---
@@ -425,7 +429,7 @@ ICN is the **native token** of ICN Chain:
 
 ### Comparison with Moonbeam Approach
 
-| Aspect | Moonbeam Pallets (v8.0) | ICN Chain (v9.0) |
+| Aspect | Moonbeam Pallets (v8.0) | NSN Chain (v9.0) |
 |--------|-------------------------|------------------|
 | Development | $60k-$120k | $70k-$130k |
 | Time to MVP | 3-6 months + governance | 3-6 months (no dependency) |
@@ -458,7 +462,7 @@ ICN is the **native token** of ICN Chain:
 
 ## 9. Success Criteria
 
-| Metric | Phase A (ICN Testnet) | Phase B (ICN Mainnet) |
+| Metric | Phase A (NSN Testnet) | Phase B (NSN Mainnet) |
 |--------|----------------------|----------------------|
 | Chain operational | ✓ | ✓ |
 | Staking functional | 100% test coverage | Live tokens |
@@ -551,7 +555,7 @@ ICN is the **native token** of ICN Chain:
 | Team & Advisors | 15% | 1-year cliff, 3-year vest |
 | Initial Liquidity | 10% | Immediate |
 
-**Total Supply:** 1B ICN (native token of ICN Chain)
+**Total Supply:** 1B NSN (native token of NSN Chain)
 
 ### 12.2 Token Utility
 
@@ -564,7 +568,7 @@ ICN is the **native token** of ICN Chain:
 
 ### 12.3 Emission Schedule
 
-Year 1: 100M ICN, then 15% annual decay
+Year 1: 100M NSN, then 15% annual decay
 
 **Distribution:** 40% directors, 25% validators, 20% pinners, 15% treasury
 
@@ -572,10 +576,10 @@ Year 1: 100M ICN, then 15% annual decay
 
 | Role | Min Stake | Lock Period | Slashing Risk |
 |------|-----------|-------------|---------------|
-| Director | 100 ICN | 30 days | 50 ICN/violation |
-| SuperNode | 50 ICN | 14 days | 20 ICN/violation |
-| Validator | 10 ICN | 7 days | 5 ICN/violation |
-| Relay | 5 ICN | 3 days | 1 ICN/violation |
+| Director | 100 NSN | 30 days | 50 NSN/violation |
+| SuperNode | 50 NSN | 14 days | 20 ICN/violation |
+| Validator | 10 NSN | 7 days | 5 NSN/violation |
+| Relay | 5 NSN | 3 days | 1 ICN/violation |
 
 ---
 
@@ -681,21 +685,21 @@ All manifests require Ed25519 signatures from trusted signers.
 ## 15. Development Roadmap
 
 ### Sprint 1-2 (Weeks 1-4)
-- [ ] Bootstrap ICN Chain (Polkadot SDK template)
+- [ ] Bootstrap NSN Chain (Polkadot SDK template)
 - [ ] Define chain spec and genesis configuration
-- [ ] Implement pallet-icn-stake
-- [ ] Implement pallet-icn-reputation
+- [ ] Implement pallet-nsn-stake
+- [ ] Implement pallet-nsn-reputation
 - [ ] Local multi-node testnet
 
 ### Sprint 3-4 (Weeks 5-8)
-- [ ] Implement pallet-icn-director
-- [ ] Implement pallet-icn-bft
+- [ ] Implement pallet-nsn-director
+- [ ] Implement pallet-nsn-bft
 - [ ] Off-chain node integration
 - [ ] Deploy ICN Public Testnet
 
 ### Sprint 5-6 (Weeks 9-12)
-- [ ] Implement pallet-icn-pinning
-- [ ] Implement pallet-icn-treasury
+- [ ] Implement pallet-nsn-pinning
+- [ ] Implement pallet-nsn-treasury
 - [ ] Security audit
 - [ ] Validator onboarding
 
@@ -732,7 +736,7 @@ All manifests require Ed25519 signatures from trusted signers.
 | **Erasure Coding** | Reed-Solomon (10+4) redundancy |
 | **FRAME** | Substrate's modular runtime framework |
 | **Frontier** | Substrate EVM compatibility layer |
-| **ICN Chain** | ICN's Polkadot SDK-based blockchain |
+| **NSN Chain** | ICN's Polkadot SDK-based blockchain |
 | **Pallet** | Substrate runtime module |
 | **Recipe** | JSON instruction for AI generation |
 | **Slot** | 45-90 second generation window |
@@ -760,11 +764,11 @@ All manifests require Ed25519 signatures from trusted signers.
 
 ---
 
-**Document Status:** APPROVED FOR DEVELOPMENT  
-**Architecture:** ICN Polkadot SDK Chain (v9.0)  
-**Target MVP:** Q2 2026  
-**Estimated Cost:** $105k-$235k  
-**Timeline:** 3-6 months  
-**Last Updated:** 2025-12-24
+**Document Status:** APPROVED FOR DEVELOPMENT
+**Architecture:** NSN Dual-Lane Architecture (v10.0)
+**Target MVP:** Q2 2026
+**Estimated Cost:** $105k-$235k
+**Timeline:** 3-6 months
+**Last Updated:** 2025-12-29
 
 *End of Document*

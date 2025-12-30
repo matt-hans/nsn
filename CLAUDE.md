@@ -4,47 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Interdimensional Cable Network (ICN)** is a decentralized AI-powered video streaming platform built as its own Polkadot SDK chain. The system combines:
+**Neural Sovereign Network (NSN)** is a decentralized AI compute marketplace built as its own Polkadot SDK chain with dual-lane architecture:
 
-- **On-chain layer**: ICN Chain - a Polkadot SDK solochain with custom FRAME pallets for staking, reputation, BFT consensus, and content pinning
-- **Off-chain layer**: P2P mesh network (Directors, Validators, Super-Nodes, Relays, Viewers) using libp2p
-- **AI layer (Vortex)**: GPU-resident pipeline for video generation using Flux-Schnell, LivePortrait, Kokoro TTS, and dual CLIP ensemble
+- **Lane 0 (Video Generation)**: AI-powered video streaming with Directors, Validators, and BFT consensus
+- **Lane 1 (General AI Compute)**: Open marketplace for arbitrary AI tasks via task-market pallet
 
-The project uses the Polkadot SDK to build ICN as a sovereign chain with staged deployment: Solochain MVP → Parachain (optional) → Coretime scaling.
+The system combines:
+
+- **On-chain layer**: NSN Chain - a Polkadot SDK solochain with custom FRAME pallets for staking, reputation, epochs, task marketplace, and model registry
+- **Off-chain layer**: P2P mesh network using libp2p with epoch-based elections and On-Deck protocol
+- **AI layer (Vortex)**: GPU-resident pipeline for Lane 0 video generation using Flux-Schnell, LivePortrait, Kokoro TTS, and dual CLIP ensemble
+- **Compute layer (node-core)**: Universal compute orchestration for Lane 1 with scheduler and sidecar architecture
+
+The project uses the Polkadot SDK to build NSN as a sovereign chain with staged deployment: Solochain MVP → Parachain (optional) → Coretime scaling.
 
 ## Repository Structure
 
 ```
 interdim-cable/
-├── icn-chain/              # ICN Chain (Polkadot SDK runtime + pallets)
+├── nsn-chain/              # NSN Chain (Polkadot SDK runtime + pallets)
 │   ├── pallets/
-│   │   ├── icn-stake/      # Token staking, slashing, role eligibility
-│   │   ├── icn-reputation/ # Reputation scoring with Merkle proofs
-│   │   ├── icn-director/   # VRF-based director election, BFT coordination
-│   │   ├── icn-bft/        # BFT consensus storage and finalization
-│   │   ├── icn-pinning/    # Erasure coding deals and audits
-│   │   └── icn-treasury/   # Reward distribution and emissions
-│   ├── runtime/            # ICN runtime configuration
-│   ├── node/               # ICN node client implementation
+│   │   ├── nsn-stake/      # Token staking, slashing, role eligibility
+│   │   ├── nsn-reputation/ # Reputation scoring with Merkle proofs
+│   │   ├── nsn-epochs/     # Epoch-based elections with On-Deck protocol
+│   │   ├── nsn-bft/        # BFT consensus storage and finalization
+│   │   ├── nsn-pinning/    # Erasure coding deals and audits
+│   │   ├── nsn-treasury/   # Reward distribution and emissions
+│   │   ├── nsn-task-market/# Lane 1 task marketplace
+│   │   └── nsn-model-registry/ # Model capability registry
+│   ├── runtime/            # NSN runtime configuration
+│   ├── node/               # NSN node client implementation
 │   ├── precompiles/        # Optional EVM precompiles (Frontier)
 │   └── test/               # Integration tests
-├── icn-nodes/              # Off-chain node implementations (T009-T012, T021-T027)
+├── nsn-nodes/              # Off-chain node implementations
 │   ├── common/             # Shared P2P, chain client, types
-│   ├── director/           # GPU video generation + BFT coordination
-│   ├── validator/          # CLIP semantic verification
+│   ├── director/           # Lane 0: GPU video generation + BFT coordination
+│   ├── validator/          # Lane 0: CLIP semantic verification
 │   ├── super-node/         # Tier 1 erasure-coded storage
 │   └── relay/              # Tier 2 regional distribution
-├── vortex/                 # AI generation engine - Python (T014-T020)
+├── node-core/              # Lane 1: Universal compute orchestration (Rust)
+│   ├── scheduler/          # Task scheduler with On-Deck protocol
+│   └── sidecar/            # Compute execution runtime
+├── vortex/                 # Lane 0: AI generation engine - Python
 │   └── src/vortex/
 │       ├── models/         # Flux, LivePortrait, Kokoro, CLIP loaders
 │       ├── pipeline/       # Generation orchestration
 │       └── utils/          # VRAM management
-├── viewer/                 # Desktop app - Tauri + React (T013)
+├── viewer/                 # Desktop app - Tauri + React
 │   ├── src/                # React frontend
 │   └── src-tauri/          # Tauri Rust backend
 ├── .claude/rules/          # Project architecture and PRD documents
-│   ├── architecture.md     # Technical Architecture Document (TAD v1.1)
-│   └── prd.md              # Product Requirements Document (PRD v9.0)
+│   ├── architecture.md     # Technical Architecture Document (TAD v2.0)
+│   └── prd.md              # Product Requirements Document (PRD v10.0)
 └── .tasks/                 # Task management system
     ├── manifest.json       # All tasks with dependencies
     └── tasks/              # Individual task specifications
@@ -52,32 +63,49 @@ interdim-cable/
 
 ## Build Commands
 
-### On-Chain (icn-chain/)
+### On-Chain (nsn-chain/)
 
 ```bash
-cd icn-chain
+cd nsn-chain
 
-# Build the ICN node (optimized release)
+# Build the NSN node (optimized release)
 cargo build --release
 
 # Build specific pallet
-cargo build --release -p pallet-icn-stake
+cargo build --release -p pallet-nsn-stake
 
 # Rust linting and formatting
 cargo clippy --release --workspace
 cargo fmt -- --check
 ```
 
-### Off-Chain Nodes (icn-nodes/)
+### Off-Chain Nodes (nsn-nodes/)
 
 ```bash
-cd icn-nodes
+cd nsn-nodes
 
 # Build all nodes
 cargo build --release
 
 # Build specific node
-cargo build --release -p icn-director
+cargo build --release -p nsn-director
+```
+
+### Lane 1 Compute (node-core/)
+
+```bash
+cd node-core
+
+# Build scheduler and sidecar
+cargo build --release
+
+# Build specific component
+cargo build --release -p scheduler
+cargo build --release -p sidecar
+
+# Rust linting and formatting
+cargo clippy --release --workspace
+cargo fmt -- --check
 ```
 
 ### Vortex AI Engine (vortex/)
@@ -117,41 +145,45 @@ pnpm tauri:build
 cargo test
 
 # Run specific pallet tests
-cargo test -p pallet-icn-stake
-cargo test -p pallet-icn-reputation
-cargo test -p pallet-icn-director
+cargo test -p pallet-nsn-stake
+cargo test -p pallet-nsn-reputation
+cargo test -p pallet-nsn-epochs
+cargo test -p pallet-nsn-task-market
+cargo test -p pallet-nsn-model-registry
 
 # Integration tests
-cd icn-chain/test
+cd nsn-chain/test
 pnpm test
 ```
 
 ## Running Development Node
 
 ```bash
-# Using built binary - local ICN solochain
-./target/release/icn-node --dev --alice --rpc-port 9944
+# Using built binary - local NSN solochain
+./target/release/nsn-node --dev --alice --rpc-port 9944
 
 # Multi-node local testnet
-./target/release/icn-node --chain=local --alice --port 30333 --rpc-port 9944
-./target/release/icn-node --chain=local --bob --port 30334 --rpc-port 9945 --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/<ALICE_PEER_ID>
+./target/release/nsn-node --chain=local --alice --port 30333 --rpc-port 9944
+./target/release/nsn-node --chain=local --bob --port 30334 --rpc-port 9945 --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/<ALICE_PEER_ID>
 ```
 
-## ICN Pallet Architecture
+## NSN Pallet Architecture
 
-The ICN pallets follow a dependency hierarchy:
+The NSN pallets follow a dependency hierarchy:
 
 ```
-pallet-icn-stake (foundation)
+pallet-nsn-stake (foundation)
     ↓
-pallet-icn-reputation (depends on stake)
+pallet-nsn-reputation (depends on stake)
     ↓
-pallet-icn-director (depends on stake + reputation)
+pallet-nsn-epochs (depends on stake + reputation)
     ↓
-pallet-icn-bft (depends on director)
+pallet-nsn-bft (depends on epochs)
 
-pallet-icn-pinning (depends on stake)
-pallet-icn-treasury (depends on stake)
+pallet-nsn-pinning (depends on stake)
+pallet-nsn-treasury (depends on stake)
+pallet-nsn-task-market (depends on stake + reputation)
+pallet-nsn-model-registry (depends on stake)
 ```
 
 **Key design patterns:**
@@ -165,19 +197,37 @@ pallet-icn-treasury (depends on stake)
 
 | Component | Specification |
 |-----------|---------------|
-| Directors per slot | 5 (3-of-5 BFT threshold) |
+| Epoch duration | 100 blocks (~10 minutes) |
+| On-Deck set size | 20 Directors |
+| Elected Directors per epoch | 5 (3-of-5 BFT threshold) |
 | Challenge period | 50 blocks (~5 minutes) |
-| Min director stake | 100 ICN |
-| VRAM requirement | 11.8 GB (RTX 3060 12GB minimum) |
-| Glass-to-glass latency | 45 seconds target |
+| Min director stake | 100 NSN |
+| VRAM requirement (Lane 0) | 11.8 GB (RTX 3060 12GB minimum) |
+| Glass-to-glass latency (Lane 0) | 45 seconds target |
 | Polkadot SDK version | polkadot-stable2409 |
+
+## Dual-Lane Architecture
+
+### Lane 0: Video Generation (Deterministic)
+- Epoch-based elections with On-Deck protocol
+- 5 Directors elected per epoch
+- BFT consensus (3-of-5 threshold)
+- Vortex AI pipeline (Flux, LivePortrait, Kokoro, CLIP)
+- P2P video distribution
+
+### Lane 1: General AI Compute (Marketplace)
+- Open task marketplace via nsn-task-market pallet
+- Arbitrary AI workloads (inference, training, fine-tuning)
+- Model registry for capability discovery
+- node-core scheduler with sidecar execution runtime
+- Stake-based task acceptance and reputation-driven matching
 
 ## Task Management
 
 The project uses a structured task system in `.tasks/`:
 - `manifest.json` contains all tasks with dependency graph
 - Critical path: T001 → T002 → T003 → T004 → T005 → T009 → T034 → T035 → T037
-- Phase A (ICN Solo): Weeks 1-8, Phase B (ICN Mainnet): Weeks 9-16
+- Phase A (NSN Solo): Weeks 1-8, Phase B (NSN Mainnet): Weeks 9-16
 
 To check next actionable task: Look at `.tasks/manifest.json` for tasks with status "pending" and all dependencies complete.
 
@@ -185,15 +235,15 @@ To check next actionable task: Look at `.tasks/manifest.json` for tasks with sta
 
 | Network | Purpose | Deployment |
 |---------|---------|------------|
-| ICN Dev | Local development | Single-node --dev |
-| ICN Local | Multi-node testing | Local testnet |
-| ICN Testnet | Integration testing | Public testnet |
-| ICN Mainnet | Production | Mainnet (solo → parachain) |
+| NSN Dev | Local development | Single-node --dev |
+| NSN Local | Multi-node testing | Local testnet |
+| NSN Testnet | Integration testing | Public testnet |
+| NSN Mainnet | Production | Mainnet (solo → parachain) |
 
 ## Staged Deployment Model
 
-1. **Phase A: ICN Solochain** - Controlled validator set, fast iteration
-2. **Phase B: ICN Mainnet** - Public validators, production deployment
+1. **Phase A: NSN Solochain** - Controlled validator set, fast iteration
+2. **Phase B: NSN Mainnet** - Public validators, production deployment
 3. **Phase C: Parachain** - Cumulus integration, Polkadot shared security
 4. **Phase D: Coretime** - Elastic scaling via Polkadot coretime
 
@@ -219,5 +269,5 @@ A PostToolUse hook automatically runs after Edit, Write, or MultiEdit operations
 ## Architecture Documents
 
 For detailed specifications, refer to:
-- `.claude/rules/architecture.md` - Technical Architecture Document (system design, ADRs, deployment)
-- `.claude/rules/prd.md` - Product Requirements Document (features, tokenomics, security model)
+- `.claude/rules/architecture.md` - Technical Architecture Document (TAD v2.0: dual-lane architecture, epochs, On-Deck protocol)
+- `.claude/rules/prd.md` - Product Requirements Document (PRD v10.0: NSN dual-lane architecture, task marketplace, model registry)

@@ -1,10 +1,10 @@
-# Interdimensional Cable Network (ICN)
-# Technical Architecture Document v1.1
+# Neural Sovereign Network (NSN)
+# Technical Architecture Document v2.0
 
-**Version:** 1.1  
-**Date:** 2025-12-24  
-**Status:** Approved - ICN Polkadot SDK Chain  
-**PRD Reference:** ICN_PRD_v9.0
+**Version:** 2.0
+**Date:** 2025-12-29
+**Status:** Approved - NSN Dual-Lane Architecture
+**PRD Reference:** NSN_PRD_v10.0
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### 1.1 Purpose
 
-This Technical Architecture Document (TAD) translates the ICN PRD v9.0 into concrete technical architecture and implementation guidance. It serves as reference for:
+This Technical Architecture Document (TAD) translates the NSN PRD v10.0 into concrete technical architecture and implementation guidance. It serves as reference for:
 
 - **Engineering teams** implementing the system
 - **DevOps/SRE** deploying infrastructure
@@ -21,7 +21,7 @@ This Technical Architecture Document (TAD) translates the ICN PRD v9.0 into conc
 
 ### 1.2 Scope
 
-**In Scope:** ICN Chain runtime (FRAME pallets), off-chain node architecture, P2P network topology, AI inference pipeline (Vortex), data storage, security architecture, deployment procedures, observability, optional Frontier EVM compatibility.
+**In Scope:** NSN Chain runtime (FRAME pallets including task-market and model-registry), off-chain node architecture, P2P network topology, dual-lane architecture (Lane 0 video + Lane 1 general compute), AI inference pipeline (Vortex), node-core orchestration, data storage, security architecture, deployment procedures, observability, optional Frontier EVM compatibility.
 
 **Out of Scope:** UI/UX design, marketing strategy, legal/regulatory specifics, detailed tokenomics modeling.
 
@@ -29,7 +29,7 @@ This Technical Architecture Document (TAD) translates the ICN PRD v9.0 into conc
 
 | Document | Version | Description |
 |----------|---------|-------------|
-| ICN_PRD_v9.0 | 9.0.0 | Product Requirements Document |
+| NSN_PRD_v10.0 | 10.0.0 | Product Requirements Document |
 | Polkadot SDK | polkadot-stable2409 | Runtime framework |
 | Cumulus Documentation | Latest | Parachain support (Phase B) |
 | Frontier Documentation | Latest | Optional EVM compatibility |
@@ -37,13 +37,15 @@ This Technical Architecture Document (TAD) translates the ICN PRD v9.0 into conc
 
 ### 1.4 System Context (C4 Level 1)
 
-The ICN system consists of three primary domains:
+The NSN system consists of four primary domains:
 
-1. **On-Chain Layer (ICN Chain):** ICN's own Polkadot SDK chain with custom Substrate pallets for staking, reputation, director election, BFT result storage, pinning deals, and treasury. Solo phase uses controlled validators; parachain phase inherits Polkadot relay chain security (~$20B economic security).
+1. **On-Chain Layer (NSN Chain):** NSN's own Polkadot SDK chain with custom Substrate pallets for staking, reputation, epoch-based elections, BFT result storage, pinning deals, treasury, task marketplace, and model registry. Solo phase uses controlled validators; parachain phase inherits Polkadot relay chain security (~$20B economic security).
 
-2. **Off-Chain Layer (P2P Mesh):** Hierarchical network of nodes - Directors generate AI video, Validators verify semantic compliance, Super-Nodes store erasure-coded shards, Regional Relays distribute content, Viewers consume streams.
+2. **Off-Chain Layer (P2P Mesh):** Hierarchical network of nodes with epoch-based elections and On-Deck protocol - Directors generate AI output, Validators verify semantic compliance, Super-Nodes store erasure-coded shards, Regional Relays distribute content, Viewers consume streams.
 
-3. **AI Generation Layer (Vortex):** GPU-resident pipeline running Flux-Schnell, LivePortrait, Kokoro-82M, and dual CLIP ensemble.
+3. **Lane 0 (Video Generation):** GPU-resident Vortex pipeline running Flux-Schnell, LivePortrait, Kokoro-82M, and dual CLIP ensemble for deterministic video generation.
+
+4. **Lane 1 (General Compute):** node-core orchestration system with scheduler and sidecar for arbitrary AI workloads via open task marketplace.
 
 ---
 
@@ -60,7 +62,7 @@ The ICN system consists of three primary domains:
 | Erasure Coding | §3.4 | Reed-Solomon (10+4), 5x replication |
 | NAT Traversal | §13.1 | STUN → UPnP → Circuit Relay → TURN fallback |
 | BFT Challenge Period | §3.3 | 50-block dispute window with stake slashing |
-| VRF Elections | §3.3 | ICN Chain randomness source |
+| VRF Elections | §3.3 | NSN Chain randomness source |
 
 ### 2.2 Non-Functional Requirements
 
@@ -77,7 +79,7 @@ The ICN system consists of three primary domains:
 
 | Constraint | Type | Impact |
 |------------|------|--------|
-| ICN Chain validator set (solo phase) | Technical | Initial security depends on trusted operators |
+| NSN Chain validator set (solo phase) | Technical | Initial security depends on trusted operators |
 | RTX 3060 12GB floor | Technical | VRAM budget = 11.8GB max |
 | 3-6 month timeline | Business | Limited scope for MVP |
 | $80k-$200k budget | Business | 2-3 developers max |
@@ -96,9 +98,9 @@ The ICN system consists of three primary domains:
 
 ## 3. Architectural Decisions (ADRs)
 
-### ADR-001: ICN Chain over Moonbeam Extension
+### ADR-001: NSN Chain over Moonbeam Extension
 
-**Decision:** Build ICN as its own Polkadot SDK chain with custom pallets instead of deploying pallets to Moonbeam's runtime.
+**Decision:** Build NSN as its own Polkadot SDK chain with custom pallets instead of deploying pallets to Moonbeam's runtime.
 
 **Rationale:**
 - Eliminates Moonbeam governance dependency (referendum approval was HIGH risk)
@@ -114,6 +116,42 @@ The ICN system consists of three primary domains:
 - (-) More operational responsibility (validators)
 - (-) Shared security only after parachain migration (Phase B)
 - (-) Initial security relies on trusted validator set
+
+### ADR-012: Dual-Lane Architecture (Lane 0 + Lane 1)
+
+**Decision:** Split NSN into two execution lanes: Lane 0 (deterministic video generation with epochs/BFT) and Lane 1 (open compute marketplace with task-market pallet).
+
+**Rationale:**
+- Lane 0 preserves proven epoch-based elections with On-Deck protocol for video generation
+- Lane 1 unlocks arbitrary AI workloads (inference, training, fine-tuning) via marketplace
+- Separates concerns: deterministic consensus (Lane 0) vs. flexible marketplace (Lane 1)
+- Unified reputation and stake system across both lanes
+- Enables gradual expansion from video to general AI compute
+
+**Trade-offs:**
+- (+) Flexibility: arbitrary tasks beyond video generation
+- (+) Market-driven pricing for Lane 1 tasks
+- (+) Reuses NSN infrastructure (stake, reputation, P2P)
+- (-) Increased complexity with two execution paths
+- (-) Requires node-core orchestration layer for Lane 1
+
+### ADR-013: Epoch-Based Elections with On-Deck Protocol
+
+**Decision:** Replace per-slot elections with epoch-based elections (100 blocks) and On-Deck set (20 Directors), electing 5 Directors per epoch from On-Deck pool.
+
+**Rationale:**
+- Reduces on-chain election overhead from every slot to every 100 blocks
+- On-Deck set provides predictable Director pipeline (20 candidates → 5 elected)
+- Enables Directors to prepare models and VRAM ahead of time
+- Smoother transition between epochs
+- Better UX for node operators (predictable scheduling)
+
+**Trade-offs:**
+- (+) Lower computational overhead (election every 100 blocks vs. every slot)
+- (+) Predictable Director pipeline for warm-up
+- (+) Fairer distribution (all On-Deck members get turns)
+- (-) Less dynamic than per-slot elections
+- (-) Requires On-Deck set maintenance logic
 
 ### ADR-002: Hybrid On-Chain/Off-Chain Architecture
 
@@ -143,13 +181,13 @@ The ICN system consists of three primary domains:
 
 ### ADR-006: BFT Challenge Period
 
-**Decision:** 50-block (~5 minute) challenge period before finalization. Challengers stake 25 ICN, successful challenges slash 100 ICN per fraudulent director.
+**Decision:** 50-block (~5 minute) challenge period before finalization. Challengers stake 25 NSN, successful challenges slash 100 NSN per fraudulent director.
 
 **Rationale:** Economic security against collusion.
 
-### ADR-007: ICN Chain Randomness
+### ADR-007: NSN Chain Randomness
 
-**Decision:** Use ICN Chain's runtime randomness source (`T::Randomness` trait) for cryptographically secure director selection.
+**Decision:** Use NSN Chain's runtime randomness source (`T::Randomness` trait) for cryptographically secure On-Deck and epoch-based director selection.
 
 **Rationale:** Cryptographically unpredictable, verifiable on-chain. In solo mode, uses BABE-like randomness; in parachain mode, integrates with relay chain randomness.
 
@@ -159,9 +197,9 @@ The ICN system consists of three primary domains:
 
 **Rationale:** 1.4× overhead vs 3× for replication at same durability.
 
-### ADR-009: Optional Frontier EVM on ICN Chain
+### ADR-009: Optional Frontier EVM on NSN Chain
 
-**Decision:** Ethereum compatibility is optional, provided via Frontier (pallet-evm + pallet-ethereum) on ICN Chain when needed. Alternative: Snowbridge for Ethereum mainnet bridging post-parachain.
+**Decision:** Ethereum compatibility is optional, provided via Frontier (pallet-evm + pallet-ethereum) on NSN Chain when needed. Alternative: Snowbridge for Ethereum mainnet bridging post-parachain.
 
 **Rationale:**
 - Core ICN functionality does not require EVM
@@ -200,24 +238,38 @@ The ICN system consists of three primary domains:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    ON-CHAIN LAYER (ICN Chain)                       │
+│                    ON-CHAIN LAYER (NSN Chain)                       │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
-│  │pallet-icn-  │ │pallet-icn-  │ │pallet-icn-  │ │pallet-icn-  │   │
-│  │   stake     │ │ reputation  │ │  director   │ │   pinning   │   │
+│  │pallet-nsn-  │ │pallet-nsn-  │ │pallet-nsn-  │ │pallet-nsn-  │   │
+│  │   stake     │ │ reputation  │ │   epochs    │ │   pinning   │   │
 │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │
-│  ┌─────────────┐ ┌─────────────┐ ┌──────────────────────────────┐  │
-│  │pallet-icn-  │ │pallet-icn-  │ │  OPTIONAL: FRONTIER EVM      │  │
-│  │  treasury   │ │     bft     │ │  (pallet-evm + pallet-eth)   │  │
-│  └─────────────┘ └─────────────┘ └──────────────────────────────┘  │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐   │
+│  │pallet-nsn-  │ │pallet-nsn-  │ │pallet-nsn-  │ │pallet-nsn-  │   │
+│  │  treasury   │ │     bft     │ │task-market  │ │model-registry│  │
+│  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘   │
+│  ┌──────────────────────────────┐                                   │
+│  │  OPTIONAL: FRONTIER EVM      │                                   │
+│  │  (pallet-evm + pallet-eth)   │                                   │
+│  └──────────────────────────────┘                                   │
 └─────────────────────────────────────────────────────────────────────┘
                               │ subxt RPC / Events
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                    OFF-CHAIN LAYER (P2P Mesh)                       │
-│  TIER 0: Directors (GPU + Vortex Engine)                            │
-│  TIER 1: Super-Nodes (7 Regions, Erasure Storage, CLIP Validator)   │
-│  TIER 2: Regional Relays (Cache + Distribution)                     │
-│  TIER 3: Edge Viewers (Tauri App, WebCodecs)                        │
+│  LANE 0 (Video):                                                    │
+│    - Directors (GPU + Vortex Engine, Epoch-elected)                 │
+│    - On-Deck Set (20 candidates, 5 elected per epoch)               │
+│    - Validators (CLIP verification)                                 │
+│                                                                     │
+│  LANE 1 (General Compute):                                          │
+│    - node-core Scheduler (task matching + orchestration)            │
+│    - Sidecar Runtime (arbitrary AI workload execution)              │
+│    - Model Registry (capability discovery)                          │
+│                                                                     │
+│  SHARED:                                                            │
+│    - Super-Nodes (7 Regions, Erasure Storage)                       │
+│    - Regional Relays (Cache + Distribution)                         │
+│    - Edge Viewers (Tauri App, WebCodecs)                            │
 │                                                                     │
 │  Transport: libp2p + QUIC + GossipSub + Kademlia DHT                │
 └─────────────────────────────────────────────────────────────────────┘
@@ -236,8 +288,8 @@ The ICN system consists of three primary domains:
 
 **Director Election Flow:**
 1. `on_initialize(block)` triggers election
-2. `pallet-icn-director` queries `pallet-icn-stake` for stakes/roles
-3. Queries `pallet-icn-reputation` for scores
+2. `pallet-nsn-director` queries `pallet-nsn-stake` for stakes/roles
+3. Queries `pallet-nsn-reputation` for scores
 4. Emits `Event::DirectorsElected(slot, directors)`
 
 **BFT Result Submission Flow:**
@@ -245,12 +297,12 @@ The ICN system consists of three primary domains:
 2. Verifies submitter is elected director
 3. Stores pending result with 50-block challenge period
 4. After challenge period (no challenge), calls `finalize_slot()`
-5. Records reputation events via `pallet-icn-reputation`
+5. Records reputation events via `pallet-nsn-reputation`
 
 **Challenge Resolution Flow:**
-1. `challenge_bft_result()` reserves 25 ICN bond
+1. `challenge_bft_result()` reserves 25 NSN bond
 2. `resolve_challenge()` counts validator attestations
-3. If upheld: slash 100 ICN per director, refund challenger + 10 ICN reward
+3. If upheld: slash 100 NSN per director, refund challenger + 10 NSN reward
 4. If rejected: slash challenger bond, finalize original result
 
 ### 4.4 Data Architecture
@@ -274,8 +326,8 @@ The ICN system consists of three primary domains:
 
 | API | Type | Purpose | Auth |
 |-----|------|---------|------|
-| ICN Chain RPC | JSON-RPC 2.0 | Chain queries | Public |
-| ICN Chain WS | WebSocket | Block subscriptions | Public |
+| NSN Chain RPC | JSON-RPC 2.0 | Chain queries | Public |
+| NSN Chain WS | WebSocket | Block subscriptions | Public |
 | Director gRPC | gRPC | BFT coordination | mTLS + PeerId |
 | P2P GossipSub | libp2p | Recipe/video broadcast | Ed25519 signing |
 
@@ -317,9 +369,9 @@ The ICN system consists of three primary domains:
 
 ### 6.1 Deployment Model
 
-**ICN Chain Node:** Linux (Ubuntu 22.04+), 4+ CPU cores, 16GB RAM, 500GB SSD, `icn-node` binary
+**NSN Chain Node:** Linux (Ubuntu 22.04+), 4+ CPU cores, 16GB RAM, 500GB SSD, `nsn-node` binary
 
-**Director Node:** Bare metal/Cloud GPU (RTX 3060+), Ubuntu 22.04, NVIDIA 535+, Docker with `--gpus all`, icn-director container (Rust + Python + model weights ~15GB)
+**Director Node:** Bare metal/Cloud GPU (RTX 3060+), Ubuntu 22.04, NVIDIA 535+, Docker with `--gpus all`, nsn-director container (Rust + Python + model weights ~15GB)
 
 **Super-Node:** Kubernetes cluster, 2 replicas per region (7 regions), 10TB PersistentVolumeClaims
 
@@ -328,8 +380,8 @@ The ICN system consists of three primary domains:
 | Environment | Purpose | Chain |
 |-------------|---------|-------|
 | Local Dev | Developer testing | Local ICN solochain |
-| ICN Testnet | Integration testing | Public ICN testnet |
-| ICN Mainnet | Production | ICN mainnet (solo → parachain) |
+| NSN Testnet | Integration testing | Public ICN testnet |
+| NSN Mainnet | Production | ICN mainnet (solo → parachain) |
 
 ### 6.3 Scalability & Resilience
 
@@ -345,7 +397,7 @@ The ICN system consists of three primary domains:
 - Director Failure → 3-of-5 still reaches consensus
 - Super-Node Failure → 2 replicas + erasure coding
 - Relay Failure → Viewer falls back to Super-Node
-- ICN Chain Outage → Off-chain continues, BFT results queued
+- NSN Chain Outage → Off-chain continues, BFT results queued
 
 ### 6.4 Key Observability Metrics
 
@@ -405,8 +457,8 @@ The ICN system consists of three primary domains:
 
 | Action | Required Role | Min Stake |
 |--------|---------------|-----------|
-| submit_bft_result | Director (elected) | 100 ICN |
-| challenge_bft_result | Any staker | 25 ICN bond |
+| submit_bft_result | Director (elected) | 100 NSN |
+| challenge_bft_result | Any staker | 25 NSN bond |
 | create_deal | Any | Payment amount |
 
 ### 7.3 Data Protection
@@ -436,7 +488,7 @@ The ICN system consists of three primary domains:
 
 | Assumption | Validation |
 |------------|------------|
-| ICN Chain TPS sufficient (100+) | Benchmark during testnet |
+| NSN Chain TPS sufficient (100+) | Benchmark during testnet |
 | 12GB VRAM fits all models | Extensive memory testing |
 | 45s achievable glass-to-glass | Benchmark on target hardware |
 | Trusted validators available | Recruit operators pre-launch |
@@ -467,12 +519,12 @@ The ICN system consists of three primary domains:
 ### 9.1 Phased Implementation
 
 **Phase A: ICN Solochain MVP (Weeks 1-8)**
-- Bootstrap ICN Chain from Polkadot SDK template
-- Implement pallet-icn-stake, pallet-icn-reputation
-- Implement pallet-icn-director with VRF election
+- Bootstrap NSN Chain from Polkadot SDK template
+- Implement pallet-nsn-stake, pallet-nsn-reputation
+- Implement pallet-nsn-director with VRF election
 - Deploy ICN Public Testnet with 10+ nodes
 
-**Phase B: ICN Mainnet (Weeks 9-16)**
+**Phase B: NSN Mainnet (Weeks 9-16)**
 - Security audit (Oak Security / SRLabs)
 - Validator onboarding and genesis configuration
 - ICN token launch
@@ -517,15 +569,20 @@ The ICN system consists of three primary domains:
 | **FRAME** | Substrate's modular runtime framework |
 | **Frontier** | Substrate EVM compatibility layer |
 | **GossipSub** | libp2p pubsub protocol |
-| **ICN Chain** | ICN's Polkadot SDK-based blockchain |
+| **Epoch** | 100-block period for Director elections |
+| **Lane 0** | Deterministic video generation lane |
+| **Lane 1** | Open AI compute marketplace lane |
+| **NSN Chain** | NSN's Polkadot SDK-based blockchain |
+| **On-Deck Set** | 20 Director candidates for next epoch |
 | **Pallet** | Substrate runtime module |
 | **Recipe** | JSON instruction set for AI generation |
 | **Slot** | 45-90 second content generation window |
 | **Snowbridge** | Trustless Polkadot ↔ Ethereum bridge |
 | **Solochain** | Standalone blockchain (not parachain) |
 | **Super-Node** | High-stake storage and relay node |
-| **Vortex** | ICN's GPU-resident AI generation engine |
+| **Vortex** | NSN's GPU-resident AI generation engine (Lane 0) |
 | **VRF** | Verifiable Random Function |
+| **node-core** | Universal compute orchestration (Lane 1) |
 
 ### 10.2 Key References
 
@@ -539,8 +596,8 @@ The ICN system consists of three primary domains:
 
 ---
 
-**Document Status:** Approved - ICN Polkadot SDK Chain  
-**Last Updated:** 2025-12-24  
+**Document Status:** Approved - NSN Dual-Lane Architecture
+**Last Updated:** 2025-12-29
 **Next Review:** After Phase A completion
 
 *End of Technical Architecture Document*
