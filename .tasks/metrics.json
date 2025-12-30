@@ -1,8 +1,8 @@
 {
   "initialized_at": "2025-12-24T00:00:00Z",
-  "tasks_completed": 20,
-  "total_tokens_used": 232000,
-  "average_tokens_per_task": 11600,
+  "tasks_completed": 21,
+  "total_tokens_used": 240500,
+  "average_tokens_per_task": 11452,
   "token_estimate_accuracy": 0.89,
   "completions": [
     {
@@ -175,13 +175,22 @@
       "variance": 1500,
       "accuracy": 0.89,
       "completed_at": "2025-12-30T06:43:26Z"
+    },
+    {
+      "task_id": "T042",
+      "title": "Migrate P2P Core Implementation from legacy-nodes to node-core",
+      "estimated_tokens": 12000,
+      "actual_tokens": 8500,
+      "variance": -3500,
+      "accuracy": 0.71,
+      "completed_at": "2025-12-30T19:17:06Z"
     }
   ],
   "phase_progress": {
     "phase_a_icn_solo": {
       "total_tasks": 33,
-      "completed": 18,
-      "percentage": 54.5
+      "completed": 19,
+      "percentage": 57.6
     },
     "phase_b_icn_mainnet": {
       "total_tasks": 4,
