@@ -80,7 +80,10 @@ impl fmt::Display for SidecarError {
             Self::ContainerUnhealthy(id) => write!(f, "Container is unhealthy: {}", id),
             Self::ModelNotLoaded(id) => write!(f, "Model not loaded: {}", id),
             Self::ModelAlreadyLoaded(id) => write!(f, "Model already loaded: {}", id),
-            Self::InsufficientVram { required, available } => {
+            Self::InsufficientVram {
+                required,
+                available,
+            } => {
                 write!(
                     f,
                     "Insufficient VRAM: required {} GB, available {} GB",
@@ -91,7 +94,10 @@ impl fmt::Display for SidecarError {
             Self::TaskAlreadyRunning(id) => write!(f, "Task already running: {}", id),
             Self::TaskExecutionFailed(msg) => write!(f, "Task execution failed: {}", msg),
             Self::TaskCancelled(id) => write!(f, "Task was cancelled: {}", id),
-            Self::TaskTimeout { task_id, timeout_ms } => {
+            Self::TaskTimeout {
+                task_id,
+                timeout_ms,
+            } => {
                 write!(f, "Task {} timed out after {} ms", task_id, timeout_ms)
             }
             Self::GrpcError(msg) => write!(f, "gRPC error: {}", msg),

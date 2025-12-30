@@ -467,14 +467,11 @@ impl Sidecar for SidecarService {
                 vram_gb: model.vram_gb,
                 state: model.state.as_str().to_string(),
                 priority: model.priority,
-                last_used_timestamp: model
-                    .last_used
-                    .elapsed()
+                last_used_timestamp: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
                     .as_secs()
-                    .saturating_sub(std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs()),
+                    .saturating_sub(model.last_used.elapsed().as_secs()),
             })
             .collect();
 
@@ -501,9 +498,7 @@ impl Sidecar for SidecarService {
         let container_id = self
             .find_container_with_model(&req.model_id)
             .await
-            .ok_or_else(|| {
-                SidecarError::ModelNotLoaded(req.model_id.clone())
-            })?;
+            .ok_or_else(|| SidecarError::ModelNotLoaded(req.model_id.clone()))?;
 
         // Check if task already exists
         {
@@ -551,7 +546,10 @@ impl Sidecar for SidecarService {
             .await;
 
         // Generate mock output CID
-        let output_cid = format!("ipfs://Qm{}Output", &req.task_id[..8.min(req.task_id.len())]);
+        let output_cid = format!(
+            "ipfs://Qm{}Output",
+            &req.task_id[..8.min(req.task_id.len())]
+        );
         let execution_time_ms = execution_start.elapsed().as_millis() as u64;
 
         // Update task state to completed
@@ -598,7 +596,10 @@ impl Sidecar for SidecarService {
         let eta_ms = if task.status == TaskStatus::Running {
             // MVP: Estimate remaining time based on progress
             if task.progress > 0.0 {
-                let elapsed = task.started_at.map(|s| s.elapsed().as_millis()).unwrap_or(0);
+                let elapsed = task
+                    .started_at
+                    .map(|s| s.elapsed().as_millis())
+                    .unwrap_or(0);
                 let estimated_total = (elapsed as f32 / task.progress) as u64;
                 estimated_total.saturating_sub(elapsed as u64)
             } else {

@@ -223,7 +223,9 @@ impl ContainerManager {
 
         // Check container limit
         if containers.len() >= self.config.max_containers {
-            return Err(SidecarError::ContainerLimitReached(self.config.max_containers));
+            return Err(SidecarError::ContainerLimitReached(
+                self.config.max_containers,
+            ));
         }
 
         info!(
@@ -375,7 +377,11 @@ impl ContainerManager {
             .ok_or_else(|| SidecarError::ContainerNotFound(container_id.to_string()))?;
 
         // Check if model already loaded
-        if container.loaded_models.iter().any(|m| m.model_id == model_id) {
+        if container
+            .loaded_models
+            .iter()
+            .any(|m| m.model_id == model_id)
+        {
             warn!(
                 container_id = %container_id,
                 model_id = %model_id,
@@ -403,11 +409,7 @@ impl ContainerManager {
     }
 
     /// Remove a model from a container's registry.
-    pub async fn unregister_model(
-        &self,
-        container_id: &str,
-        model_id: &str,
-    ) -> SidecarResult<f32> {
+    pub async fn unregister_model(&self, container_id: &str, model_id: &str) -> SidecarResult<f32> {
         let mut containers = self.containers.write().await;
 
         let container = containers
@@ -609,7 +611,10 @@ mod tests {
         let result = manager
             .start_container("c3".to_string(), "img".to_string(), vec![], None)
             .await;
-        assert!(matches!(result, Err(SidecarError::ContainerLimitReached(2))));
+        assert!(matches!(
+            result,
+            Err(SidecarError::ContainerLimitReached(2))
+        ));
     }
 
     #[tokio::test]
