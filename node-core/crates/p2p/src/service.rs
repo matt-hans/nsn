@@ -350,7 +350,9 @@ async fn serve_metrics(
                     let metric_families = registry.gather();
                     let encoder = TextEncoder::new();
                     let mut buffer = Vec::new();
-                    encoder.encode(&metric_families, &mut buffer).unwrap_or_default();
+                    encoder
+                        .encode(&metric_families, &mut buffer)
+                        .unwrap_or_default();
 
                     Ok::<_, Infallible>(
                         Response::builder()

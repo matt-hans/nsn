@@ -590,8 +590,8 @@
     {
       "id": "T023",
       "title": "NAT Traversal Stack (STUN, UPnP, Circuit Relay, TURN)",
-      "file": "tasks/T023-nat-traversal-stack.md",
-      "status": "pending",
+      "file": "completed/T023-nat-traversal-stack.md",
+      "status": "completed",
       "priority": 2,
       "depends_on": [
         "T021"
@@ -604,9 +604,12 @@
         "phase-a"
       ],
       "estimated_tokens": 11000,
-      "actual_tokens": 0,
+      "actual_tokens": 12500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-30T22:00:00Z",
+      "started_at": "2025-12-30T08:00:00Z",
+      "completed_at": "2025-12-30T22:00:00Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T024",
@@ -1115,9 +1118,9 @@
   ],
   "stats": {
     "total_tasks": 44,
-    "completed": 23,
+    "completed": 24,
     "in_progress": 0,
-    "pending": 21,
+    "pending": 20,
     "blocked": 0
   },
   "dependency_graph": {

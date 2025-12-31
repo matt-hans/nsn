@@ -48,6 +48,27 @@ pub struct P2pMetrics {
     /// GossipSub mesh size by topic
     pub gossipsub_mesh_size: Gauge,
 
+    /// NAT traversal attempts by strategy
+    pub nat_traversal_attempts_total: Counter,
+
+    /// NAT traversal successes by strategy
+    pub nat_traversal_successes_total: Counter,
+
+    /// NAT traversal failures by strategy
+    pub nat_traversal_failures_total: Counter,
+
+    /// Current NAT traversal method (direct, stun, upnp, circuit_relay, turn)
+    pub nat_traversal_current_method: Gauge,
+
+    /// Circuit relay usage hours
+    pub circuit_relay_hours_total: Counter,
+
+    /// Circuit relay rewards earned (NSN)
+    pub circuit_relay_rewards_total: Counter,
+
+    /// Current NAT status (public, private, unknown)
+    pub nat_status: Gauge,
+
     /// Prometheus registry for this metrics instance
     pub registry: Registry,
 }
@@ -126,6 +147,48 @@ impl P2pMetrics {
         )?;
         registry.register(Box::new(gossipsub_mesh_size.clone()))?;
 
+        let nat_traversal_attempts_total = Counter::new(
+            "nsn_p2p_nat_traversal_attempts_total",
+            "Total NAT traversal attempts by strategy",
+        )?;
+        registry.register(Box::new(nat_traversal_attempts_total.clone()))?;
+
+        let nat_traversal_successes_total = Counter::new(
+            "nsn_p2p_nat_traversal_successes_total",
+            "Total NAT traversal successes by strategy",
+        )?;
+        registry.register(Box::new(nat_traversal_successes_total.clone()))?;
+
+        let nat_traversal_failures_total = Counter::new(
+            "nsn_p2p_nat_traversal_failures_total",
+            "Total NAT traversal failures by strategy",
+        )?;
+        registry.register(Box::new(nat_traversal_failures_total.clone()))?;
+
+        let nat_traversal_current_method = Gauge::new(
+            "nsn_p2p_nat_traversal_current_method",
+            "Current NAT traversal method (0=direct, 1=stun, 2=upnp, 3=relay, 4=turn)",
+        )?;
+        registry.register(Box::new(nat_traversal_current_method.clone()))?;
+
+        let circuit_relay_hours_total = Counter::new(
+            "nsn_p2p_circuit_relay_hours_total",
+            "Total circuit relay hours provided",
+        )?;
+        registry.register(Box::new(circuit_relay_hours_total.clone()))?;
+
+        let circuit_relay_rewards_total = Counter::new(
+            "nsn_p2p_circuit_relay_rewards_total",
+            "Total circuit relay rewards earned (NSN)",
+        )?;
+        registry.register(Box::new(circuit_relay_rewards_total.clone()))?;
+
+        let nat_status = Gauge::new(
+            "nsn_p2p_nat_status",
+            "Current NAT status (0=unknown, 1=public, 2=private)",
+        )?;
+        registry.register(Box::new(nat_status.clone()))?;
+
         Ok(Self {
             active_connections,
             connected_peers,
@@ -138,6 +201,13 @@ impl P2pMetrics {
             gossipsub_messages_received_total,
             gossipsub_publish_failures_total,
             gossipsub_mesh_size,
+            nat_traversal_attempts_total,
+            nat_traversal_successes_total,
+            nat_traversal_failures_total,
+            nat_traversal_current_method,
+            circuit_relay_hours_total,
+            circuit_relay_rewards_total,
+            nat_status,
             registry,
         })
     }

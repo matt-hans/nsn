@@ -29,6 +29,18 @@ pub struct P2pConfig {
 
     /// Prometheus metrics server port
     pub metrics_port: u16,
+
+    /// Enable UPnP port mapping for NAT traversal
+    pub enable_upnp: bool,
+
+    /// Enable circuit relay for NAT traversal
+    pub enable_relay: bool,
+
+    /// STUN servers for external IP discovery
+    pub stun_servers: Vec<String>,
+
+    /// Enable AutoNat for NAT status detection
+    pub enable_autonat: bool,
 }
 
 impl Default for P2pConfig {
@@ -40,6 +52,14 @@ impl Default for P2pConfig {
             connection_timeout: Duration::from_secs(30),
             keypair_path: None,
             metrics_port: 9100,
+            enable_upnp: true,
+            enable_relay: true,
+            stun_servers: vec![
+                "stun.l.google.com:19302".to_string(),
+                "stun1.l.google.com:19302".to_string(),
+                "stun2.l.google.com:19302".to_string(),
+            ],
+            enable_autonat: true,
         }
     }
 }
@@ -58,6 +78,10 @@ mod tests {
         assert_eq!(config.connection_timeout, Duration::from_secs(30));
         assert_eq!(config.metrics_port, 9100);
         assert!(config.keypair_path.is_none());
+        assert!(config.enable_upnp);
+        assert!(config.enable_relay);
+        assert_eq!(config.stun_servers.len(), 3);
+        assert!(config.enable_autonat);
     }
 
     #[test]
@@ -69,6 +93,10 @@ mod tests {
             connection_timeout: Duration::from_secs(60),
             keypair_path: Some(PathBuf::from("/tmp/test.key")),
             metrics_port: 9101,
+            enable_upnp: false,
+            enable_relay: true,
+            stun_servers: vec!["stun.example.com:19302".to_string()],
+            enable_autonat: true,
         };
 
         // Serialize to JSON

@@ -4,13 +4,13 @@
 //! them locally for GossipSub peer scoring integration. Syncs every 60 seconds.
 
 use libp2p::PeerId;
+use serde::Deserialize;
 use sp_core::crypto::AccountId32;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use subxt::{dynamic::storage, OnlineClient, PolkadotConfig};
 use subxt::ext::scale_value;
-use serde::Deserialize;
+use subxt::{dynamic::storage, OnlineClient, PolkadotConfig};
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
@@ -211,7 +211,12 @@ impl ReputationOracle {
         let mut synced_count = 0;
 
         let storage_query = storage("NsnReputation", "ReputationScores", vec![]);
-        let mut iter = client.storage().at_latest().await?.iter(storage_query).await?;
+        let mut iter = client
+            .storage()
+            .at_latest()
+            .await?
+            .iter(storage_query)
+            .await?;
 
         while let Some(result) = iter.next().await {
             let key_value = result.map_err(|e| OracleError::StorageQueryFailed(e.to_string()))?;
@@ -221,12 +226,12 @@ impl ReputationOracle {
                 .ok_or_else(|| OracleError::StorageQueryFailed("Missing account key".into()))?;
             let account: AccountId32 = scale_value::serde::from_value(account_value.clone())
                 .map_err(|e| OracleError::StorageQueryFailed(format!("Key decode failed: {e}")))?;
-            let value = key_value
-                .value
-                .to_value()
-                .map_err(|e| OracleError::StorageQueryFailed(format!("Value decode failed: {e}")))?;
-            let score: ReputationScore = scale_value::serde::from_value(value)
-                .map_err(|e| OracleError::StorageQueryFailed(format!("Score decode failed: {e}")))?;
+            let value = key_value.value.to_value().map_err(|e| {
+                OracleError::StorageQueryFailed(format!("Value decode failed: {e}"))
+            })?;
+            let score: ReputationScore = scale_value::serde::from_value(value).map_err(|e| {
+                OracleError::StorageQueryFailed(format!("Score decode failed: {e}"))
+            })?;
 
             if let Some(peer_id) = self.account_to_peer(&account).await {
                 new_cache.insert(peer_id, score.total());
