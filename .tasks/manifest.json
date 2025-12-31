@@ -1,7 +1,7 @@
 {
   "project": {
     "name": "Interdimensional Cable Network (ICN)",
-    "description": "Decentralized AI-powered video streaming platform built as its own Polkadot SDK chain with staged deployment (Solochain → Parachain → Coretime)",
+    "description": "Decentralized AI-powered video streaming platform built as its own Polkadot SDK chain with staged deployment (Solochain \u2192 Parachain \u2192 Coretime)",
     "version": "0.2.0-alpha",
     "languages": [
       "Rust",
@@ -662,7 +662,7 @@
       "id": "T026",
       "title": "Reputation Oracle (On-Chain Sync for P2P Scoring)",
       "file": "tasks/T026-reputation-oracle.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 2,
       "depends_on": [
         "T003",
@@ -676,15 +676,17 @@
         "phase-a"
       ],
       "estimated_tokens": 9000,
-      "actual_tokens": 0,
+      "actual_tokens": 9500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-31T00:45:00Z",
+      "completed_at": "2025-12-31T00:45:00Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T027",
       "title": "Secure P2P Configuration (Rate Limiting, DoS Protection)",
       "file": "tasks/T027-secure-p2p-config.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 2,
       "depends_on": [
         "T021",
@@ -698,9 +700,11 @@
         "phase-a"
       ],
       "estimated_tokens": 9500,
-      "actual_tokens": 0,
+      "actual_tokens": 11500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-31T01:40:00Z",
+      "completed_at": "2025-12-31T01:40:00Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T028",
@@ -862,7 +866,7 @@
     },
     {
       "id": "T035",
-      "title": "Integration Tests (Staking → Election → Reputation → BFT Flow)",
+      "title": "Integration Tests (Staking \u2192 Election \u2192 Reputation \u2192 BFT Flow)",
       "file": "tasks/T035-integration-tests.md",
       "status": "pending",
       "priority": 1,
@@ -1122,9 +1126,9 @@
   ],
   "stats": {
     "total_tasks": 44,
-    "completed": 26,
+    "completed": 28,
     "in_progress": 0,
-    "pending": 18,
+    "pending": 16,
     "blocked": 0
   },
   "dependency_graph": {

@@ -50,6 +50,9 @@ pub enum ServiceError {
     #[error("Event handling error: {0}")]
     Event(#[from] event_handler::EventError),
 
+    #[error("Reputation oracle error: {0}")]
+    ReputationOracleError(String),
+
     #[error("GossipSub error: {0}")]
     Gossipsub(#[from] GossipsubError),
 
@@ -194,7 +197,13 @@ impl P2pService {
         let metrics = Arc::new(P2pMetrics::new().expect("Failed to create metrics"));
         metrics.connection_limit.set(config.max_connections as f64);
 
-        // Spawn Prometheus metrics server
+        // Create reputation oracle with metrics registry (before spawning metrics server)
+        let reputation_oracle = Arc::new(
+            ReputationOracle::new(rpc_url, &metrics.registry)
+                .map_err(|e| ServiceError::ReputationOracleError(e.to_string()))?,
+        );
+
+        // Spawn Prometheus metrics server (after oracle creation)
         let metrics_registry = metrics.registry.clone();
         let metrics_addr: SocketAddr = ([0, 0, 0, 0], config.metrics_port).into();
         tokio::spawn(async move {
@@ -202,9 +211,6 @@ impl P2pService {
                 error!("Metrics server failed: {}", err);
             }
         });
-
-        // Create reputation oracle
-        let reputation_oracle = Arc::new(ReputationOracle::new(rpc_url));
 
         // Spawn reputation oracle sync loop
         let oracle_clone = reputation_oracle.clone();
@@ -357,117 +363,28 @@ impl P2pService {
     /// Handle commands
     async fn handle_command(&mut self, command: ServiceCommand) -> Result<(), ServiceError> {
         match command {
-            ServiceCommand::Dial(addr) => {
-                info!("Dialing {}", addr);
-
-                // Extract peer_id from multiaddr if present (e.g., /ip4/.../p2p/<peer_id>)
-                // and add to Kademlia routing table
-                if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
-                    // Remove /p2p/<peer_id> suffix for the base address
-                    let base_addr: Multiaddr = addr
-                        .iter()
-                        .filter(|p| !matches!(p, libp2p::multiaddr::Protocol::P2p(_)))
-                        .collect();
-                    self.swarm
-                        .behaviour_mut()
-                        .kademlia
-                        .add_address(&peer_id, base_addr);
-                    debug!("Added peer {} to Kademlia routing table", peer_id);
-                }
-
-                self.swarm
-                    .dial(addr.clone())
-                    .map_err(|e| ServiceError::Swarm(format!("Failed to dial {}: {}", addr, e)))?;
-            }
-
-            ServiceCommand::GetPeerCount(tx) => {
-                let count = self.connection_manager.tracker().connected_peers();
-                let _ = tx.send(count);
-            }
-
-            ServiceCommand::GetConnectionCount(tx) => {
-                let count = self.connection_manager.tracker().total_connections();
-                let _ = tx.send(count);
-            }
-
-            ServiceCommand::Subscribe(category, tx) => {
-                let topic = category.to_topic();
-                let result = self
-                    .swarm
-                    .behaviour_mut()
-                    .gossipsub
-                    .subscribe(&topic)
-                    .map_err(|e| GossipsubError::SubscriptionFailed(format!("{}: {}", category, e)))
-                    .map(|_| ());
-
-                let _ = tx.send(result);
-            }
-
+            ServiceCommand::Dial(addr) => self.handle_dial_command(addr).await?,
+            ServiceCommand::GetPeerCount(tx) => self.handle_get_peer_count_command(tx),
+            ServiceCommand::GetConnectionCount(tx) => self.handle_get_connection_count_command(tx),
+            ServiceCommand::Subscribe(category, tx) => self.handle_subscribe_command(category, tx),
             ServiceCommand::Publish(category, data, tx) => {
-                let result = super::gossipsub::publish_message(
-                    &mut self.swarm.behaviour_mut().gossipsub,
-                    &category,
-                    data,
-                );
-                let _ = tx.send(result);
+                self.handle_publish_command(category, data, tx)
             }
-
             ServiceCommand::GetClosestPeers(target, result_tx) => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_closest_peers(target);
-                self.pending_get_closest_peers.insert(query_id, result_tx);
-                debug!("get_closest_peers query initiated: {:?}", query_id);
+                self.handle_get_closest_peers_command(target, result_tx);
             }
-
             ServiceCommand::PublishProvider(shard_hash, result_tx) => {
-                let key = RecordKey::new(&shard_hash);
-                match self.swarm.behaviour_mut().kademlia.start_providing(key) {
-                    Ok(query_id) => {
-                        self.pending_start_providing.insert(query_id, result_tx);
-                        if !self.local_provided_shards.contains(&shard_hash) {
-                            self.local_provided_shards.push(shard_hash);
-                        }
-                        info!("start_providing: shard={}", hex::encode(shard_hash));
-                    }
-                    Err(e) => {
-                        let _ = result_tx.send(Err(KademliaError::ProviderPublishFailed(format!(
-                            "{:?}",
-                            e
-                        ))));
-                    }
-                }
+                self.handle_publish_provider_command(shard_hash, result_tx);
             }
-
             ServiceCommand::GetProviders(shard_hash, result_tx) => {
-                let key = RecordKey::new(&shard_hash);
-                let query_id = self.swarm.behaviour_mut().kademlia.get_providers(key);
-                self.pending_get_providers.insert(query_id, result_tx);
-                debug!("get_providers query: shard={}", hex::encode(shard_hash));
+                self.handle_get_providers_command(shard_hash, result_tx);
             }
-
             ServiceCommand::GetRoutingTableSize(result_tx) => {
-                let size = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .kbuckets()
-                    .map(|bucket| bucket.num_entries())
-                    .sum();
-                let _ = result_tx.send(Ok(size));
+                self.handle_get_routing_table_size_command(result_tx);
             }
-
             ServiceCommand::TriggerRoutingTableRefresh(result_tx) => {
-                let random_peer = PeerId::random();
-                self.swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .get_closest_peers(random_peer);
-                let _ = result_tx.send(Ok(()));
+                self.handle_trigger_routing_table_refresh_command(result_tx);
             }
-
             ServiceCommand::Shutdown => {
                 info!("Received shutdown command");
                 self.shutdown = true;
@@ -475,6 +392,154 @@ impl P2pService {
         }
 
         Ok(())
+    }
+
+    /// Handle Dial command
+    async fn handle_dial_command(&mut self, addr: Multiaddr) -> Result<(), ServiceError> {
+        info!("Dialing {}", addr);
+
+        // Extract peer_id from multiaddr if present (e.g., /ip4/.../p2p/<peer_id>)
+        // and add to Kademlia routing table
+        if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
+            // Remove /p2p/<peer_id> suffix for the base address
+            let base_addr: Multiaddr = addr
+                .iter()
+                .filter(|p| !matches!(p, libp2p::multiaddr::Protocol::P2p(_)))
+                .collect();
+            self.swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer_id, base_addr);
+            debug!("Added peer {} to Kademlia routing table", peer_id);
+        }
+
+        self.swarm
+            .dial(addr.clone())
+            .map_err(|e| ServiceError::Swarm(format!("Failed to dial {}: {}", addr, e)))?;
+        Ok(())
+    }
+
+    /// Handle GetPeerCount command
+    fn handle_get_peer_count_command(&self, tx: oneshot::Sender<usize>) {
+        let count = self.connection_manager.tracker().connected_peers();
+        let _ = tx.send(count);
+    }
+
+    /// Handle GetConnectionCount command
+    fn handle_get_connection_count_command(&self, tx: oneshot::Sender<usize>) {
+        let count = self.connection_manager.tracker().total_connections();
+        let _ = tx.send(count);
+    }
+
+    /// Handle Subscribe command
+    fn handle_subscribe_command(
+        &mut self,
+        category: TopicCategory,
+        tx: oneshot::Sender<Result<(), GossipsubError>>,
+    ) {
+        let topic = category.to_topic();
+        let result = self
+            .swarm
+            .behaviour_mut()
+            .gossipsub
+            .subscribe(&topic)
+            .map_err(|e| GossipsubError::SubscriptionFailed(format!("{}: {}", category, e)))
+            .map(|_| ());
+        let _ = tx.send(result);
+    }
+
+    /// Handle Publish command
+    fn handle_publish_command(
+        &mut self,
+        category: TopicCategory,
+        data: Vec<u8>,
+        tx: oneshot::Sender<Result<MessageId, GossipsubError>>,
+    ) {
+        let result = super::gossipsub::publish_message(
+            &mut self.swarm.behaviour_mut().gossipsub,
+            &category,
+            data,
+        );
+        let _ = tx.send(result);
+    }
+
+    /// Handle GetClosestPeers command
+    fn handle_get_closest_peers_command(
+        &mut self,
+        target: PeerId,
+        result_tx: oneshot::Sender<Result<Vec<PeerId>, KademliaError>>,
+    ) {
+        let query_id = self
+            .swarm
+            .behaviour_mut()
+            .kademlia
+            .get_closest_peers(target);
+        self.pending_get_closest_peers.insert(query_id, result_tx);
+        debug!("get_closest_peers query initiated: {:?}", query_id);
+    }
+
+    /// Handle PublishProvider command
+    fn handle_publish_provider_command(
+        &mut self,
+        shard_hash: [u8; 32],
+        result_tx: oneshot::Sender<Result<bool, KademliaError>>,
+    ) {
+        let key = RecordKey::new(&shard_hash);
+        match self.swarm.behaviour_mut().kademlia.start_providing(key) {
+            Ok(query_id) => {
+                self.pending_start_providing.insert(query_id, result_tx);
+                if !self.local_provided_shards.contains(&shard_hash) {
+                    self.local_provided_shards.push(shard_hash);
+                }
+                info!("start_providing: shard={}", hex::encode(shard_hash));
+            }
+            Err(e) => {
+                let _ = result_tx.send(Err(KademliaError::ProviderPublishFailed(format!(
+                    "{:?}",
+                    e
+                ))));
+            }
+        }
+    }
+
+    /// Handle GetProviders command
+    fn handle_get_providers_command(
+        &mut self,
+        shard_hash: [u8; 32],
+        result_tx: oneshot::Sender<Result<Vec<PeerId>, KademliaError>>,
+    ) {
+        let key = RecordKey::new(&shard_hash);
+        let query_id = self.swarm.behaviour_mut().kademlia.get_providers(key);
+        self.pending_get_providers.insert(query_id, result_tx);
+        debug!("get_providers query: shard={}", hex::encode(shard_hash));
+    }
+
+    /// Handle GetRoutingTableSize command
+    fn handle_get_routing_table_size_command(
+        &mut self,
+        result_tx: oneshot::Sender<Result<usize, KademliaError>>,
+    ) {
+        let size = self
+            .swarm
+            .behaviour_mut()
+            .kademlia
+            .kbuckets()
+            .map(|bucket| bucket.num_entries())
+            .sum();
+        let _ = result_tx.send(Ok(size));
+    }
+
+    /// Handle TriggerRoutingTableRefresh command
+    fn handle_trigger_routing_table_refresh_command(
+        &mut self,
+        result_tx: oneshot::Sender<Result<(), KademliaError>>,
+    ) {
+        let random_peer = PeerId::random();
+        self.swarm
+            .behaviour_mut()
+            .kademlia
+            .get_closest_peers(random_peer);
+        let _ = result_tx.send(Ok(()));
     }
 
     /// Gracefully shutdown the service
@@ -515,80 +580,20 @@ impl P2pService {
     fn handle_kademlia_query_result(&mut self, query_id: QueryId, result: QueryResult) {
         match result {
             QueryResult::GetClosestPeers(Ok(ok)) => {
-                debug!(
-                    "get_closest_peers succeeded: query_id={:?}, peers={}",
-                    query_id,
-                    ok.peers.len()
-                );
-
-                if let Some(tx) = self.pending_get_closest_peers.remove(&query_id) {
-                    let _ = tx.send(Ok(ok.peers));
-                }
+                self.handle_get_closest_peers_ok(query_id, ok);
             }
-
             QueryResult::GetClosestPeers(Err(err)) => {
-                debug!(
-                    "get_closest_peers failed: query_id={:?}, err={:?}",
-                    query_id, err
-                );
-
-                if let Some(tx) = self.pending_get_closest_peers.remove(&query_id) {
-                    let error = match err {
-                        GetClosestPeersError::Timeout { .. } => KademliaError::Timeout,
-                    };
-                    let _ = tx.send(Err(error));
-                }
+                self.handle_get_closest_peers_err(query_id, err);
             }
-
-            QueryResult::GetProviders(Ok(GetProvidersOk::FoundProviders { key: _, providers })) => {
-                debug!(
-                    "get_providers found providers: query_id={:?}, providers={}",
-                    query_id,
-                    providers.len()
-                );
-
-                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
-                    let _ = tx.send(Ok(providers.into_iter().collect()));
-                }
+            QueryResult::GetProviders(Ok(ok)) => {
+                self.handle_get_providers_ok(query_id, ok);
             }
-
-            QueryResult::GetProviders(Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
-                closest_peers,
-            })) => {
-                debug!(
-                    "get_providers finished: query_id={:?}, closest_peers={}",
-                    query_id,
-                    closest_peers.len()
-                );
-
-                // No additional providers found; return empty if query still pending
-                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
-                    let _ = tx.send(Ok(Vec::new()));
-                }
-            }
-
             QueryResult::GetProviders(Err(err)) => {
-                debug!(
-                    "get_providers failed: query_id={:?}, err={:?}",
-                    query_id, err
-                );
-
-                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
-                    let error = match err {
-                        GetProvidersError::Timeout { .. } => KademliaError::Timeout,
-                    };
-                    let _ = tx.send(Err(error));
-                }
+                self.handle_get_providers_err(query_id, err);
             }
-
             QueryResult::StartProviding(Ok(_)) => {
-                debug!("start_providing succeeded: query_id={:?}", query_id);
-
-                if let Some(tx) = self.pending_start_providing.remove(&query_id) {
-                    let _ = tx.send(Ok(true));
-                }
+                self.handle_start_providing_ok(query_id);
             }
-
             QueryResult::StartProviding(Err(err)) => {
                 debug!(
                     "start_providing failed: query_id={:?}, err={:?}",
@@ -602,21 +607,102 @@ impl P2pService {
                     ))));
                 }
             }
-
             QueryResult::Bootstrap(Ok(_)) => {
                 info!("DHT bootstrap completed: query_id={:?}", query_id);
             }
-
             QueryResult::Bootstrap(Err(err)) => {
                 debug!(
                     "DHT bootstrap failed: query_id={:?}, err={:?}",
                     query_id, err
                 );
             }
-
             _ => {
                 debug!("Unhandled query result: query_id={:?}", query_id);
             }
+        }
+    }
+
+    /// Handle successful GetClosestPeers result
+    fn handle_get_closest_peers_ok(
+        &mut self,
+        query_id: QueryId,
+        ok: libp2p::kad::GetClosestPeersOk,
+    ) {
+        debug!(
+            "get_closest_peers succeeded: query_id={:?}, peers={}",
+            query_id,
+            ok.peers.len()
+        );
+
+        if let Some(tx) = self.pending_get_closest_peers.remove(&query_id) {
+            let _ = tx.send(Ok(ok.peers));
+        }
+    }
+
+    /// Handle failed GetClosestPeers result
+    fn handle_get_closest_peers_err(&mut self, query_id: QueryId, err: GetClosestPeersError) {
+        debug!(
+            "get_closest_peers failed: query_id={:?}, err={:?}",
+            query_id, err
+        );
+
+        if let Some(tx) = self.pending_get_closest_peers.remove(&query_id) {
+            let error = match err {
+                GetClosestPeersError::Timeout { .. } => KademliaError::Timeout,
+            };
+            let _ = tx.send(Err(error));
+        }
+    }
+
+    /// Handle successful GetProviders result
+    fn handle_get_providers_ok(&mut self, query_id: QueryId, ok: GetProvidersOk) {
+        match ok {
+            GetProvidersOk::FoundProviders { key: _, providers } => {
+                debug!(
+                    "get_providers found providers: query_id={:?}, providers={}",
+                    query_id,
+                    providers.len()
+                );
+
+                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
+                    let _ = tx.send(Ok(providers.into_iter().collect()));
+                }
+            }
+            GetProvidersOk::FinishedWithNoAdditionalRecord { closest_peers } => {
+                debug!(
+                    "get_providers finished: query_id={:?}, closest_peers={}",
+                    query_id,
+                    closest_peers.len()
+                );
+
+                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
+                    let _ = tx.send(Ok(Vec::new()));
+                }
+            }
+        }
+    }
+
+    /// Handle failed GetProviders result
+    fn handle_get_providers_err(&mut self, query_id: QueryId, err: GetProvidersError) {
+        debug!(
+            "get_providers failed: query_id={:?}, err={:?}",
+            query_id, err
+        );
+
+        if let Some(tx) = self.pending_get_providers.remove(&query_id) {
+            let error = match err {
+                GetProvidersError::Timeout { .. } => KademliaError::Timeout,
+            };
+            let _ = tx.send(Err(error));
+        }
+    }
+
+    /// Handle successful StartProviding result
+    fn handle_start_providing_ok(&mut self, query_id: QueryId) {
+        debug!("start_providing succeeded: query_id={:?}", query_id);
+
+        if let Some(tx) = self.pending_start_providing.remove(&query_id) {
+            let _ = tx.send(Ok(true));
         }
     }
 }

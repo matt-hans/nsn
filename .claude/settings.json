@@ -24,8 +24,13 @@
       }
     ]
   },
-  "description": "Claude Code settings with portable virtual environment hook",
   "enabledPlugins": {
-    "rust-analyzer-lsp@claude-plugins-official": true
-  }
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "claude-mem@thedotmack": true,
+    "substrate-pallet-architect@codeplugins": true,
+    "icn-bft-prover@codeplugins": true,
+    "icn-vram-oracle@codeplugins": true,
+    "superpowers@superpowers-marketplace": true
+  },
+  "description": "Claude Code settings with portable virtual environment hook"
 }

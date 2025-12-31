@@ -315,7 +315,9 @@ mod tests {
     #[test]
     fn test_create_gossipsub_behaviour() {
         let keypair = Keypair::generate_ed25519();
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let gossipsub = create_gossipsub_behaviour(&keypair, oracle)
             .expect("Failed to create GossipSub behavior");
@@ -327,7 +329,9 @@ mod tests {
     #[test]
     fn test_subscribe_to_all_topics() {
         let keypair = Keypair::generate_ed25519();
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let mut gossipsub = create_gossipsub_behaviour(&keypair, oracle)
             .expect("Failed to create GossipSub behavior");
@@ -340,7 +344,9 @@ mod tests {
     #[test]
     fn test_subscribe_to_categories() {
         let keypair = Keypair::generate_ed25519();
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let mut gossipsub = create_gossipsub_behaviour(&keypair, oracle)
             .expect("Failed to create GossipSub behavior");
@@ -356,7 +362,9 @@ mod tests {
     #[test]
     fn test_publish_message_size_enforcement() {
         let keypair = Keypair::generate_ed25519();
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let mut gossipsub = create_gossipsub_behaviour(&keypair, oracle)
             .expect("Failed to create GossipSub behavior");
@@ -376,7 +384,9 @@ mod tests {
     #[test]
     fn test_publish_message_valid_size() {
         let keypair = Keypair::generate_ed25519();
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let mut gossipsub = create_gossipsub_behaviour(&keypair, oracle)
             .expect("Failed to create GossipSub behavior");
@@ -408,7 +418,9 @@ mod tests {
     #[test]
     fn test_max_transmit_size_boundary() {
         let keypair = Keypair::generate_ed25519();
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let mut gossipsub = create_gossipsub_behaviour(&keypair, oracle)
             .expect("Failed to create GossipSub behavior");

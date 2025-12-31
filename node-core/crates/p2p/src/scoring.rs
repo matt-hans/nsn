@@ -205,7 +205,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_specific_score_integration() {
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -221,7 +223,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_app_specific_score_low_reputation() {
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -265,7 +269,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoring_overflow_protection() {
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -295,7 +301,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoring_extreme_values() {
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let keypair1 = Keypair::generate_ed25519();
         let peer1 = PeerId::from(keypair1.public());

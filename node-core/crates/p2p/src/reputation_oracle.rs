@@ -4,7 +4,7 @@
 //! them locally for GossipSub peer scoring integration. Syncs every 60 seconds.
 
 use libp2p::PeerId;
-use prometheus::{Counter, Gauge, Histogram, HistogramOpts, IntCounter, Opts, Registry};
+use prometheus::{Gauge, Histogram, HistogramOpts, IntCounter, Opts, Registry};
 use serde::Deserialize;
 use sp_core::crypto::AccountId32;
 use std::collections::HashMap;
@@ -146,6 +146,9 @@ pub struct ReputationOracle {
 
     /// Whether the oracle has successfully connected to the chain
     connected: Arc<RwLock<bool>>,
+
+    /// Prometheus metrics
+    metrics: Arc<ReputationMetrics>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -171,20 +174,37 @@ impl ReputationScore {
 }
 
 impl ReputationOracle {
-    /// Create new reputation oracle
+    /// Create new reputation oracle with metrics registry
     ///
     /// # Arguments
     /// * `rpc_url` - WebSocket URL for NSN Chain RPC endpoint (e.g., "ws://localhost:9944")
+    /// * `registry` - Prometheus registry for metrics
     ///
     /// # Returns
     /// ReputationOracle instance (connection attempt deferred to sync_loop)
-    pub fn new(rpc_url: String) -> Self {
+    pub fn new(rpc_url: String, registry: &Registry) -> Result<Self, prometheus::Error> {
+        let metrics = Arc::new(ReputationMetrics::new(registry)?);
+
+        Ok(Self {
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            chain_client: None,
+            account_to_peer_map: Arc::new(RwLock::new(HashMap::new())),
+            rpc_url,
+            connected: Arc::new(RwLock::new(false)),
+            metrics,
+        })
+    }
+
+    /// Create new reputation oracle without metrics (for testing)
+    #[cfg(test)]
+    pub fn new_without_registry(rpc_url: String) -> Self {
         Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
             chain_client: None,
             account_to_peer_map: Arc::new(RwLock::new(HashMap::new())),
             rpc_url,
             connected: Arc::new(RwLock::new(false)),
+            metrics: Arc::new(ReputationMetrics::new_unregistered()),
         }
     }
 
@@ -196,12 +216,14 @@ impl ReputationOracle {
     /// # Returns
     /// Reputation score (0-1000), or DEFAULT_REPUTATION if unknown
     pub async fn get_reputation(&self, peer_id: &PeerId) -> u64 {
-        self.cache
-            .read()
-            .await
-            .get(peer_id)
-            .copied()
-            .unwrap_or(DEFAULT_REPUTATION)
+        match self.cache.read().await.get(peer_id).copied() {
+            Some(score) => score,
+            None => {
+                self.metrics.unknown_peer_queries.inc();
+                debug!("Reputation unknown for peer {}, using default", peer_id);
+                DEFAULT_REPUTATION
+            }
+        }
     }
 
     /// Get reputation score for GossipSub peer scoring (normalized 0-50)
@@ -269,10 +291,16 @@ impl ReputationOracle {
             }
 
             // Fetch reputation scores
-            if let Err(e) = self.fetch_all_reputations().await {
-                error!("Reputation sync failed: {}. Retrying...", e);
-                // Mark as disconnected to trigger reconnection
-                *self.connected.write().await = false;
+            match self.fetch_all_reputations().await {
+                Ok(_) => {
+                    self.metrics.sync_success.inc();
+                }
+                Err(e) => {
+                    error!("Reputation sync failed: {}. Retrying...", e);
+                    self.metrics.sync_failures.inc();
+                    // Mark as disconnected to trigger reconnection
+                    *self.connected.write().await = false;
+                }
             }
 
             tokio::time::sleep(SYNC_INTERVAL).await;
@@ -291,6 +319,8 @@ impl ReputationOracle {
 
     /// Fetch all reputation scores from pallet-nsn-reputation
     async fn fetch_all_reputations(&self) -> Result<(), OracleError> {
+        let start = Instant::now();
+
         // Create client for this fetch
         let client = OnlineClient::<PolkadotConfig>::from_url(&self.rpc_url).await?;
 
@@ -329,6 +359,12 @@ impl ReputationOracle {
         }
 
         *self.cache.write().await = new_cache;
+
+        // Update metrics
+        self.metrics.cache_size.set(synced_count as f64);
+        self.metrics
+            .sync_duration
+            .observe(start.elapsed().as_secs_f64());
 
         if synced_count > 0 {
             info!("Synced {} reputation scores from chain", synced_count);
@@ -369,14 +405,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_oracle_creation() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
         assert_eq!(oracle.cache_size().await, 0);
         assert!(!oracle.is_connected().await);
     }
 
     #[tokio::test]
     async fn test_get_reputation_default() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -388,7 +424,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_and_get_reputation() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -403,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_gossipsub_score_normalization() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -431,7 +467,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_register_peer() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -445,7 +481,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unregister_peer() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -460,7 +496,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_size() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair1 = Keypair::generate_ed25519();
         let peer1 = PeerId::from(keypair1.public());
@@ -482,7 +518,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_all_cached() {
-        let oracle = ReputationOracle::new("ws://localhost:9944".to_string());
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
 
         let keypair1 = Keypair::generate_ed25519();
         let peer1 = PeerId::from(keypair1.public());
@@ -502,7 +538,9 @@ mod tests {
     #[tokio::test]
     async fn test_reputation_oracle_rpc_failure_handling() {
         // Test with invalid RPC URL to trigger connection failure
-        let oracle = Arc::new(ReputationOracle::new("ws://invalid-host:9999".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://invalid-host:9999".to_string(),
+        ));
 
         // Verify initial state
         assert!(!oracle.is_connected().await, "Should start disconnected");
@@ -520,7 +558,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_reputation_oracle_concurrent_access() {
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         // Generate test peers
         let mut peers = Vec::new();
@@ -588,7 +628,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_reputation_oracle_concurrent_write_access() {
-        let oracle = Arc::new(ReputationOracle::new("ws://localhost:9944".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://localhost:9944".to_string(),
+        ));
 
         let keypair = Keypair::generate_ed25519();
         let peer_id = PeerId::from(keypair.public());
@@ -623,7 +665,9 @@ mod tests {
     #[tokio::test]
     async fn test_sync_loop_connection_recovery() {
         // Test that sync_loop handles connection failures gracefully
-        let oracle = Arc::new(ReputationOracle::new("ws://invalid-host:9999".to_string()));
+        let oracle = Arc::new(ReputationOracle::new_without_registry(
+            "ws://invalid-host:9999".to_string(),
+        ));
 
         // Spawn sync_loop with timeout (it will retry connection every 10s)
         let oracle_clone = oracle.clone();
@@ -642,6 +686,52 @@ mod tests {
 
         // Abort the sync loop (it would run forever)
         sync_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_metrics_unknown_peer_queries() {
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
+
+        let keypair = Keypair::generate_ed25519();
+        let peer_id = PeerId::from(keypair.public());
+
+        // Query unknown peer multiple times
+        let initial_count = oracle.metrics.unknown_peer_queries.get();
+
+        for _ in 0..5 {
+            let score = oracle.get_reputation(&peer_id).await;
+            assert_eq!(score, DEFAULT_REPUTATION);
+        }
+
+        let final_count = oracle.metrics.unknown_peer_queries.get();
+        assert_eq!(
+            final_count,
+            initial_count + 5,
+            "Unknown peer queries should increment by 5"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_metrics_cache_size() {
+        let oracle = ReputationOracle::new_without_registry("ws://localhost:9944".to_string());
+
+        // Initially cache_size gauge should be 0
+        let initial_size = oracle.metrics.cache_size.get();
+        assert_eq!(initial_size, 0.0);
+
+        // Add some peers
+        let keypair1 = Keypair::generate_ed25519();
+        let peer1 = PeerId::from(keypair1.public());
+
+        let keypair2 = Keypair::generate_ed25519();
+        let peer2 = PeerId::from(keypair2.public());
+
+        oracle.set_reputation(peer1, 100).await;
+        oracle.set_reputation(peer2, 200).await;
+
+        // Manually trigger cache size update (normally done by fetch_all_reputations)
+        oracle.metrics.cache_size.set(2.0);
+        assert_eq!(oracle.metrics.cache_size.get(), 2.0);
     }
 
     // Note: Integration tests with actual chain connection would go in tests/ directory

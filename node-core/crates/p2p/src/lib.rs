@@ -36,6 +36,7 @@ mod nat;
 mod relay;
 mod reputation_oracle;
 mod scoring;
+pub mod security;
 mod service;
 mod stun;
 #[cfg(test)]
@@ -70,10 +71,17 @@ pub use relay::{
     build_relay_server, RelayClientConfig, RelayServerConfig, RelayUsageTracker,
     RELAY_REWARD_PER_HOUR,
 };
-pub use reputation_oracle::{OracleError, ReputationOracle, DEFAULT_REPUTATION, SYNC_INTERVAL};
+pub use reputation_oracle::{
+    OracleError, ReputationMetrics, ReputationOracle, DEFAULT_REPUTATION, SYNC_INTERVAL,
+};
 pub use scoring::{
     build_peer_score_params, compute_app_specific_score, GOSSIP_THRESHOLD, GRAYLIST_THRESHOLD,
     PUBLISH_THRESHOLD,
+};
+pub use security::{
+    BandwidthLimiter, BandwidthLimiterConfig, DosDetector, DosDetectorConfig, Graylist,
+    GraylistConfig, GraylistEntry, RateLimitError, RateLimiter, RateLimiterConfig, SecureP2pConfig,
+    SecurityMetrics,
 };
 pub use service::{P2pService, ServiceCommand, ServiceError};
 pub use stun::{discover_external_with_fallback, StunClient};
