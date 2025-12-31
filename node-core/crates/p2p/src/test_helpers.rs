@@ -3,8 +3,6 @@
 //! Common test setup, teardown, and helper functions to reduce duplication
 //! across test modules.
 
-#![cfg(test)]
-
 use super::behaviour::NsnBehaviour;
 use super::config::P2pConfig;
 use super::connection_manager::ConnectionManager;

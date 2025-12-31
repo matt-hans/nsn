@@ -23,6 +23,7 @@
 
 mod autonat;
 mod behaviour;
+mod bootstrap;
 mod config;
 mod connection_manager;
 mod event_handler;
@@ -45,6 +46,11 @@ mod upnp;
 // Re-export public API
 pub use autonat::{build_autonat, AutoNatConfig, NatStatus};
 pub use behaviour::{ConnectionTracker, NsnBehaviour};
+pub use bootstrap::{
+    deduplicate_and_rank, discover_via_dht, fetch_http_peers, get_hardcoded_peers,
+    get_trusted_signers, resolve_dns_seed, verify_signature, BootstrapConfig, BootstrapError,
+    BootstrapProtocol, ManifestPeer, PeerInfo, PeerManifest, TrustLevel,
+};
 pub use config::P2pConfig;
 pub use gossipsub::{create_gossipsub_behaviour, subscribe_to_all_topics, GossipsubError};
 pub use identity::{

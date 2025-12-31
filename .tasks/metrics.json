@@ -1,9 +1,9 @@
 {
   "initialized_at": "2025-12-24T00:00:00Z",
-  "tasks_completed": 24,
-  "total_tokens_used": 289100,
-  "average_tokens_per_task": 12046,
-  "token_estimate_accuracy": 0.88,
+  "tasks_completed": 26,
+  "total_tokens_used": 312100,
+  "average_tokens_per_task": 12004,
+  "token_estimate_accuracy": 0.87,
   "completions": [
     {
       "task_id": "T001",
@@ -211,13 +211,31 @@
       "variance": -10000,
       "accuracy": 0.0,
       "completed_at": "2025-12-31T00:00:00Z"
+    },
+    {
+      "task_id": "T025",
+      "title": "Multi-Layer Bootstrap Protocol with Signed Manifests",
+      "estimated_tokens": 10000,
+      "actual_tokens": 11500,
+      "variance": 1500,
+      "accuracy": 0.85,
+      "completed_at": "2025-12-30T23:53:45Z"
+    },
+    {
+      "task_id": "T024",
+      "title": "Kademlia DHT for Peer Discovery and Content Addressing",
+      "estimated_tokens": 9500,
+      "actual_tokens": 11200,
+      "variance": 1700,
+      "accuracy": 0.82,
+      "completed_at": "2025-12-30T23:59:00Z"
     }
   ],
   "phase_progress": {
     "phase_a_icn_solo": {
       "total_tasks": 33,
-      "completed": 21,
-      "percentage": 63.6
+      "completed": 23,
+      "percentage": 69.7
     },
     "phase_b_icn_mainnet": {
       "total_tasks": 4,

@@ -4,11 +4,12 @@
 //! them locally for GossipSub peer scoring integration. Syncs every 60 seconds.
 
 use libp2p::PeerId;
+use prometheus::{Counter, Gauge, Histogram, HistogramOpts, IntCounter, Opts, Registry};
 use serde::Deserialize;
 use sp_core::crypto::AccountId32;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use subxt::ext::scale_value;
 use subxt::{dynamic::storage, OnlineClient, PolkadotConfig};
 use thiserror::Error;
@@ -36,6 +37,93 @@ pub const SYNC_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Maximum reputation score (for normalization)
 pub const MAX_REPUTATION: u64 = 1000;
+
+/// Prometheus metrics for reputation oracle
+pub struct ReputationMetrics {
+    /// Total successful reputation syncs
+    pub sync_success: IntCounter,
+    /// Total failed reputation syncs
+    pub sync_failures: IntCounter,
+    /// Number of cached reputation scores
+    pub cache_size: Gauge,
+    /// Queries for peers with unknown reputation
+    pub unknown_peer_queries: IntCounter,
+    /// Duration of sync operations
+    pub sync_duration: Histogram,
+}
+
+impl ReputationMetrics {
+    /// Create new metrics instance and register with Prometheus
+    pub fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let sync_success = IntCounter::with_opts(Opts::new(
+            "nsn_reputation_sync_success_total",
+            "Total successful reputation syncs from chain",
+        ))?;
+
+        let sync_failures = IntCounter::with_opts(Opts::new(
+            "nsn_reputation_sync_failures_total",
+            "Total failed reputation syncs",
+        ))?;
+
+        let cache_size = Gauge::with_opts(Opts::new(
+            "nsn_reputation_cache_size",
+            "Number of cached reputation scores",
+        ))?;
+
+        let unknown_peer_queries = IntCounter::with_opts(Opts::new(
+            "nsn_reputation_unknown_peer_queries_total",
+            "Queries for peers with unknown reputation",
+        ))?;
+
+        let sync_duration = Histogram::with_opts(HistogramOpts::new(
+            "nsn_reputation_sync_duration_seconds",
+            "Duration of reputation sync operations",
+        ))?;
+
+        // Register all metrics
+        registry.register(Box::new(sync_success.clone()))?;
+        registry.register(Box::new(sync_failures.clone()))?;
+        registry.register(Box::new(cache_size.clone()))?;
+        registry.register(Box::new(unknown_peer_queries.clone()))?;
+        registry.register(Box::new(sync_duration.clone()))?;
+
+        Ok(Self {
+            sync_success,
+            sync_failures,
+            cache_size,
+            unknown_peer_queries,
+            sync_duration,
+        })
+    }
+
+    /// Create new metrics without registry (for testing)
+    #[cfg(test)]
+    pub fn new_unregistered() -> Self {
+        Self {
+            sync_success: IntCounter::new(
+                "nsn_reputation_sync_success_total",
+                "Total successful reputation syncs",
+            )
+            .unwrap(),
+            sync_failures: IntCounter::new(
+                "nsn_reputation_sync_failures_total",
+                "Total failed reputation syncs",
+            )
+            .unwrap(),
+            cache_size: Gauge::new("nsn_reputation_cache_size", "Cached scores").unwrap(),
+            unknown_peer_queries: IntCounter::new(
+                "nsn_reputation_unknown_peer_queries_total",
+                "Unknown peer queries",
+            )
+            .unwrap(),
+            sync_duration: Histogram::with_opts(HistogramOpts::new(
+                "nsn_reputation_sync_duration_seconds",
+                "Sync duration",
+            ))
+            .unwrap(),
+        }
+    }
+}
 
 /// Reputation Oracle
 ///
@@ -463,7 +551,7 @@ mod tests {
                     // Concurrent get_gossipsub_score calls
                     let gossip_score = oracle_clone.get_gossipsub_score(peer_id).await;
                     assert!(
-                        gossip_score >= 0.0 && gossip_score <= 50.0,
+                        (0.0..=50.0).contains(&gossip_score),
                         "GossipSub score should be in range [0, 50]"
                     );
                 }

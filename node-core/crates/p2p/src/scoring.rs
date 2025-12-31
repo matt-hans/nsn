@@ -279,7 +279,7 @@ mod tests {
         // With reputation=2000, formula gives: (2000/1000) * 50 = 100.0
         // We verify the function safely handles overflow and returns a valid score
         assert!(
-            score >= 0.0 && score <= 100.0,
+            (0.0..=100.0).contains(&score),
             "Score should be in valid range [0, 100], got: {}",
             score
         );

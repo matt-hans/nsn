@@ -638,7 +638,7 @@
       "id": "T025",
       "title": "Multi-Layer Bootstrap Protocol with Signed Manifests",
       "file": "tasks/T025-bootstrap-protocol.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 2,
       "depends_on": [
         "T021",
@@ -652,9 +652,11 @@
         "phase-a"
       ],
       "estimated_tokens": 10000,
-      "actual_tokens": 0,
+      "actual_tokens": 11500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-30T23:53:45Z",
+      "completed_at": "2025-12-30T23:53:45Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T026",
@@ -1120,9 +1122,9 @@
   ],
   "stats": {
     "total_tasks": 44,
-    "completed": 25,
+    "completed": 26,
     "in_progress": 0,
-    "pending": 19,
+    "pending": 18,
     "blocked": 0
   },
   "dependency_graph": {
