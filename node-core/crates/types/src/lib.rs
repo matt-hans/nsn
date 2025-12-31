@@ -5,6 +5,8 @@
 use codec::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
+pub use nsn_primitives::Lane;
+
 /// Node capability mode (static role configuration)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub enum NodeCapability {

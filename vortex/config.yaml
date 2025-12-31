@@ -48,6 +48,22 @@ pipeline:
   # Enable async parallelization for audio + image generation
   parallel_audio_actor: true
 
+plugins:
+  # Enable plugin discovery for custom renderers
+  enabled: true
+  # Directory containing plugin folders with manifest.yaml
+  directory: "plugins"
+  # Plugin policy limits (defaults favor Lane 0 latency protection)
+  policy:
+    # Maximum VRAM any plugin can declare (GB)
+    max_vram_gb: 11.5
+    # Lane-specific latency budgets (ms)
+    lane0_max_latency_ms: 15000
+    lane1_max_latency_ms: 120000
+    # Untrusted plugins must be explicitly allowlisted
+    allow_untrusted: true
+    allowlist: []
+
 # Slot timing orchestration (T020)
 orchestration:
   # Per-stage timeouts (seconds) - prevent infinite hangs

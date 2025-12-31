@@ -1,8 +1,8 @@
 {
   "initialized_at": "2025-12-24T00:00:00Z",
   "tasks_completed": 22,
-  "total_tokens_used": 254700,
-  "average_tokens_per_task": 11577,
+  "total_tokens_used": 276600,
+  "average_tokens_per_task": 12573,
   "token_estimate_accuracy": 0.89,
   "completions": [
     {
@@ -193,13 +193,22 @@
       "variance": 1200,
       "accuracy": 0.91,
       "completed_at": "2025-12-30T16:45:00Z"
+    },
+    {
+      "task_id": "T044",
+      "title": "Deprecate and Remove legacy-nodes After P2P Migration",
+      "estimated_tokens": 10000,
+      "actual_tokens": 0,
+      "variance": -10000,
+      "accuracy": 0.0,
+      "completed_at": "2025-12-31T00:00:00Z"
     }
   ],
   "phase_progress": {
     "phase_a_icn_solo": {
       "total_tasks": 33,
-      "completed": 20,
-      "percentage": 60.6
+      "completed": 21,
+      "percentage": 63.6
     },
     "phase_b_icn_mainnet": {
       "total_tasks": 4,

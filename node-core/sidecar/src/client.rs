@@ -14,9 +14,10 @@ use crate::proto::sidecar_client::SidecarClient as TonicSidecarClient;
 use crate::proto::{
     CancelTaskRequest, CancelTaskResponse, ExecuteTaskRequest, ExecuteTaskResponse,
     GetLoadedModelsRequest, GetTaskStatusRequest, GetTaskStatusResponse, GetVramStatusRequest,
-    GetVramStatusResponse, HealthCheckRequest, HealthCheckResponse, LoadModelRequest,
-    LoadModelResponse, LoadedModel, StartContainerRequest, StartContainerResponse,
-    StopContainerRequest, StopContainerResponse, UnloadModelRequest, UnloadModelResponse,
+    GetVramStatusResponse, HealthCheckRequest, HealthCheckResponse, ListPluginsRequest,
+    LoadModelRequest, LoadModelResponse, LoadedModel, PluginInfo, StartContainerRequest,
+    StartContainerResponse, StopContainerRequest, StopContainerResponse, UnloadModelRequest,
+    UnloadModelResponse,
 };
 
 /// Default connection timeout
@@ -294,6 +295,21 @@ impl SidecarClient {
         Ok(response.into_inner().models)
     }
 
+    /// List available plugins from the sidecar registry.
+    pub async fn list_plugins(&mut self, lane: Option<String>) -> SidecarResult<Vec<PluginInfo>> {
+        let request = ListPluginsRequest {
+            lane: lane.unwrap_or_default(),
+        };
+
+        let response = self
+            .inner
+            .list_plugins(request)
+            .await
+            .map_err(|e| SidecarError::GrpcError(e.to_string()))?;
+
+        Ok(response.into_inner().plugins)
+    }
+
     // =========================================================================
     // Task Execution
     // =========================================================================
@@ -312,6 +328,19 @@ impl SidecarClient {
         input_cid: impl Into<String>,
         parameters: Vec<u8>,
     ) -> SidecarResult<ExecuteTaskResponse> {
+        self.execute_task_with_lane(task_id, model_id, input_cid, parameters, 1)
+            .await
+    }
+
+    /// Execute a task with an explicit lane.
+    pub async fn execute_task_with_lane(
+        &mut self,
+        task_id: impl Into<String>,
+        model_id: impl Into<String>,
+        input_cid: impl Into<String>,
+        parameters: Vec<u8>,
+        lane: u32,
+    ) -> SidecarResult<ExecuteTaskResponse> {
         let request = ExecuteTaskRequest {
             task_id: task_id.into(),
             model_id: model_id.into(),
@@ -319,11 +348,14 @@ impl SidecarClient {
             parameters,
             timeout_ms: 0,
             callback_endpoint: String::new(),
+            plugin_name: String::new(),
+            lane,
         };
 
         debug!(
             task_id = %request.task_id,
             model_id = %request.model_id,
+            lane = request.lane,
             "Executing task"
         );
 
@@ -359,6 +391,38 @@ impl SidecarClient {
             parameters,
             timeout_ms: timeout.as_millis() as u64,
             callback_endpoint: String::new(),
+            plugin_name: String::new(),
+            lane: 1,
+        };
+
+        let response = self
+            .inner
+            .execute_task(request)
+            .await
+            .map_err(|e| SidecarError::GrpcError(e.to_string()))?;
+
+        Ok(response.into_inner())
+    }
+
+    /// Execute a plugin task (Lane 0 or Lane 1) using the plugin registry.
+    pub async fn execute_plugin_task(
+        &mut self,
+        task_id: impl Into<String>,
+        plugin_name: impl Into<String>,
+        input_cid: impl Into<String>,
+        parameters: Vec<u8>,
+        lane: u32,
+        timeout: Option<Duration>,
+    ) -> SidecarResult<ExecuteTaskResponse> {
+        let request = ExecuteTaskRequest {
+            task_id: task_id.into(),
+            model_id: String::new(),
+            input_cid: input_cid.into(),
+            parameters,
+            timeout_ms: timeout.map(|t| t.as_millis() as u64).unwrap_or(0),
+            callback_endpoint: String::new(),
+            plugin_name: plugin_name.into(),
+            lane,
         };
 
         let response = self

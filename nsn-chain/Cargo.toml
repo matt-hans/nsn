@@ -32,6 +32,7 @@ pallet-nsn-storage = { path = "./pallets/nsn-storage", default-features = false 
 pallet-nsn-treasury = { path = "./pallets/nsn-treasury", default-features = false }
 pallet-nsn-task-market = { path = "./pallets/nsn-task-market", default-features = false }
 pallet-nsn-model-registry = { path = "./pallets/nsn-model-registry", default-features = false }
+nsn-primitives = { path = "../node-core/crates/primitives", default-features = false }
 
 # Substrate/Polkadot SDK crates (version-aligned for compatibility)
 frame-benchmarking = { version = "45.0.0", default-features = false }

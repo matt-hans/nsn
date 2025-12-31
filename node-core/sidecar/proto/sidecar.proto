@@ -18,6 +18,7 @@ service Sidecar {
   rpc LoadModel(LoadModelRequest) returns (LoadModelResponse);
   rpc UnloadModel(UnloadModelRequest) returns (UnloadModelResponse);
   rpc GetLoadedModels(GetLoadedModelsRequest) returns (GetLoadedModelsResponse);
+  rpc ListPlugins(ListPluginsRequest) returns (ListPluginsResponse);
 
   // Task execution
   rpc ExecuteTask(ExecuteTaskRequest) returns (ExecuteTaskResponse);
@@ -157,6 +158,24 @@ message LoadedModel {
   uint64 last_used_timestamp = 6;
 }
 
+message ListPluginsRequest {
+  // Optional lane filter ("lane0" or "lane1")
+  string lane = 1;
+}
+
+message ListPluginsResponse {
+  repeated PluginInfo plugins = 1;
+}
+
+message PluginInfo {
+  string name = 1;
+  string version = 2;
+  repeated string supported_lanes = 3;
+  bool deterministic = 4;
+  uint32 max_latency_ms = 5;
+  uint32 vram_required_mb = 6;
+}
+
 // =============================================================================
 // Task Execution Messages
 // =============================================================================
@@ -174,6 +193,10 @@ message ExecuteTaskRequest {
   uint64 timeout_ms = 5;
   // Optional callback endpoint for progress updates
   string callback_endpoint = 6;
+  // Optional plugin name (if executing plugin instead of model)
+  string plugin_name = 7;
+  // Lane for plugin execution (0 or 1)
+  uint32 lane = 8;
 }
 
 message ExecuteTaskResponse {

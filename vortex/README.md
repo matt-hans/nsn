@@ -87,6 +87,23 @@ print(f"Total: {stats['total_gb']:.2f} GB")
 log_vram_snapshot("after_model_load")
 ```
 
+## Plugins (Custom Renderers)
+
+Vortex supports pluggable renderers that declare input/output schemas and
+resource/latency guarantees. Plugins are discovered from a directory of
+subfolders with `manifest.yaml`.
+
+Quickstart:
+
+```python
+from vortex.plugins import PluginHost
+
+host = PluginHost.from_config()
+print(host.registry.list_plugins())
+```
+
+See `vortex/src/vortex/plugins/README.md` for the manifest schema and interface.
+
 ## Architecture
 
 ### Core Components

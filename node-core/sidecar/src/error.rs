@@ -65,6 +65,21 @@ pub enum SidecarError {
     /// Invalid request parameters
     InvalidRequest(String),
 
+    /// Plugin registry is disabled
+    PluginDisabled,
+
+    /// Plugin not found in registry
+    PluginNotFound(String),
+
+    /// Plugin policy violation
+    PluginPolicyViolation(String),
+
+    /// Plugin registry error
+    PluginRegistryError(String),
+
+    /// Plugin registry mismatch between sidecar and Vortex
+    PluginMismatch(String),
+
     /// Internal error
     Internal(String),
 }
@@ -102,6 +117,11 @@ impl fmt::Display for SidecarError {
             }
             Self::GrpcError(msg) => write!(f, "gRPC error: {}", msg),
             Self::InvalidRequest(msg) => write!(f, "Invalid request: {}", msg),
+            Self::PluginDisabled => write!(f, "Plugin registry is disabled"),
+            Self::PluginNotFound(name) => write!(f, "Plugin not found: {}", name),
+            Self::PluginPolicyViolation(msg) => write!(f, "Plugin policy violation: {}", msg),
+            Self::PluginRegistryError(msg) => write!(f, "Plugin registry error: {}", msg),
+            Self::PluginMismatch(name) => write!(f, "Plugin registry mismatch: {}", name),
             Self::Internal(msg) => write!(f, "Internal error: {}", msg),
         }
     }
@@ -133,6 +153,12 @@ impl From<SidecarError> for Status {
             SidecarError::TaskTimeout { .. } => Status::deadline_exceeded(err.to_string()),
 
             SidecarError::InvalidRequest(_) => Status::invalid_argument(err.to_string()),
+
+            SidecarError::PluginDisabled => Status::failed_precondition(err.to_string()),
+            SidecarError::PluginNotFound(_) => Status::not_found(err.to_string()),
+            SidecarError::PluginPolicyViolation(_) => Status::failed_precondition(err.to_string()),
+            SidecarError::PluginRegistryError(_) => Status::internal(err.to_string()),
+            SidecarError::PluginMismatch(_) => Status::failed_precondition(err.to_string()),
 
             SidecarError::GrpcError(_) | SidecarError::Internal(_) => {
                 Status::internal(err.to_string())

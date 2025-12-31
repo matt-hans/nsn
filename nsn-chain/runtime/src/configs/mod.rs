@@ -363,6 +363,10 @@ parameter_types! {
 	pub const TaskMarketMaxPreemptionsPerBlock: u32 = 10;
 	pub const TaskMarketMaxModelIdLen: u32 = 64;
 	pub const TaskMarketMaxCidLen: u32 = 128;
+	pub const TaskMarketMaxRegisteredRenderers: u32 = 256;
+	pub const TaskMarketMaxLane0LatencyMs: u32 = 15_000;
+	pub const TaskMarketMaxLane1LatencyMs: u32 = 120_000;
+	pub const TaskMarketMaxRendererVramMb: u32 = 11_500;
 	pub const TaskMarketMinEscrow: Balance = UNIT / 10; // 0.1 NSN minimum
 	pub const TaskMarketTaskAbandonmentSlash: Balance = 5 * UNIT;
 }
@@ -552,6 +556,10 @@ impl pallet_nsn_task_market::Config for Runtime {
 	type MaxPreemptionsPerBlock = TaskMarketMaxPreemptionsPerBlock;
 	type MaxModelIdLen = TaskMarketMaxModelIdLen;
 	type MaxCidLen = TaskMarketMaxCidLen;
+	type MaxRegisteredRenderers = TaskMarketMaxRegisteredRenderers;
+	type MaxLane0LatencyMs = TaskMarketMaxLane0LatencyMs;
+	type MaxLane1LatencyMs = TaskMarketMaxLane1LatencyMs;
+	type MaxRendererVramMb = TaskMarketMaxRendererVramMb;
 	type MinEscrow = TaskMarketMinEscrow;
 	type LaneNodeProvider = pallet_nsn_stake::Pallet<Runtime>;
 	type ReputationUpdater = pallet_nsn_reputation::Pallet<Runtime>;
@@ -559,6 +567,8 @@ impl pallet_nsn_task_market::Config for Runtime {
 	type TaskAbandonmentSlash = TaskMarketTaskAbandonmentSlash;
 	type TreasuryAccount = TreasuryAccount;
 	type WeightInfo = pallet_nsn_task_market::weights::SubstrateWeight<Runtime>;
+	type RendererRegistrarOrigin = frame_system::EnsureRoot<Self::AccountId>;
+	type Randomness = RandomnessCollectiveFlip;
 }
 
 impl pallet_nsn_model_registry::Config for Runtime {

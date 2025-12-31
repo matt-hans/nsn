@@ -10,15 +10,18 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use serde::Deserialize;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
-use crate::container::{ContainerManager, ModelLoadState};
+use crate::container::ContainerManager;
 use crate::error::SidecarError;
+use crate::plugins::{PluginPolicy, PluginRegistry};
 use crate::proto;
 use crate::proto::sidecar_server::Sidecar;
 use crate::vram::VramTracker;
@@ -30,8 +33,12 @@ pub struct TaskState {
     pub task_id: String,
     /// Model used for this task
     pub model_id: String,
+    /// Plugin used for this task (if any)
+    pub plugin_name: Option<String>,
     /// Container executing the task
     pub container_id: String,
+    /// Lane for execution (if provided)
+    pub lane: Option<u32>,
     /// Current task status
     pub status: TaskStatus,
     /// Progress (0.0 to 1.0)
@@ -79,6 +86,23 @@ impl TaskStatus {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct VortexPluginIndex {
+    plugins: Vec<VortexPluginEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VortexPluginEntry {
+    name: String,
+    version: String,
+    schema_version: String,
+    supported_lanes: Vec<String>,
+    deterministic: bool,
+    max_latency_ms: u32,
+    vram_gb: f32,
+    max_concurrency: u32,
+}
+
 /// Configuration for the sidecar service
 #[derive(Debug, Clone)]
 pub struct SidecarServiceConfig {
@@ -88,6 +112,18 @@ pub struct SidecarServiceConfig {
     pub max_task_duration: Duration,
     /// Task history retention
     pub task_retention: Duration,
+    /// Enable plugin registry
+    pub plugins_enabled: bool,
+    /// Plugin directory (manifest.yaml files)
+    pub plugins_dir: Option<PathBuf>,
+    /// Plugin policy constraints
+    pub plugin_policy: PluginPolicy,
+    /// Optional Vortex plugin index file for reconciliation
+    pub vortex_plugin_index: Option<PathBuf>,
+    /// Require Vortex plugin index to match sidecar registry
+    pub require_vortex_plugin_match: bool,
+    /// Command to execute plugin tasks (e.g., python runner)
+    pub plugin_exec_command: Option<Vec<String>>,
 }
 
 impl Default for SidecarServiceConfig {
@@ -96,6 +132,16 @@ impl Default for SidecarServiceConfig {
             bind_addr: "127.0.0.1:50050".parse().unwrap(),
             max_task_duration: Duration::from_secs(300), // 5 minutes
             task_retention: Duration::from_secs(3600),   // 1 hour
+            plugins_enabled: true,
+            plugins_dir: Some(PathBuf::from("plugins")),
+            plugin_policy: PluginPolicy::default(),
+            vortex_plugin_index: Some(PathBuf::from("plugins/index.json")),
+            require_vortex_plugin_match: false,
+            plugin_exec_command: Some(vec![
+                "python3".to_string(),
+                "-m".to_string(),
+                "vortex.plugins.runner".to_string(),
+            ]),
         }
     }
 }
@@ -111,6 +157,10 @@ pub struct SidecarService {
     vram_tracker: Arc<RwLock<VramTracker>>,
     /// Active and recent tasks
     tasks: Arc<RwLock<HashMap<String, TaskState>>>,
+    /// Plugin registry
+    plugins: Arc<PluginRegistry>,
+    /// Whether plugins are enabled
+    plugins_enabled: bool,
     /// Service configuration
     config: SidecarServiceConfig,
 }
@@ -123,10 +173,13 @@ impl SidecarService {
 
     /// Create a new sidecar service with custom configuration.
     pub fn with_config(config: SidecarServiceConfig) -> Self {
+        let (plugins, plugins_enabled) = Self::build_plugins(&config);
         Self {
             containers: Arc::new(ContainerManager::new()),
             vram_tracker: Arc::new(RwLock::new(VramTracker::new())),
             tasks: Arc::new(RwLock::new(HashMap::new())),
+            plugins: Arc::new(plugins),
+            plugins_enabled,
             config,
         }
     }
@@ -137,10 +190,13 @@ impl SidecarService {
         vram_tracker: Arc<RwLock<VramTracker>>,
         config: SidecarServiceConfig,
     ) -> Self {
+        let (plugins, plugins_enabled) = Self::build_plugins(&config);
         Self {
             containers,
             vram_tracker,
             tasks: Arc::new(RwLock::new(HashMap::new())),
+            plugins: Arc::new(plugins),
+            plugins_enabled,
             config,
         }
     }
@@ -160,13 +216,217 @@ impl SidecarService {
         &self.vram_tracker
     }
 
-    /// Find a container with the requested model loaded.
-    async fn find_container_with_model(&self, model_id: &str) -> Option<String> {
-        let models = self.containers.get_loaded_models(None).await;
-        models
-            .iter()
-            .find(|(_, m)| m.model_id == model_id && m.state == ModelLoadState::Hot)
-            .map(|(cid, _)| cid.clone())
+    fn build_plugins(config: &SidecarServiceConfig) -> (PluginRegistry, bool) {
+        if !config.plugins_enabled {
+            return (PluginRegistry::empty(config.plugin_policy.clone()), false);
+        }
+
+        let Some(dir) = &config.plugins_dir else {
+            warn!("Plugin registry enabled but plugins_dir not set; disabling plugins");
+            return (PluginRegistry::empty(config.plugin_policy.clone()), false);
+        };
+
+        match PluginRegistry::load_from_dir(dir, config.plugin_policy.clone()) {
+            Ok(registry) => {
+                if config.require_vortex_plugin_match {
+                    if let Err(err) = Self::reconcile_registry(&registry, config) {
+                        warn!(error = %err, "Plugin reconciliation failed; disabling plugins");
+                        return (PluginRegistry::empty(config.plugin_policy.clone()), false);
+                    }
+                }
+                (registry, true)
+            }
+            Err(err) => {
+                warn!(error = %err, "Failed to load plugins; disabling registry");
+                (PluginRegistry::empty(config.plugin_policy.clone()), false)
+            }
+        }
+    }
+
+    fn reconcile_registry(
+        registry: &PluginRegistry,
+        config: &SidecarServiceConfig,
+    ) -> Result<(), SidecarError> {
+        let Some(index_path) = &config.vortex_plugin_index else {
+            return Err(SidecarError::PluginMismatch(
+                "vortex plugin index not configured".to_string(),
+            ));
+        };
+
+        let data = std::fs::read_to_string(index_path)
+            .map_err(|e| SidecarError::PluginRegistryError(e.to_string()))?;
+
+        let index: VortexPluginIndex = serde_json::from_str(&data)
+            .map_err(|e| SidecarError::PluginRegistryError(e.to_string()))?;
+
+        for manifest in registry.list() {
+            let entry = index
+                .plugins
+                .iter()
+                .find(|p| p.name == manifest.name)
+                .ok_or_else(|| SidecarError::PluginMismatch(manifest.name.clone()))?;
+
+            if entry.version != manifest.version {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} version mismatch (sidecar={}, vortex={})",
+                    manifest.name, manifest.version, entry.version
+                )));
+            }
+
+            if entry.schema_version != manifest.schema_version {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} schema_version mismatch (sidecar={}, vortex={})",
+                    manifest.name, manifest.schema_version, entry.schema_version
+                )));
+            }
+
+            let mut sidecar_lanes: Vec<String> = manifest
+                .supported_lanes
+                .iter()
+                .map(|lane| lane.to_lowercase())
+                .collect();
+            let mut vortex_lanes: Vec<String> = entry
+                .supported_lanes
+                .iter()
+                .map(|lane| lane.to_lowercase())
+                .collect();
+            sidecar_lanes.sort();
+            vortex_lanes.sort();
+
+            if sidecar_lanes != vortex_lanes {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} supported_lanes mismatch (sidecar={:?}, vortex={:?})",
+                    manifest.name, sidecar_lanes, vortex_lanes
+                )));
+            }
+
+            if entry.deterministic != manifest.deterministic {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} deterministic mismatch (sidecar={}, vortex={})",
+                    manifest.name, manifest.deterministic, entry.deterministic
+                )));
+            }
+
+            if entry.max_latency_ms != manifest.resources.max_latency_ms {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} max_latency_ms mismatch (sidecar={}, vortex={})",
+                    manifest.name, manifest.resources.max_latency_ms, entry.max_latency_ms
+                )));
+            }
+
+            if entry.max_concurrency != manifest.resources.max_concurrency {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} max_concurrency mismatch (sidecar={}, vortex={})",
+                    manifest.name, manifest.resources.max_concurrency, entry.max_concurrency
+                )));
+            }
+
+            if (entry.vram_gb - manifest.resources.vram_gb).abs() > 0.0001 {
+                return Err(SidecarError::PluginMismatch(format!(
+                    "{} vram_gb mismatch (sidecar={}, vortex={})",
+                    manifest.name, manifest.resources.vram_gb, entry.vram_gb
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn execute_plugin_command(
+        &self,
+        req: &proto::ExecuteTaskRequest,
+    ) -> Result<(String, Vec<u8>, u64), SidecarError> {
+        let command = self
+            .config
+            .plugin_exec_command
+            .as_ref()
+            .ok_or_else(|| SidecarError::TaskExecutionFailed("plugin runner not configured".to_string()))?;
+
+        if command.is_empty() {
+            return Err(SidecarError::TaskExecutionFailed(
+                "plugin runner command is empty".to_string(),
+            ));
+        }
+
+        let mut payload = if req.parameters.is_empty() {
+            serde_json::Map::new()
+        } else {
+            let value: serde_json::Value = serde_json::from_slice(&req.parameters)
+                .map_err(|e| SidecarError::InvalidRequest(e.to_string()))?;
+            value
+                .as_object()
+                .cloned()
+                .ok_or_else(|| SidecarError::InvalidRequest("parameters must be a JSON object".to_string()))?
+        };
+
+        payload
+            .entry("input_cid".to_string())
+            .or_insert(serde_json::Value::String(req.input_cid.clone()));
+        payload
+            .entry("task_id".to_string())
+            .or_insert(serde_json::Value::String(req.task_id.clone()));
+        payload
+            .entry("lane".to_string())
+            .or_insert(serde_json::Value::Number(serde_json::Number::from(req.lane)));
+        payload
+            .entry("plugin".to_string())
+            .or_insert(serde_json::Value::String(req.plugin_name.clone()));
+        if !req.model_id.is_empty() {
+            payload
+                .entry("model_id".to_string())
+                .or_insert(serde_json::Value::String(req.model_id.clone()));
+        }
+
+        let payload_str = serde_json::Value::Object(payload).to_string();
+
+        let mut cmd = tokio::process::Command::new(&command[0]);
+        if command.len() > 1 {
+            cmd.args(&command[1..]);
+        }
+
+        cmd.arg("--plugin")
+            .arg(req.plugin_name.clone())
+            .arg("--payload")
+            .arg(payload_str);
+
+        if req.timeout_ms > 0 {
+            cmd.arg("--timeout-ms").arg(req.timeout_ms.to_string());
+        }
+
+        let output = cmd
+            .output()
+            .await
+            .map_err(|e| SidecarError::TaskExecutionFailed(e.to_string()))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(SidecarError::TaskExecutionFailed(stderr));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let response: serde_json::Value = serde_json::from_str(&stdout)
+            .map_err(|e| SidecarError::TaskExecutionFailed(e.to_string()))?;
+
+        let output_obj = response
+            .get("output")
+            .and_then(|val| val.as_object())
+            .ok_or_else(|| {
+                SidecarError::TaskExecutionFailed("plugin output missing 'output' object".to_string())
+            })?;
+
+        let output_cid = output_obj
+            .get("output_cid")
+            .and_then(|val| val.as_str())
+            .ok_or_else(|| {
+                SidecarError::TaskExecutionFailed("plugin output missing 'output_cid'".to_string())
+            })?;
+
+        let duration_ms = response
+            .get("duration_ms")
+            .and_then(|val| val.as_f64())
+            .unwrap_or(0.0) as u64;
+
+        Ok((output_cid.to_string(), response.to_string().into_bytes(), duration_ms))
     }
 }
 
@@ -183,7 +443,7 @@ impl Sidecar for SidecarService {
         &self,
         request: Request<proto::StartContainerRequest>,
     ) -> Result<Response<proto::StartContainerResponse>, Status> {
-        let req = request.into_inner();
+        let mut req = request.into_inner();
 
         info!(
             container_id = %req.container_id,
@@ -489,6 +749,44 @@ impl Sidecar for SidecarService {
         }))
     }
 
+    /// List available plugins from the registry.
+    async fn list_plugins(
+        &self,
+        request: Request<proto::ListPluginsRequest>,
+    ) -> Result<Response<proto::ListPluginsResponse>, Status> {
+        if !self.plugins_enabled {
+            return Err(SidecarError::PluginDisabled.into());
+        }
+
+        let req = request.into_inner();
+        let lane_filter = req.lane.trim().to_lowercase();
+        let plugins = self
+            .plugins
+            .list()
+            .into_iter()
+            .filter(|manifest| {
+                if lane_filter.is_empty() {
+                    true
+                } else {
+                    manifest
+                        .supported_lanes
+                        .iter()
+                        .any(|lane| lane.eq_ignore_ascii_case(&lane_filter))
+                }
+            })
+            .map(|manifest| proto::PluginInfo {
+                name: manifest.name,
+                version: manifest.version,
+                supported_lanes: manifest.supported_lanes,
+                deterministic: manifest.deterministic,
+                max_latency_ms: manifest.resources.max_latency_ms,
+                vram_required_mb: (manifest.resources.vram_gb * 1024.0) as u32,
+            })
+            .collect();
+
+        Ok(Response::new(proto::ListPluginsResponse { plugins }))
+    }
+
     /// Execute a task using a loaded model.
     async fn execute_task(
         &self,
@@ -499,15 +797,60 @@ impl Sidecar for SidecarService {
         info!(
             task_id = %req.task_id,
             model_id = %req.model_id,
+            plugin_name = %req.plugin_name,
             input_cid = %req.input_cid,
             "ExecuteTask request"
         );
 
-        // Find container with the model
-        let container_id = self
-            .find_container_with_model(&req.model_id)
-            .await
-            .ok_or_else(|| SidecarError::ModelNotLoaded(req.model_id.clone()))?;
+        if req.plugin_name.trim().is_empty() {
+            let model_name = req.model_id.trim();
+            if !model_name.is_empty()
+                && self.plugins_enabled
+                && self.plugins.get(model_name).is_some()
+            {
+                req.plugin_name = model_name.to_string();
+            }
+        }
+
+        req.plugin_name = req.plugin_name.trim().to_string();
+        req.model_id = req.model_id.trim().to_string();
+
+        let using_plugin = !req.plugin_name.trim().is_empty();
+        let lane = if using_plugin { Some(req.lane) } else { None };
+
+        if !using_plugin {
+            return Err(
+                SidecarError::TaskExecutionFailed("non-plugin execution is not supported".to_string())
+                    .into(),
+            );
+        }
+
+        // Resolve container and validate plugin policy if needed
+        if !self.plugins_enabled {
+            return Err(SidecarError::PluginDisabled.into());
+        }
+
+        let plugin_name = req.plugin_name.trim();
+        let manifest = self
+            .plugins
+            .get(plugin_name)
+            .ok_or_else(|| SidecarError::PluginNotFound(plugin_name.to_string()))?;
+
+        if req.lane > 1 {
+            return Err(SidecarError::InvalidRequest("invalid lane value".to_string()).into());
+        }
+
+        if !manifest.supports_lane(req.lane) {
+            return Err(SidecarError::PluginPolicyViolation(format!(
+                "plugin '{}' does not support lane {}",
+                manifest.name, req.lane
+            ))
+            .into());
+        }
+
+        self.plugins.policy().check(manifest, req.lane)?;
+
+        let container_id = format!("plugin:{}", req.plugin_name);
 
         // Check if task already exists
         {
@@ -520,8 +863,18 @@ impl Sidecar for SidecarService {
         // Create task state
         let task_state = TaskState {
             task_id: req.task_id.clone(),
-            model_id: req.model_id.clone(),
+            model_id: if using_plugin && req.model_id.is_empty() {
+                req.plugin_name.clone()
+            } else {
+                req.model_id.clone()
+            },
+            plugin_name: if using_plugin {
+                Some(req.plugin_name.clone())
+            } else {
+                None
+            },
             container_id: container_id.clone(),
+            lane,
             status: TaskStatus::Running,
             progress: 0.0,
             current_stage: "initializing".to_string(),
@@ -537,28 +890,33 @@ impl Sidecar for SidecarService {
             tasks.insert(req.task_id.clone(), task_state);
         }
 
-        // MVP: Simulate task execution
-        // In production, this would:
-        // 1. Call the Python container's execute endpoint
-        // 2. Stream progress updates
-        // 3. Return the output CID
-
         let execution_start = Instant::now();
+        let mut output_cid = String::new();
+        let mut result_metadata: Vec<u8> = vec![];
 
-        // Simulate some work
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        match self.execute_plugin_command(&req).await {
+            Ok((cid, metadata, _duration_ms)) => {
+                output_cid = cid;
+                result_metadata = metadata;
+            }
+            Err(err) => {
+                let mut tasks = self.tasks.write().await;
+                if let Some(task) = tasks.get_mut(&req.task_id) {
+                    task.status = TaskStatus::Failed;
+                    task.error_message = Some(err.to_string());
+                    task.completed_at = Some(Instant::now());
+                }
 
-        // Update model last used time
-        let _ = self
-            .containers
-            .touch_model(&container_id, &req.model_id)
-            .await;
+                return Ok(Response::new(proto::ExecuteTaskResponse {
+                    success: false,
+                    error_message: err.to_string(),
+                    output_cid: String::new(),
+                    execution_time_ms: execution_start.elapsed().as_millis() as u64,
+                    result_metadata: vec![],
+                }));
+            }
+        }
 
-        // Generate mock output CID
-        let output_cid = format!(
-            "ipfs://Qm{}Output",
-            &req.task_id[..8.min(req.task_id.len())]
-        );
         let execution_time_ms = execution_start.elapsed().as_millis() as u64;
 
         // Update task state to completed
@@ -585,7 +943,7 @@ impl Sidecar for SidecarService {
             error_message: String::new(),
             output_cid,
             execution_time_ms,
-            result_metadata: vec![],
+            result_metadata,
         }))
     }
 
@@ -764,6 +1122,8 @@ mod tests {
             parameters: b"{}".to_vec(),
             timeout_ms: 0,
             callback_endpoint: String::new(),
+            plugin_name: String::new(),
+            lane: 0,
         });
         let resp = service.execute_task(exec_req).await.unwrap();
         let inner = resp.into_inner();
@@ -847,6 +1207,8 @@ mod tests {
             parameters: vec![],
             timeout_ms: 0,
             callback_endpoint: String::new(),
+            plugin_name: String::new(),
+            lane: 0,
         });
         service.execute_task(exec_req).await.unwrap();
 

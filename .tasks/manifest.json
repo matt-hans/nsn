@@ -1090,8 +1090,8 @@
     {
       "id": "T044",
       "title": "Deprecate and Remove legacy-nodes After P2P Migration",
-      "file": "tasks/T044-deprecate-and-remove-legacy-nodes.md",
-      "status": "pending",
+      "file": "completed/T044-deprecate-and-remove-legacy-nodes.md",
+      "status": "completed",
       "priority": 1,
       "depends_on": [
         "T042",
@@ -1108,14 +1108,16 @@
       "estimated_tokens": 10000,
       "actual_tokens": 0,
       "created_at": "2025-12-30T08:00:00Z",
-      "updated_at": "2025-12-30T08:00:00Z"
+      "updated_at": "2025-12-31T00:00:00Z",
+      "completed_at": "2025-12-31T00:00:00Z",
+      "completed_by": "task-developer"
     }
   ],
   "stats": {
     "total_tasks": 44,
-    "completed": 22,
+    "completed": 23,
     "in_progress": 0,
-    "pending": 22,
+    "pending": 21,
     "blocked": 0
   },
   "dependency_graph": {

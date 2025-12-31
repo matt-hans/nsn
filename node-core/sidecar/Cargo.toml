@@ -18,6 +18,9 @@ prost = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
+serde_yaml = "0.9"
+serde_json = { workspace = true }
 
 nsn-types = { workspace = true }
 

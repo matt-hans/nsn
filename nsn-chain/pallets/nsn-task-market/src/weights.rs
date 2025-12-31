@@ -29,6 +29,8 @@ pub trait WeightInfo {
     fn start_task() -> Weight;
     fn complete_task() -> Weight;
     fn fail_task() -> Weight;
+    fn register_renderer() -> Weight;
+    fn deregister_renderer() -> Weight;
 }
 
 /// Weights for pallet_nsn_task_market using the Substrate node and recommended hardware.
@@ -83,6 +85,20 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
             .saturating_add(T::DbWeight::get().reads(3))
             .saturating_add(T::DbWeight::get().writes(3))
     }
+
+    /// Storage: NsnTaskMarket RendererRegistry (r:1 w:1)
+    fn register_renderer() -> Weight {
+        Weight::from_parts(20_000_000, 2000)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
+
+    /// Storage: NsnTaskMarket RendererRegistry (r:1 w:1)
+    fn deregister_renderer() -> Weight {
+        Weight::from_parts(15_000_000, 1500)
+            .saturating_add(T::DbWeight::get().reads(1))
+            .saturating_add(T::DbWeight::get().writes(1))
+    }
 }
 
 // For backwards compatibility and tests
@@ -101,5 +117,11 @@ impl WeightInfo for () {
     }
     fn fail_task() -> Weight {
         Weight::from_parts(50_000_000, 4000)
+    }
+    fn register_renderer() -> Weight {
+        Weight::from_parts(20_000_000, 2000)
+    }
+    fn deregister_renderer() -> Weight {
+        Weight::from_parts(15_000_000, 1500)
     }
 }

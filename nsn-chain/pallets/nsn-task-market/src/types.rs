@@ -7,6 +7,8 @@ use frame_support::pallet_prelude::*;
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
+/// Task lane designation (Lane 0 vs Lane 1).
+pub use nsn_primitives::Lane as TaskLane;
 
 /// Status of a task in the task market
 #[derive(
@@ -64,33 +66,6 @@ pub enum FailReason {
     Other,
 }
 
-/// Task lane designation (Lane 0 vs Lane 1)
-#[derive(
-    Clone,
-    Encode,
-    Decode,
-    DecodeWithMemTracking,
-    Eq,
-    PartialEq,
-    RuntimeDebug,
-    TypeInfo,
-    MaxEncodedLen,
-)]
-pub enum TaskLane {
-    /// Lane 0: Time-triggered video generation
-    Lane0,
-    /// Lane 1: Demand-triggered general compute
-    Lane1,
-}
-
-impl TaskLane {
-    pub fn as_u8(&self) -> u8 {
-        match self {
-            TaskLane::Lane0 => 0,
-            TaskLane::Lane1 => 1,
-        }
-    }
-}
 
 /// Task priority for queue ordering
 #[derive(
@@ -118,6 +93,44 @@ impl TaskPriority {
             TaskPriority::Normal => 1,
             TaskPriority::Low => 0,
         }
+    }
+}
+
+/// Renderer metadata registered for task execution.
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+pub struct RendererInfo<BlockNumber> {
+    /// Lane supported by this renderer
+    pub lane: TaskLane,
+    /// Whether renderer is deterministic (required for Lane 0)
+    pub deterministic: bool,
+    /// Maximum latency budget in milliseconds
+    pub max_latency_ms: u32,
+    /// VRAM required for execution (in MB)
+    pub vram_required_mb: u32,
+    /// Block number when registered
+    pub registered_at: BlockNumber,
+}
+
+impl<BlockNumber: Default> Default for RendererInfo<BlockNumber> {
+    fn default() -> Self {
+        Self {
+            lane: TaskLane::Lane1,
+            deterministic: false,
+            max_latency_ms: 0,
+            vram_required_mb: 0,
+            registered_at: BlockNumber::default(),
+        }
+    }
+}
+
+impl<BlockNumber: MaxEncodedLen> MaxEncodedLen for RendererInfo<BlockNumber>
+{
+    fn max_encoded_len() -> usize {
+        TaskLane::max_encoded_len()
+            + bool::max_encoded_len()
+            + u32::max_encoded_len()
+            + u32::max_encoded_len()
+            + BlockNumber::max_encoded_len()
     }
 }
 

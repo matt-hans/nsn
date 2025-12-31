@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::time::Instant;
 
+pub use nsn_types::Lane;
+
 /// Unique identifier for a task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TaskId(pub u64);
@@ -22,25 +24,6 @@ impl TaskId {
 impl std::fmt::Display for TaskId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TaskId({})", self.0)
-    }
-}
-
-/// Lane designation for task queuing
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Lane {
-    /// Lane 0: Video generation (priority, latency-sensitive)
-    Lane0,
-    /// Lane 1: General AI compute (LLM inference, image gen, etc.)
-    Lane1,
-}
-
-impl Lane {
-    /// Get the lane number
-    pub fn as_u8(&self) -> u8 {
-        match self {
-            Lane::Lane0 => 0,
-            Lane::Lane1 => 1,
-        }
     }
 }
 

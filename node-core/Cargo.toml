@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "bin/nsn-node",
+    "crates/primitives",
     "crates/types",
     "crates/chain-client",
     "crates/p2p",
@@ -49,6 +50,7 @@ config = "0.14"
 clap = { version = "4.4", features = ["derive"] }
 
 # Internal crates
+nsn-primitives = { path = "crates/primitives" }
 nsn-types = { path = "crates/types" }
 nsn-chain-client = { path = "crates/chain-client" }
 nsn-p2p = { path = "crates/p2p" }

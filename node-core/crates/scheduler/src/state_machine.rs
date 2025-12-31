@@ -423,6 +423,46 @@ impl SchedulerState {
         Ok(())
     }
 
+    /// Fail a running task and store failure metadata.
+    pub fn fail_task(
+        &mut self,
+        task_id: TaskId,
+        failure_reason: nsn_types::FailureReason,
+    ) -> Result<(), SchedulerError> {
+        let handle = self
+            .active_task
+            .as_ref()
+            .ok_or(SchedulerError::TaskNotFound(task_id))?;
+
+        if handle.task_id != task_id {
+            return Err(SchedulerError::TaskNotFound(task_id));
+        }
+
+        tracing::warn!(
+            task_id = %task_id,
+            reason = ?failure_reason,
+            elapsed_ms = handle.elapsed().as_millis(),
+            "Task failed"
+        );
+
+        let result = TaskResult {
+            output_cid: None,
+            execution_time_ms: handle.elapsed().as_millis() as u64,
+            metadata: Some(serde_json::json!({ "reason": format!("{failure_reason:?}") })),
+        };
+        self.completed_tasks.insert(task_id, result);
+        self.active_task = None;
+
+        if matches!(
+            self.current_state,
+            NodeState::GeneratingLane0 | NodeState::GeneratingLane1
+        ) {
+            self.transition(NodeState::Idle)?;
+        }
+
+        Ok(())
+    }
+
     /// Cancel a task
     pub fn cancel_task(&mut self, task_id: TaskId) -> Result<(), SchedulerError> {
         // Check if it's the active task
@@ -469,6 +509,22 @@ impl SchedulerState {
             }
         }
         false
+    }
+
+    /// Check if the active task exceeded a maximum duration.
+    pub fn check_task_timeout(&self, max_duration: std::time::Duration) -> Option<TaskId> {
+        let handle = self.active_task.as_ref()?;
+        if handle.elapsed() > max_duration {
+            return Some(handle.task_id);
+        }
+        None
+    }
+
+    /// Enforce active task timeouts by failing the task when exceeded.
+    pub fn enforce_task_timeout(&mut self, max_duration: std::time::Duration) -> Option<TaskId> {
+        let task_id = self.check_task_timeout(max_duration)?;
+        let _ = self.fail_task(task_id, nsn_types::FailureReason::Timeout);
+        Some(task_id)
     }
 
     /// Get a completed task result

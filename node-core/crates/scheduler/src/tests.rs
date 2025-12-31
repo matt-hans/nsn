@@ -242,6 +242,50 @@ fn test_next_task_priority() {
 }
 
 // =============================================================================
+// Timeout Enforcement - Detects overdue active task
+// =============================================================================
+#[test]
+fn test_check_task_timeout_detects_overdue() {
+    let mut scheduler = SchedulerState::new();
+    scheduler.transition(NodeState::LoadingModels).unwrap();
+    scheduler.transition(NodeState::Idle).unwrap();
+
+    scheduler
+        .enqueue_lane1("model".to_string(), "cid".to_string())
+        .unwrap();
+    let task = scheduler.next_task().unwrap();
+    scheduler.start_task(&task).unwrap();
+
+    let timed_out = scheduler.check_task_timeout(std::time::Duration::from_millis(0));
+    assert_eq!(timed_out, Some(task.id));
+}
+
+// =============================================================================
+// Epoch transition while task executing
+// =============================================================================
+#[test]
+fn test_on_deck_while_task_running_blocks_new_lane1() {
+    let mut scheduler = SchedulerState::new();
+    scheduler.transition(NodeState::LoadingModels).unwrap();
+    scheduler.transition(NodeState::Idle).unwrap();
+
+    scheduler
+        .enqueue_lane1("model".to_string(), "cid".to_string())
+        .unwrap();
+    let task = scheduler.next_task().unwrap();
+    scheduler.start_task(&task).unwrap();
+
+    let epoch = make_epoch(1, 0, 0);
+    scheduler.on_deck_received(epoch);
+
+    assert!(scheduler.is_draining());
+    assert!(scheduler.active_task().is_some());
+
+    let result = scheduler.enqueue_lane1("model2".to_string(), "cid2".to_string());
+    assert!(matches!(result, Err(SchedulerError::AlreadyDraining)));
+}
+
+// =============================================================================
 // Required Test 6: test_on_deck_starts_drain - On-Deck sets draining flag
 // =============================================================================
 #[test]
@@ -487,6 +531,35 @@ fn test_complete_wrong_task() {
         complete_result,
         Err(SchedulerError::TaskNotFound(_))
     ));
+}
+
+#[test]
+fn test_enforce_task_timeout_marks_failed() {
+    let mut scheduler = SchedulerState::new();
+    scheduler.transition(NodeState::LoadingModels).unwrap();
+    scheduler.transition(NodeState::Idle).unwrap();
+
+    scheduler
+        .enqueue_lane1("llama".to_string(), "cid".to_string())
+        .unwrap();
+    let task = scheduler.next_task().unwrap();
+    let task_id = task.id;
+    scheduler.start_task(&task).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(2));
+
+    let timed_out = scheduler.enforce_task_timeout(std::time::Duration::from_millis(1));
+    assert_eq!(timed_out, Some(task_id));
+    assert_eq!(*scheduler.current_state(), NodeState::Idle);
+
+    let result = scheduler.get_task_result(task_id).expect("result stored");
+    assert!(result.output_cid.is_none());
+    let metadata = result.metadata.as_ref().expect("metadata present");
+    assert!(metadata
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .contains("Timeout"));
 }
 
 #[test]

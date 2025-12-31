@@ -48,12 +48,14 @@
 //!     println!("Model loaded, VRAM used: {} GB", resp.vram_used_gb);
 //! }
 //!
-//! // Execute a task
-//! let resp = client.execute_task(
+//! // Execute a plugin task (Lane 1 by default)
+//! let resp = client.execute_plugin_task(
 //!     "task-001",
 //!     "flux-schnell",
 //!     "ipfs://QmInput",
-//!     b"{}".to_vec(),
+//!     b\"{}\".to_vec(),
+//!     1,
+//!     None,
 //! ).await?;
 //!
 //! if resp.success {
@@ -88,6 +90,7 @@
 pub mod client;
 pub mod container;
 pub mod error;
+pub mod plugins;
 pub mod service;
 pub mod vram;
 
@@ -98,6 +101,7 @@ pub use container::{
     PreemptionReason, PreemptionResult, PreemptionStrategy,
 };
 pub use error::{SidecarError, SidecarResult};
+pub use plugins::{PluginManifest, PluginPolicy, PluginRegistry, PluginResources};
 pub use service::{SidecarService, SidecarServiceConfig, TaskState, TaskStatus};
 pub use vram::{
     AllocationPolicy, NvidiaError, NvidiaGpu, VramBudget, VramError, VramManager, VramStatus,

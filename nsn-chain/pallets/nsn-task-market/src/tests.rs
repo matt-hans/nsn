@@ -93,6 +93,276 @@ fn create_task_intent_succeeds() {
     });
 }
 
+// ============================================================================
+// Renderer Registry Enforcement
+// ============================================================================
+
+#[test]
+fn create_task_intent_fails_for_unregistered_renderer() {
+    ExtBuilder::default().build().execute_with(|| {
+        let unregistered: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"unknown-renderer".to_vec()).unwrap();
+
+        assert_noop!(
+            NsnTaskMarket::create_task_intent(
+                RuntimeOrigin::signed(ALICE),
+                TaskLane::Lane1,
+                TaskPriority::Normal,
+                unregistered,
+                default_input_cid(),
+                DEFAULT_COMPUTE_BUDGET,
+                100,
+                100
+            ),
+            Error::RendererNotRegistered
+        );
+    });
+}
+
+#[test]
+fn create_task_intent_fails_for_lane_mismatch() {
+    ExtBuilder::default().build().execute_with(|| {
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-renderer".to_vec()).unwrap();
+
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            lane0_renderer.clone(),
+            TaskLane::Lane0,
+            true,
+            10_000,
+            6_000
+        ));
+
+        assert_noop!(
+            NsnTaskMarket::create_task_intent(
+                RuntimeOrigin::signed(ALICE),
+                TaskLane::Lane1,
+                TaskPriority::Normal,
+                lane0_renderer,
+                default_input_cid(),
+                DEFAULT_COMPUTE_BUDGET,
+                100,
+                100
+            ),
+            Error::RendererLaneMismatch
+        );
+    });
+}
+
+#[test]
+fn register_renderer_rejects_lane0_nondeterministic() {
+    ExtBuilder::default().build().execute_with(|| {
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-nondet".to_vec()).unwrap();
+
+        assert_noop!(
+            NsnTaskMarket::register_renderer(
+                RuntimeOrigin::root(),
+                lane0_renderer,
+                TaskLane::Lane0,
+                false,
+                10_000,
+                6_000
+            ),
+            Error::RendererNotDeterministic
+        );
+    });
+}
+
+#[test]
+fn lane0_priority_blocks_lane1_assignment() {
+    ExtBuilder::default().build().execute_with(|| {
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-renderer".to_vec()).unwrap();
+
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            lane0_renderer.clone(),
+            TaskLane::Lane0,
+            true,
+            10_000,
+            6_000
+        ));
+
+        // Create Lane 0 task
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane0,
+            TaskPriority::Normal,
+            lane0_renderer,
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+
+        // Create Lane 1 task
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            default_model_requirements(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+
+        // Accepting Lane 1 assignment should be blocked
+        assert_noop!(
+            NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 1),
+            Error::Lane0Priority
+        );
+    });
+}
+
+#[test]
+fn preempt_lane1_tasks_when_lane0_pending() {
+    ExtBuilder::default().build().execute_with(|| {
+        // Create two Lane 1 tasks and assign them
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            default_model_requirements(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            default_model_requirements(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+
+        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 1));
+
+        assert_eq!(NsnTaskMarket::assigned_lane1_tasks().len(), 2);
+
+        // Create a Lane 0 renderer + task to trigger preemption
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-preempt".to_vec()).unwrap();
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            lane0_renderer.clone(),
+            TaskLane::Lane0,
+            true,
+            10_000,
+            6_000
+        ));
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane0,
+            TaskPriority::Normal,
+            lane0_renderer,
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+
+        // Trigger on_initialize to preempt
+        let current = System::block_number();
+        NsnTaskMarket::on_initialize(current);
+
+        let task0 = NsnTaskMarket::tasks(0).expect("task 0 exists");
+        let task1 = NsnTaskMarket::tasks(1).expect("task 1 exists");
+        assert_eq!(task0.status, TaskStatus::Failed);
+        assert_eq!(task1.status, TaskStatus::Failed);
+        assert!(NsnTaskMarket::assigned_lane1_tasks().is_empty());
+    });
+}
+
+#[test]
+fn renderer_deregister_does_not_cancel_inflight_task() {
+    ExtBuilder::default().build().execute_with(|| {
+        let renderer_id: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"inflight-renderer".to_vec()).unwrap();
+
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            renderer_id.clone(),
+            TaskLane::Lane1,
+            false,
+            60_000,
+            4_000
+        ));
+
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            renderer_id.clone(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+
+        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 0));
+
+        assert_ok!(NsnTaskMarket::deregister_renderer(
+            RuntimeOrigin::root(),
+            renderer_id
+        ));
+
+        assert_ok!(NsnTaskMarket::complete_task(
+            RuntimeOrigin::signed(BOB),
+            0,
+            default_output_cid(),
+            None
+        ));
+    });
+}
+
+#[test]
+fn lane0_completion_requires_attestation() {
+    ExtBuilder::default().build().execute_with(|| {
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-attest".to_vec()).unwrap();
+
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            lane0_renderer.clone(),
+            TaskLane::Lane0,
+            true,
+            10_000,
+            6_000
+        ));
+
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane0,
+            TaskPriority::Normal,
+            lane0_renderer,
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+
+        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 0));
+
+        assert_noop!(
+            NsnTaskMarket::complete_task(
+                RuntimeOrigin::signed(ALICE),
+                0,
+                default_output_cid(),
+                None
+            ),
+            Error::MissingAttestation
+        );
+    });
+}
+
 #[test]
 fn accept_assignment_succeeds() {
     ExtBuilder::default().build().execute_with(|| {

@@ -8,6 +8,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use nsn_p2p::{P2pConfig, P2pService};
 use nsn_types::NodeCapability;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -31,6 +32,18 @@ struct Cli {
     /// Enable JSON logging
     #[arg(long)]
     json_logs: bool,
+
+    /// RPC URL for NSN chain (used by P2P reputation oracle)
+    #[arg(long, default_value = "ws://127.0.0.1:9944")]
+    rpc_url: String,
+
+    /// P2P listen port
+    #[arg(long, default_value = "9000")]
+    p2p_listen_port: u16,
+
+    /// P2P metrics port
+    #[arg(long, default_value = "9100")]
+    p2p_metrics_port: u16,
 }
 
 #[derive(Subcommand)]
@@ -105,22 +118,34 @@ async fn main() -> Result<()> {
     // TODO: Initialize components based on mode
     // TODO: Start main event loop
 
+    // Initialize P2P networking
+    let mut p2p_config = P2pConfig::default();
+    p2p_config.listen_port = cli.p2p_listen_port;
+    p2p_config.metrics_port = cli.p2p_metrics_port;
+
+    let (mut p2p_service, _p2p_cmd_tx) = P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
+    tokio::spawn(async move {
+        if let Err(err) = p2p_service.start().await {
+            tracing::error!("P2P service failed: {}", err);
+        }
+    });
+
     match cli.mode {
         Mode::SuperNode { gpu_device } => {
             info!("SuperNode mode: GPU device {}", gpu_device);
-            // TODO: Initialize scheduler, sidecar, P2P, storage
+            // TODO: Initialize scheduler, sidecar, storage
         }
         Mode::DirectorOnly { gpu_device } => {
             info!("DirectorOnly mode: GPU device {}", gpu_device);
-            // TODO: Initialize scheduler, sidecar, P2P
+            // TODO: Initialize scheduler, sidecar
         }
         Mode::ValidatorOnly { gpu_device } => {
             info!("ValidatorOnly mode: GPU device {}", gpu_device);
-            // TODO: Initialize validator, sidecar, P2P
+            // TODO: Initialize validator, sidecar
         }
         Mode::StorageOnly { storage_path } => {
             info!("StorageOnly mode: storage path {}", storage_path);
-            // TODO: Initialize storage, P2P
+            // TODO: Initialize storage
         }
     }
 

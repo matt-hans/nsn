@@ -25,6 +25,14 @@ except Exception as e:
     sys.exit(1)
 
 try:
+    from vortex.plugins import PluginRegistry
+    print("✓ vortex.plugins imports successfully")
+    print(f"  Plugin registry type: {PluginRegistry.__name__}")
+except Exception as e:
+    print(f"✗ vortex.plugins import failed: {e}")
+    sys.exit(1)
+
+try:
     print("✓ vortex.pipeline imports successfully")
 except Exception as e:
     print(f"✗ vortex.pipeline import failed: {e}")

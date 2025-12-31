@@ -11,6 +11,7 @@
 use crate as pallet_nsn_task_market;
 use frame_support::{
     construct_runtime, parameter_types, traits::ConstU128, traits::ConstU32, traits::Everything,
+    BoundedVec,
 };
 use frame_system::pallet_prelude::BlockNumberFor;
 use sp_core::H256;
@@ -18,6 +19,7 @@ use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     BuildStorage,
 };
+use sp_runtime::traits::Randomness;
 
 pub type AccountId = u64;
 pub type Balance = u128;
@@ -104,6 +106,14 @@ parameter_types! {
     pub const MaxModelIdLen: u32 = 64;
     /// Maximum length of content identifier (CID)
     pub const MaxCidLen: u32 = 64;
+    /// Maximum number of registered renderers
+    pub const MaxRegisteredRenderers: u32 = 32;
+    /// Maximum latency for Lane 0 (ms)
+    pub const MaxLane0LatencyMs: u32 = 15_000;
+    /// Maximum latency for Lane 1 (ms)
+    pub const MaxLane1LatencyMs: u32 = 120_000;
+    /// Maximum renderer VRAM budget (MB)
+    pub const MaxRendererVramMb: u32 = 11_500;
     /// Minimum escrow amount required for task creation
     pub const MinEscrow: Balance = 10;
     /// Slash amount for task abandonment
@@ -144,6 +154,13 @@ impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for MockTaskSl
     }
 }
 
+pub struct TestRandomness;
+impl Randomness<H256, BlockNumber> for TestRandomness {
+    fn random(_subject: &[u8]) -> (H256, BlockNumber) {
+        (H256::repeat_byte(42), 0u32.into())
+    }
+}
+
 impl pallet_nsn_task_market::Config for Test {
     type Currency = Balances;
     type MaxPendingTasks = MaxPendingTasks;
@@ -153,6 +170,10 @@ impl pallet_nsn_task_market::Config for Test {
     type MaxPreemptionsPerBlock = MaxPreemptionsPerBlock;
     type MaxModelIdLen = MaxModelIdLen;
     type MaxCidLen = MaxCidLen;
+    type MaxRegisteredRenderers = MaxRegisteredRenderers;
+    type MaxLane0LatencyMs = MaxLane0LatencyMs;
+    type MaxLane1LatencyMs = MaxLane1LatencyMs;
+    type MaxRendererVramMb = MaxRendererVramMb;
     type MinEscrow = MinEscrow;
     type LaneNodeProvider = MockLaneNodeProvider;
     type ReputationUpdater = MockReputationUpdater;
@@ -160,6 +181,8 @@ impl pallet_nsn_task_market::Config for Test {
     type TaskAbandonmentSlash = TaskAbandonmentSlash;
     type TreasuryAccount = TreasuryAccount;
     type WeightInfo = ();
+    type RendererRegistrarOrigin = frame_system::EnsureRoot<AccountId>;
+    type Randomness = TestRandomness;
 }
 
 // Test accounts
@@ -217,6 +240,28 @@ impl ExtBuilder {
         let mut ext = sp_io::TestExternalities::new(storage);
         ext.execute_with(|| {
             System::set_block_number(1);
+
+            let renderer_flux =
+                BoundedVec::try_from(b"flux-schnell".to_vec()).expect("renderer id");
+            let renderer_custom =
+                BoundedVec::try_from(b"custom-model-v2".to_vec()).expect("renderer id");
+
+            let _ = NsnTaskMarket::register_renderer(
+                RuntimeOrigin::root(),
+                renderer_flux,
+                pallet_nsn_task_market::TaskLane::Lane1,
+                false,
+                60_000,
+                4_000,
+            );
+            let _ = NsnTaskMarket::register_renderer(
+                RuntimeOrigin::root(),
+                renderer_custom,
+                pallet_nsn_task_market::TaskLane::Lane1,
+                false,
+                60_000,
+                4_000,
+            );
         });
         ext
     }

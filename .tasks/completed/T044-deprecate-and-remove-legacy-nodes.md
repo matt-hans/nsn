@@ -1,13 +1,13 @@
 ---
 id: T044
 title: Deprecate and Remove legacy-nodes After P2P Migration
-status: pending
+status: completed
 priority: 1
 agent: backend
 dependencies: [T042, T043]
 blocked_by: []
 created: 2025-12-30T08:00:00Z
-updated: 2025-12-30T08:00:00Z
+updated: 2025-12-31T00:00:00Z
 
 context_refs:
   - context/project.md
@@ -19,7 +19,9 @@ docs_refs:
   - .claude/rules/prd.md
 
 est_tokens: 10000
-actual_tokens: null
+actual_tokens: 0
+completed_at: 2025-12-31T00:00:00Z
+completed_by: task-developer
 ---
 
 ## Description

@@ -8,3 +8,4 @@ repository.workspace = true
 [dependencies]
 serde = { workspace = true }
 codec = { package = "parity-scale-codec", version = "3.6", features = ["derive"] }
+nsn-primitives = { workspace = true, features = ["serde"] }

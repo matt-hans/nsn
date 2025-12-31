@@ -32,7 +32,7 @@
 pub use pallet::*;
 
 mod types;
-pub use types::{FailReason, TaskIntent, TaskLane, TaskPriority, TaskStatus};
+pub use types::{FailReason, RendererInfo, TaskIntent, TaskLane, TaskPriority, TaskStatus};
 
 #[cfg(test)]
 mod mock;
@@ -69,7 +69,10 @@ pub mod pallet {
     use super::*;
     use frame_support::{
         pallet_prelude::*,
-        traits::{Currency, ExistenceRequirement, ReservableCurrency, StorageVersion},
+        traits::{
+            Currency, EnsureOrigin, ExistenceRequirement, Randomness, ReservableCurrency,
+            StorageVersion,
+        },
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{CheckedAdd, SaturatedConversion, Zero};
@@ -86,6 +89,9 @@ pub mod pallet {
         <T as Config>::MaxModelIdLen,
         <T as Config>::MaxCidLen,
     >;
+
+    /// Renderer info type alias
+    pub type RendererInfoOf<T> = RendererInfo<BlockNumberFor<T>>;
 
     /// The in-code storage version.
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
@@ -128,6 +134,22 @@ pub mod pallet {
         #[pallet::constant]
         type MaxCidLen: Get<u32>;
 
+        /// Maximum number of registered renderers
+        #[pallet::constant]
+        type MaxRegisteredRenderers: Get<u32>;
+
+        /// Maximum latency for Lane 0 renderers (ms)
+        #[pallet::constant]
+        type MaxLane0LatencyMs: Get<u32>;
+
+        /// Maximum latency for Lane 1 renderers (ms)
+        #[pallet::constant]
+        type MaxLane1LatencyMs: Get<u32>;
+
+        /// Maximum renderer VRAM budget (MB)
+        #[pallet::constant]
+        type MaxRendererVramMb: Get<u32>;
+
         /// Minimum escrow amount required for task creation
         #[pallet::constant]
         type MinEscrow: Get<BalanceOf<Self>>;
@@ -150,6 +172,12 @@ pub mod pallet {
 
         /// Weight information
         type WeightInfo: WeightInfo;
+
+        /// Randomness source for assignment selection
+        type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
+
+        /// Origin allowed to register/deregister renderers
+        type RendererRegistrarOrigin: EnsureOrigin<Self::RuntimeOrigin>;
     }
 
     /// Next task ID counter
@@ -187,6 +215,15 @@ pub mod pallet {
     pub type AssignedLane1Tasks<T: Config> =
         StorageValue<_, BoundedVec<u64, T::MaxAssignedLane1Tasks>, ValueQuery>;
 
+    /// Registered renderers allowed to execute tasks
+    #[pallet::storage]
+    #[pallet::getter(fn renderer_registry)]
+    pub type RendererRegistry<T: Config> = StorageValue<
+        _,
+        BoundedBTreeMap<BoundedVec<u8, T::MaxModelIdLen>, RendererInfoOf<T>, T::MaxRegisteredRenderers>,
+        ValueQuery,
+    >;
+
     /// Events emitted by the pallet
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -220,6 +257,18 @@ pub mod pallet {
         TaskFailed { task_id: u64, reason: FailReason },
         /// A task expired due to deadline
         TaskExpired { task_id: u64 },
+        /// A renderer was registered
+        RendererRegistered {
+            renderer_id: BoundedVec<u8, T::MaxModelIdLen>,
+            lane: TaskLane,
+            deterministic: bool,
+            max_latency_ms: u32,
+            vram_required_mb: u32,
+        },
+        /// A renderer was deregistered
+        RendererDeregistered {
+            renderer_id: BoundedVec<u8, T::MaxModelIdLen>,
+        },
     }
 
     /// Errors returned by the pallet
@@ -257,6 +306,26 @@ pub mod pallet {
         Lane0Priority,
         /// Task burn failed (insufficient balance)
         BurnFailed,
+        /// Renderer registry is full
+        RendererRegistryFull,
+        /// Renderer is already registered
+        RendererAlreadyRegistered,
+        /// Renderer ID is empty
+        InvalidRendererId,
+        /// Renderer is not registered
+        RendererNotRegistered,
+        /// Renderer lane does not match task lane
+        RendererLaneMismatch,
+        /// Renderer latency exceeds lane constraints
+        RendererLatencyExceeded,
+        /// Renderer must be deterministic for Lane 0
+        RendererNotDeterministic,
+        /// Renderer VRAM requirement exceeds limit
+        RendererVramExceeded,
+        /// Missing attestation for Lane 0 completion
+        MissingAttestation,
+        /// Attestation CID is invalid (empty)
+        InvalidAttestationCid,
     }
 
     #[pallet::hooks]
@@ -308,6 +377,10 @@ pub mod pallet {
                 deadline_blocks > BlockNumberFor::<T>::zero(),
                 Error::<T>::InvalidDeadline
             );
+
+            // Validate renderer/model requirements
+            ensure!(!model_requirements.is_empty(), Error::<T>::InvalidRendererId);
+            Self::ensure_renderer_allowed(&model_requirements, lane.clone())?;
 
             // Validate minimum escrow
             ensure!(
@@ -493,6 +566,13 @@ pub mod pallet {
                 let executor = task.executor.as_ref().ok_or(Error::<T>::TaskNotAssigned)?;
                 ensure!(&caller == executor, Error::<T>::NotExecutor);
 
+                if task.lane == TaskLane::Lane0 && attestation_cid.is_none() {
+                    return Err(Error::<T>::MissingAttestation.into());
+                }
+                if let Some(ref cid) = attestation_cid {
+                    ensure!(!cid.is_empty(), Error::<T>::InvalidAttestationCid);
+                }
+
                 // Unreserve escrow
                 let escrow = task.escrow;
                 T::Currency::unreserve(&task.requester, escrow);
@@ -630,6 +710,88 @@ pub mod pallet {
                 Ok(())
             })
         }
+
+        /// Register a renderer for task execution
+        ///
+        /// Only the configured registrar origin can register renderers.
+        #[pallet::call_index(5)]
+        #[pallet::weight(T::WeightInfo::register_renderer())]
+        pub fn register_renderer(
+            origin: OriginFor<T>,
+            renderer_id: BoundedVec<u8, T::MaxModelIdLen>,
+            lane: TaskLane,
+            deterministic: bool,
+            max_latency_ms: u32,
+            vram_required_mb: u32,
+        ) -> DispatchResult {
+            T::RendererRegistrarOrigin::ensure_origin(origin)?;
+
+            ensure!(!renderer_id.is_empty(), Error::<T>::InvalidRendererId);
+            ensure!(
+                vram_required_mb <= T::MaxRendererVramMb::get(),
+                Error::<T>::RendererVramExceeded
+            );
+
+            let lane_limit = match lane {
+                TaskLane::Lane0 => T::MaxLane0LatencyMs::get(),
+                TaskLane::Lane1 => T::MaxLane1LatencyMs::get(),
+            };
+            ensure!(
+                max_latency_ms <= lane_limit,
+                Error::<T>::RendererLatencyExceeded
+            );
+
+            if lane == TaskLane::Lane0 {
+                ensure!(deterministic, Error::<T>::RendererNotDeterministic);
+            }
+
+            RendererRegistry::<T>::try_mutate(|registry| {
+                if registry.contains_key(&renderer_id) {
+                    return Err(Error::<T>::RendererAlreadyRegistered.into());
+                }
+                let info = RendererInfo {
+                    lane: lane.clone(),
+                    deterministic,
+                    max_latency_ms,
+                    vram_required_mb,
+                    registered_at: <frame_system::Pallet<T>>::block_number(),
+                };
+                registry
+                    .try_insert(renderer_id.clone(), info)
+                    .map_err(|_| Error::<T>::RendererRegistryFull)?;
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::RendererRegistered {
+                renderer_id,
+                lane,
+                deterministic,
+                max_latency_ms,
+                vram_required_mb,
+            });
+
+            Ok(())
+        }
+
+        /// Deregister a renderer
+        #[pallet::call_index(6)]
+        #[pallet::weight(T::WeightInfo::deregister_renderer())]
+        pub fn deregister_renderer(
+            origin: OriginFor<T>,
+            renderer_id: BoundedVec<u8, T::MaxModelIdLen>,
+        ) -> DispatchResult {
+            T::RendererRegistrarOrigin::ensure_origin(origin)?;
+
+            RendererRegistry::<T>::try_mutate(|registry| {
+                if registry.remove(&renderer_id).is_none() {
+                    return Err(Error::<T>::RendererNotRegistered.into());
+                }
+                Ok(())
+            })?;
+
+            Self::deposit_event(Event::RendererDeregistered { renderer_id });
+            Ok(())
+        }
     }
 
     // Helper functions
@@ -642,6 +804,35 @@ pub mod pallet {
         /// Check if a task exists
         pub fn task_exists(task_id: u64) -> bool {
             Tasks::<T>::contains_key(task_id)
+        }
+
+        fn ensure_renderer_allowed(
+            renderer_id: &BoundedVec<u8, T::MaxModelIdLen>,
+            lane: TaskLane,
+        ) -> Result<(), DispatchError> {
+            let registry = RendererRegistry::<T>::get();
+            let info = registry
+                .get(renderer_id)
+                .ok_or(Error::<T>::RendererNotRegistered)?;
+
+            ensure!(info.lane == lane, Error::<T>::RendererLaneMismatch);
+
+            let lane_limit = match lane {
+                TaskLane::Lane0 => T::MaxLane0LatencyMs::get(),
+                TaskLane::Lane1 => T::MaxLane1LatencyMs::get(),
+            };
+            ensure!(
+                info.max_latency_ms <= lane_limit,
+                Error::<T>::RendererLatencyExceeded
+            );
+            ensure!(
+                info.vram_required_mb <= T::MaxRendererVramMb::get(),
+                Error::<T>::RendererVramExceeded
+            );
+            if lane == TaskLane::Lane0 {
+                ensure!(info.deterministic, Error::<T>::RendererNotDeterministic);
+            }
+            Ok(())
         }
 
         fn enqueue_open_task(task_id: u64, task: &TaskIntentOf<T>) -> DispatchResult {
@@ -724,9 +915,10 @@ pub mod pallet {
 
             ensure!(total_weight > 0, Error::<T>::NoEligibleExecutors);
 
-            // Deterministic randomness from block + lane
+            // Randomness from configured source + block/lane
             let now = <frame_system::Pallet<T>>::block_number();
-            let seed = T::Hashing::hash_of(&(now, lane.as_u8(), total_weight));
+            let (rand, _) = T::Randomness::random(&b"task-market-assignment"[..]);
+            let seed = T::Hashing::hash_of(&(rand, now, lane.as_u8(), total_weight));
             let mut seed_bytes = [0u8; 16];
             seed_bytes.copy_from_slice(&seed.as_ref()[0..16]);
             let mut pick = u128::from_le_bytes(seed_bytes) % total_weight;

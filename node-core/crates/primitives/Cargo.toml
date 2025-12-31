@@ -1,0 +1,24 @@
+[package]
+name = "nsn-primitives"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/interdim-cable/nsn"
+
+description = "Shared primitives used across NSN runtime and off-chain nodes"
+
+[features]
+default = ["std"]
+std = [
+  "parity-scale-codec/std",
+  "scale-info/std",
+  "sp-runtime/std",
+  "serde?/std",
+]
+serde = ["dep:serde"]
+
+[dependencies]
+parity-scale-codec = { version = "3.7.4", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11.6", default-features = false, features = ["derive"] }
+sp-runtime = { version = "45.0.0", default-features = false }
+serde = { version = "1.0.214", default-features = false, features = ["derive"], optional = true }
