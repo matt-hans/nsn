@@ -65,6 +65,7 @@ struct ReputationScore {
     director_score: u64,
     validator_score: u64,
     seeder_score: u64,
+    #[allow(dead_code)]
     last_activity: u64,
 }
 
@@ -222,7 +223,7 @@ impl ReputationOracle {
             let key_value = result.map_err(|e| OracleError::StorageQueryFailed(e.to_string()))?;
             let account_value = key_value
                 .keys
-                .get(0)
+                .first()
                 .ok_or_else(|| OracleError::StorageQueryFailed("Missing account key".into()))?;
             let account: AccountId32 = scale_value::serde::from_value(account_value.clone())
                 .map_err(|e| OracleError::StorageQueryFailed(format!("Key decode failed: {e}")))?;

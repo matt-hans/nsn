@@ -1,36 +1,50 @@
 //! P2P network behaviour
 //!
 //! Defines the libp2p NetworkBehaviour for NSN nodes with
-//! GossipSub messaging and connection management.
+//! GossipSub messaging, Kademlia DHT, and connection management.
 
 use libp2p::gossipsub;
+use libp2p::kad::store::MemoryStore;
+use libp2p::kad::Behaviour as KademliaBehaviour;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
 use std::collections::HashMap;
 
-/// P2P network behaviour with GossipSub
+/// P2P network behaviour with GossipSub and Kademlia DHT
 ///
-/// Combines GossipSub for pub/sub messaging with future protocols
-/// (Kademlia DHT, Request-Response, etc.)
+/// Combines GossipSub for pub/sub messaging with Kademlia DHT for
+/// peer discovery and provider records.
 #[derive(NetworkBehaviour)]
 pub struct NsnBehaviour {
     /// GossipSub pub/sub messaging
     pub gossipsub: gossipsub::Behaviour,
+
+    /// Kademlia DHT for peer discovery and content addressing
+    pub kademlia: KademliaBehaviour<MemoryStore>,
 }
 
 impl NsnBehaviour {
-    /// Create new NSN behaviour with GossipSub
+    /// Create new NSN behaviour with GossipSub and Kademlia
     ///
     /// # Arguments
     /// * `gossipsub` - Configured GossipSub behavior
-    pub fn new(gossipsub: gossipsub::Behaviour) -> Self {
-        Self { gossipsub }
+    /// * `kademlia` - Configured Kademlia DHT behavior
+    pub fn new(gossipsub: gossipsub::Behaviour, kademlia: KademliaBehaviour<MemoryStore>) -> Self {
+        Self {
+            gossipsub,
+            kademlia,
+        }
     }
 
-    /// Create a simple behaviour for testing (uses default GossipSub config)
+    /// Create a simple behaviour for testing (uses default GossipSub config and Kademlia)
     #[cfg(test)]
     pub fn new_for_testing(keypair: &libp2p::identity::Keypair) -> Self {
         use libp2p::gossipsub::{ConfigBuilder, MessageAuthenticity};
+        use libp2p::kad::{
+            store::MemoryStore, Behaviour as KademliaBehaviour, Config as KademliaConfig,
+        };
+
+        let peer_id = PeerId::from(keypair.public());
 
         let config = ConfigBuilder::default()
             .build()
@@ -40,7 +54,14 @@ impl NsnBehaviour {
             gossipsub::Behaviour::new(MessageAuthenticity::Signed(keypair.clone()), config)
                 .expect("GossipSub creation should succeed");
 
-        Self { gossipsub }
+        let store = MemoryStore::new(peer_id);
+        let kad_config = KademliaConfig::default();
+        let kademlia = KademliaBehaviour::with_config(peer_id, store, kad_config);
+
+        Self {
+            gossipsub,
+            kademlia,
+        }
     }
 }
 

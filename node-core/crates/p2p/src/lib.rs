@@ -28,6 +28,8 @@ mod connection_manager;
 mod event_handler;
 mod gossipsub;
 mod identity;
+mod kademlia;
+mod kademlia_helpers;
 mod metrics;
 mod nat;
 mod relay;
@@ -47,6 +49,11 @@ pub use config::P2pConfig;
 pub use gossipsub::{create_gossipsub_behaviour, subscribe_to_all_topics, GossipsubError};
 pub use identity::{
     generate_keypair, load_keypair, peer_id_to_account_id, save_keypair, IdentityError,
+};
+pub use kademlia::{
+    KademliaError, KademliaService, KademliaServiceConfig, K_VALUE, NSN_KAD_PROTOCOL_ID,
+    PROVIDER_RECORD_TTL, PROVIDER_REPUBLISH_INTERVAL, QUERY_TIMEOUT,
+    ROUTING_TABLE_REFRESH_INTERVAL,
 };
 pub use metrics::{MetricsError, P2pMetrics};
 pub use nat::{

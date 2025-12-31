@@ -9,6 +9,8 @@ use super::connection_manager::ConnectionManager;
 use super::event_handler;
 use super::gossipsub::{create_gossipsub_behaviour, subscribe_to_all_topics, GossipsubError};
 use super::identity::{generate_keypair, load_keypair, save_keypair, IdentityError};
+use super::kademlia::KademliaError;
+use super::kademlia_helpers::build_kademlia;
 use super::metrics::P2pMetrics;
 use super::reputation_oracle::{OracleError, ReputationOracle};
 use super::topics::TopicCategory;
@@ -16,13 +18,19 @@ use futures::StreamExt;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
 use libp2p::gossipsub::MessageId;
+use libp2p::kad::{
+    Event as KademliaEvent, GetClosestPeersError, GetProvidersError, GetProvidersOk, QueryId,
+    QueryResult, RecordKey,
+};
+use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder};
 use prometheus::{Encoder, TextEncoder};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info};
 
 #[derive(Debug, Error)]
@@ -74,6 +82,34 @@ pub enum ServiceCommand {
         tokio::sync::oneshot::Sender<Result<MessageId, GossipsubError>>,
     ),
 
+    /// Get closest peers to target (DHT query)
+    GetClosestPeers(
+        PeerId,
+        tokio::sync::oneshot::Sender<Result<Vec<PeerId>, super::kademlia::KademliaError>>,
+    ),
+
+    /// Publish provider record for shard hash (DHT)
+    PublishProvider(
+        [u8; 32],
+        tokio::sync::oneshot::Sender<Result<bool, super::kademlia::KademliaError>>,
+    ),
+
+    /// Get providers for shard hash (DHT query)
+    GetProviders(
+        [u8; 32],
+        tokio::sync::oneshot::Sender<Result<Vec<PeerId>, super::kademlia::KademliaError>>,
+    ),
+
+    /// Get DHT routing table size
+    GetRoutingTableSize(
+        tokio::sync::oneshot::Sender<Result<usize, super::kademlia::KademliaError>>,
+    ),
+
+    /// Trigger manual routing table refresh
+    TriggerRoutingTableRefresh(
+        tokio::sync::oneshot::Sender<Result<(), super::kademlia::KademliaError>>,
+    ),
+
     /// Shutdown the service
     Shutdown,
 }
@@ -84,7 +120,7 @@ pub struct P2pService {
     swarm: Swarm<NsnBehaviour>,
 
     /// Configuration
-    config: P2pConfig,
+    pub(crate) config: P2pConfig,
 
     /// Metrics
     pub(crate) metrics: Arc<P2pMetrics>,
@@ -104,6 +140,19 @@ pub struct P2pService {
     /// Reputation oracle for on-chain reputation scores
     #[allow(dead_code)] // Stored for future use and passed to GossipSub during construction
     reputation_oracle: Arc<ReputationOracle>,
+
+    /// Pending Kademlia get_closest_peers queries
+    pending_get_closest_peers:
+        HashMap<QueryId, oneshot::Sender<Result<Vec<PeerId>, KademliaError>>>,
+
+    /// Pending Kademlia get_providers queries
+    pending_get_providers: HashMap<QueryId, oneshot::Sender<Result<Vec<PeerId>, KademliaError>>>,
+
+    /// Pending Kademlia start_providing queries
+    pending_start_providing: HashMap<QueryId, oneshot::Sender<Result<bool, KademliaError>>>,
+
+    /// Local shards being provided (for republish)
+    local_provided_shards: Vec<[u8; 32]>,
 
     /// Shutdown flag
     shutdown: bool,
@@ -170,17 +219,30 @@ impl P2pService {
         let sub_count = subscribe_to_all_topics(&mut gossipsub)?;
         info!("Subscribed to {} topics", sub_count);
 
-        // Create NSN behaviour
-        let behaviour = NsnBehaviour::new(gossipsub);
+        // Create Kademlia behavior with NSN configuration
+        let kademlia = build_kademlia(local_peer_id);
+
+        // Create NSN behaviour with GossipSub and Kademlia
+        let behaviour = NsnBehaviour::new(gossipsub, kademlia);
 
         // Build swarm with QUIC transport
-        let swarm = SwarmBuilder::with_existing_identity(keypair)
+        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
             .with_quic()
             .with_behaviour(|_| behaviour)
             .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
             .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
             .build();
+
+        // Bootstrap Kademlia DHT via swarm behaviour
+        match swarm.behaviour_mut().kademlia.bootstrap() {
+            Ok(query_id) => {
+                info!("DHT bootstrap initiated: query_id={:?}", query_id);
+            }
+            Err(e) => {
+                debug!("DHT bootstrap skipped (no bootstrap peers): {:?}", e);
+            }
+        }
 
         let (command_tx, command_rx) = mpsc::unbounded_channel();
 
@@ -197,6 +259,10 @@ impl P2pService {
                 command_tx: command_tx.clone(),
                 connection_manager,
                 reputation_oracle,
+                pending_get_closest_peers: HashMap::new(),
+                pending_get_providers: HashMap::new(),
+                pending_start_providing: HashMap::new(),
+                local_provided_shards: Vec::new(),
                 shutdown: false,
             },
             command_tx,
@@ -240,6 +306,24 @@ impl P2pService {
             tokio::select! {
                 // Handle swarm events
                 event = self.swarm.select_next_some() => {
+                    // Handle specific events for Kademlia
+                    match &event {
+                        SwarmEvent::Behaviour(super::behaviour::NsnBehaviourEvent::Kademlia(kad_event)) => {
+                            self.handle_kademlia_event(kad_event.clone());
+                        }
+                        // Add peers to Kademlia on connection established
+                        SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                            let addr = endpoint.get_remote_address().clone();
+                            self.swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .add_address(peer_id, addr.clone());
+                            debug!("Added connected peer {} at {} to Kademlia routing table", peer_id, addr);
+                        }
+                        _ => {}
+                    }
+
+                    // Then dispatch to general event handler
                     if let Err(e) = event_handler::dispatch_swarm_event(
                         event,
                         &mut self.connection_manager,
@@ -275,6 +359,22 @@ impl P2pService {
         match command {
             ServiceCommand::Dial(addr) => {
                 info!("Dialing {}", addr);
+
+                // Extract peer_id from multiaddr if present (e.g., /ip4/.../p2p/<peer_id>)
+                // and add to Kademlia routing table
+                if let Some(libp2p::multiaddr::Protocol::P2p(peer_id)) = addr.iter().last() {
+                    // Remove /p2p/<peer_id> suffix for the base address
+                    let base_addr: Multiaddr = addr
+                        .iter()
+                        .filter(|p| !matches!(p, libp2p::multiaddr::Protocol::P2p(_)))
+                        .collect();
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, base_addr);
+                    debug!("Added peer {} to Kademlia routing table", peer_id);
+                }
+
                 self.swarm
                     .dial(addr.clone())
                     .map_err(|e| ServiceError::Swarm(format!("Failed to dial {}: {}", addr, e)))?;
@@ -312,6 +412,62 @@ impl P2pService {
                 let _ = tx.send(result);
             }
 
+            ServiceCommand::GetClosestPeers(target, result_tx) => {
+                let query_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_closest_peers(target);
+                self.pending_get_closest_peers.insert(query_id, result_tx);
+                debug!("get_closest_peers query initiated: {:?}", query_id);
+            }
+
+            ServiceCommand::PublishProvider(shard_hash, result_tx) => {
+                let key = RecordKey::new(&shard_hash);
+                match self.swarm.behaviour_mut().kademlia.start_providing(key) {
+                    Ok(query_id) => {
+                        self.pending_start_providing.insert(query_id, result_tx);
+                        if !self.local_provided_shards.contains(&shard_hash) {
+                            self.local_provided_shards.push(shard_hash);
+                        }
+                        info!("start_providing: shard={}", hex::encode(shard_hash));
+                    }
+                    Err(e) => {
+                        let _ = result_tx.send(Err(KademliaError::ProviderPublishFailed(format!(
+                            "{:?}",
+                            e
+                        ))));
+                    }
+                }
+            }
+
+            ServiceCommand::GetProviders(shard_hash, result_tx) => {
+                let key = RecordKey::new(&shard_hash);
+                let query_id = self.swarm.behaviour_mut().kademlia.get_providers(key);
+                self.pending_get_providers.insert(query_id, result_tx);
+                debug!("get_providers query: shard={}", hex::encode(shard_hash));
+            }
+
+            ServiceCommand::GetRoutingTableSize(result_tx) => {
+                let size = self
+                    .swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .kbuckets()
+                    .map(|bucket| bucket.num_entries())
+                    .sum();
+                let _ = result_tx.send(Ok(size));
+            }
+
+            ServiceCommand::TriggerRoutingTableRefresh(result_tx) => {
+                let random_peer = PeerId::random();
+                self.swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .get_closest_peers(random_peer);
+                let _ = result_tx.send(Ok(()));
+            }
+
             ServiceCommand::Shutdown => {
                 info!("Received shutdown command");
                 self.shutdown = true;
@@ -334,6 +490,134 @@ impl P2pService {
         self.connection_manager.reset();
 
         info!("All connections closed");
+    }
+
+    /// Handle Kademlia events and process query results
+    fn handle_kademlia_event(&mut self, event: KademliaEvent) {
+        match event {
+            KademliaEvent::OutboundQueryProgressed { id, result, .. } => {
+                self.handle_kademlia_query_result(id, result);
+            }
+            KademliaEvent::RoutingUpdated { peer, .. } => {
+                debug!("Kademlia routing table updated: added peer {}", peer);
+            }
+            KademliaEvent::InboundRequest { request } => {
+                debug!("Received inbound DHT request: {:?}", request);
+            }
+            KademliaEvent::ModeChanged { new_mode } => {
+                info!("Kademlia mode changed: {:?}", new_mode);
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle Kademlia query results
+    fn handle_kademlia_query_result(&mut self, query_id: QueryId, result: QueryResult) {
+        match result {
+            QueryResult::GetClosestPeers(Ok(ok)) => {
+                debug!(
+                    "get_closest_peers succeeded: query_id={:?}, peers={}",
+                    query_id,
+                    ok.peers.len()
+                );
+
+                if let Some(tx) = self.pending_get_closest_peers.remove(&query_id) {
+                    let _ = tx.send(Ok(ok.peers));
+                }
+            }
+
+            QueryResult::GetClosestPeers(Err(err)) => {
+                debug!(
+                    "get_closest_peers failed: query_id={:?}, err={:?}",
+                    query_id, err
+                );
+
+                if let Some(tx) = self.pending_get_closest_peers.remove(&query_id) {
+                    let error = match err {
+                        GetClosestPeersError::Timeout { .. } => KademliaError::Timeout,
+                    };
+                    let _ = tx.send(Err(error));
+                }
+            }
+
+            QueryResult::GetProviders(Ok(GetProvidersOk::FoundProviders { key: _, providers })) => {
+                debug!(
+                    "get_providers found providers: query_id={:?}, providers={}",
+                    query_id,
+                    providers.len()
+                );
+
+                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
+                    let _ = tx.send(Ok(providers.into_iter().collect()));
+                }
+            }
+
+            QueryResult::GetProviders(Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
+                closest_peers,
+            })) => {
+                debug!(
+                    "get_providers finished: query_id={:?}, closest_peers={}",
+                    query_id,
+                    closest_peers.len()
+                );
+
+                // No additional providers found; return empty if query still pending
+                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
+                    let _ = tx.send(Ok(Vec::new()));
+                }
+            }
+
+            QueryResult::GetProviders(Err(err)) => {
+                debug!(
+                    "get_providers failed: query_id={:?}, err={:?}",
+                    query_id, err
+                );
+
+                if let Some(tx) = self.pending_get_providers.remove(&query_id) {
+                    let error = match err {
+                        GetProvidersError::Timeout { .. } => KademliaError::Timeout,
+                    };
+                    let _ = tx.send(Err(error));
+                }
+            }
+
+            QueryResult::StartProviding(Ok(_)) => {
+                debug!("start_providing succeeded: query_id={:?}", query_id);
+
+                if let Some(tx) = self.pending_start_providing.remove(&query_id) {
+                    let _ = tx.send(Ok(true));
+                }
+            }
+
+            QueryResult::StartProviding(Err(err)) => {
+                debug!(
+                    "start_providing failed: query_id={:?}, err={:?}",
+                    query_id, err
+                );
+
+                if let Some(tx) = self.pending_start_providing.remove(&query_id) {
+                    let _ = tx.send(Err(KademliaError::ProviderPublishFailed(format!(
+                        "{:?}",
+                        err
+                    ))));
+                }
+            }
+
+            QueryResult::Bootstrap(Ok(_)) => {
+                info!("DHT bootstrap completed: query_id={:?}", query_id);
+            }
+
+            QueryResult::Bootstrap(Err(err)) => {
+                debug!(
+                    "DHT bootstrap failed: query_id={:?}, err={:?}",
+                    query_id, err
+                );
+            }
+
+            _ => {
+                debug!("Unhandled query result: query_id={:?}", query_id);
+            }
+        }
     }
 }
 
