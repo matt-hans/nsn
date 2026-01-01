@@ -1,0 +1,22 @@
+{
+  "name": "NSN Development",
+  "id": "nsn_dev",
+  "chainType": "Development",
+  "bootNodes": [],
+  "telemetryEndpoints": null,
+  "protocolId": "nsn",
+  "properties": {
+    "tokenSymbol": "NSN",
+    "tokenDecimals": 12,
+    "ss58Format": 42
+  },
+  "genesis": {
+    "runtime": null,
+    "raw": {
+      "top": {
+        "0x26aa394eea5630e07c48ae0c9558cef7b99d880ec681799c0cf30e8886371da9": "0x00",
+        "0x26aa394eea5630e07c48ae0c9558cef78a56e56f2f7f1c9e0f1c0e0a0c0f0e0a": "0x00"
+      }
+    }
+  }
+}

@@ -490,7 +490,7 @@
       "id": "T019",
       "title": "VRAM Manager - Memory Pressure Monitoring & OOM Prevention",
       "file": "tasks/T019-vram-manager.md",
-      "status": "pending",
+      "status": "completed",
       "priority": 2,
       "depends_on": [
         "T014"
@@ -505,9 +505,11 @@
         "phase-a"
       ],
       "estimated_tokens": 11000,
-      "actual_tokens": 0,
+      "actual_tokens": 11500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2026-01-01T02:12:20.988481+00:00",
+      "completed_at": "2026-01-01T02:12:20.988729+00:00",
+      "completed_by": "task-completer"
     },
     {
       "id": "T020",
@@ -709,8 +711,8 @@
     {
       "id": "T028",
       "title": "Local ICN Solochain Development Environment with Docker Compose",
-      "file": "tasks/T028-local-dev-environment.md",
-      "status": "pending",
+      "file": "completed/T028-local-dev-environment.md",
+      "status": "completed",
       "priority": 1,
       "depends_on": [],
       "tags": [
@@ -721,9 +723,12 @@
         "phase-a"
       ],
       "estimated_tokens": 10000,
-      "actual_tokens": 0,
+      "actual_tokens": 18000,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-31T20:15:00Z",
+      "started_at": "2025-12-31T00:00:00Z",
+      "completed_at": "2025-12-31T20:15:00Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T029",
@@ -774,8 +779,8 @@
     {
       "id": "T031",
       "title": "CI/CD Pipeline for ICN Chain Runtime and Pallets",
-      "file": "tasks/T031-cicd-pallets.md",
-      "status": "pending",
+      "file": "completed/T031-cicd-pallets.md",
+      "status": "completed",
       "priority": 1,
       "depends_on": [
         "T001",
@@ -789,9 +794,11 @@
         "phase-a"
       ],
       "estimated_tokens": 9000,
-      "actual_tokens": 0,
+      "actual_tokens": 9500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2026-01-01T03:21:59.468154Z",
+      "completed_at": "2026-01-01T03:21:59.468308Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T032",
@@ -1128,9 +1135,9 @@
   ],
   "stats": {
     "total_tasks": 44,
-    "completed": 29,
+    "completed": 32,
     "in_progress": 0,
-    "pending": 15,
+    "pending": 12,
     "blocked": 0
   },
   "dependency_graph": {

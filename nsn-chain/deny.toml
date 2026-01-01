@@ -1,0 +1,99 @@
+# NSN Chain - cargo-deny configuration
+# Documentation: https://embarkstudios.github.io/cargo-deny/
+
+# This file defines license, advisory, bans, and sources policies for NSN Chain dependencies.
+# Run with: cargo deny check
+
+[advisories]
+# Deny crates with security vulnerabilities
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Allow only GPL-3.0 compatible licenses (NSN Chain is GPL-3.0)
+version = 2
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "0BSD",
+    "GPL-3.0",
+    "GPL-3.0-or-later",
+]
+
+# Deny licenses that are incompatible with GPL-3.0
+deny = [
+    "AGPL-3.0",           # Too restrictive for network service
+    "BUSL-1.1",           # Business Source License (non-free)
+    "CC-BY-NC-4.0",       # Non-commercial restriction
+    "SSPL-1.0",           # Server Side Public License (incompatible)
+]
+
+# Confidence threshold for license detection
+confidence-threshold = 0.8
+
+# Treat copyleft licenses as warnings (review required)
+copyleft = "warn"
+
+# Allow copyleft licenses if they are used in the workspace (NSN is GPL-3.0)
+allow-osi-fsf-free = "both"
+
+# License exceptions (specific crates that need review)
+exceptions = [
+    # Add exceptions here if needed
+    # { allow = ["MPL-2.0"], name = "some-crate" },
+]
+
+[licenses.private]
+# Allow private (workspace) crates without declared licenses
+ignore = true
+
+[bans]
+# Deny specific crates or patterns
+version = 2
+
+# Deny multiple versions of the same crate (reduces binary size)
+multiple-versions = "warn"
+
+# Wildcards allowed for fuzzy matching
+wildcards = "allow"
+
+# Deny specific crates (security/quality concerns)
+deny = [
+    # Example: deny old/vulnerable versions
+    # { name = "openssl", version = "<0.10" },
+]
+
+# Skip certain crates from duplicate version checks
+skip = [
+    # Polkadot SDK often has multiple versions of these
+    { name = "bitflags" },
+    { name = "syn" },
+    { name = "quote" },
+    { name = "proc-macro2" },
+]
+
+# Skip trees (entire dependency subtrees)
+skip-tree = []
+
+[sources]
+# Allowed sources for crates
+version = 2
+
+# Only allow crates from crates.io and local workspace
+allow-org = { github = ["paritytech"] }
+
+[sources.allow-org]
+# Allow Parity Technologies GitHub org (Polkadot SDK)
+github = ["paritytech", "polkadot-fellows"]
+
+[sources.allow-registry]
+# Allow crates.io
+crates-io = true

@@ -1,0 +1,214 @@
+# =============================================================================
+# NSN Local Development Environment - Docker Compose
+# =============================================================================
+# WARNING: This configuration is for LOCAL DEVELOPMENT ONLY!
+# It uses INSECURE defaults that should NEVER be used in production:
+# - Unsafe RPC methods enabled (--rpc-methods=Unsafe)
+# - CORS accepts all origins (--rpc-cors=all)
+# - Default credentials for Grafana (admin/admin)
+# - No TLS/HTTPS encryption
+#
+# For production deployment, see docs/production-deployment.md
+# =============================================================================
+
+services:
+  # Local Substrate node with NSN pallets
+  substrate-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.substrate-local
+    container_name: nsn-substrate-node
+    ports:
+      - "9944:9944"   # WebSocket RPC
+      - "9933:9933"   # HTTP RPC
+      - "30333:30333" # P2P
+      - "9615:9615"   # Prometheus metrics
+    volumes:
+      - substrate-data:/data
+    # WARNING: DEV MODE ONLY - Unsafe RPC and permissive CORS for local testing
+    # Production: Use --rpc-cors='["https://polkadot.js.org"]' and --rpc-methods=Safe
+    command: >
+      --dev
+      --rpc-external
+      --rpc-cors=all
+      --prometheus-external
+      --base-path=/data
+      --rpc-methods=Unsafe
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9933/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - nsn-network
+
+  # Vortex engine (GPU required)
+  vortex:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.vortex
+    container_name: nsn-vortex
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CUDA_VISIBLE_DEVICES=0
+      - VORTEX_MODELS_PATH=/models
+      - VORTEX_MAX_VRAM_GB=11.8
+    volumes:
+      - model-weights:/models
+      - vortex-output:/output
+      - ./vortex/config.yaml:/app/config.yaml:ro
+    ports:
+      - "50051:50051"  # gRPC
+      - "9101:9100"    # Prometheus metrics
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import torch; assert torch.cuda.is_available()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - nsn-network
+
+  # Mock STUN server
+  stun-server:
+    image: coturn/coturn:4.6-alpine
+    container_name: nsn-stun
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+    command: >
+      -n
+      --listening-port=3478
+      --fingerprint
+      --lt-cred-mech
+      --user=nsn:password
+      --realm=nsn.local
+      --verbose
+    networks:
+      - nsn-network
+
+  # Mock TURN server (fallback)
+  turn-server:
+    image: coturn/coturn:4.6-alpine
+    container_name: nsn-turn
+    ports:
+      - "3479:3479/udp"
+      - "3479:3479/tcp"
+      - "49152-49200:49152-49200/udp"
+    command: >
+      -n
+      --listening-port=3479
+      --fingerprint
+      --lt-cred-mech
+      --user=nsn:password
+      --realm=nsn.local
+      --relay-ip=0.0.0.0
+      --external-ip=127.0.0.1
+      --verbose
+    networks:
+      - nsn-network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: nsn-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - nsn-network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: nsn-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    # WARNING: DEV MODE ONLY - Change admin password for any non-local deployment!
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - nsn-network
+    depends_on:
+      - prometheus
+
+  # Jaeger (distributed tracing)
+  jaeger:
+    image: jaegertracing/all-in-one:1.50
+    container_name: nsn-jaeger
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "14250:14250"  # gRPC
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false
+      - BADGER_DIRECTORY_VALUE=/badger/data
+      - BADGER_DIRECTORY_KEY=/badger/key
+    volumes:
+      - jaeger-data:/badger
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - nsn-network
+
+volumes:
+  substrate-data:
+    driver: local
+  model-weights:
+    driver: local
+  vortex-output:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  jaeger-data:
+    driver: local
+
+networks:
+  nsn-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

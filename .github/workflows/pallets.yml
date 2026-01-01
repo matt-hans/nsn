@@ -1,0 +1,276 @@
+name: NSN Pallets CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'nsn-chain/pallets/**'
+      - 'nsn-chain/runtime/**'
+      - 'nsn-chain/Cargo.toml'
+      - 'nsn-chain/Cargo.lock'
+      - '.github/workflows/pallets.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'nsn-chain/pallets/**'
+      - 'nsn-chain/runtime/**'
+      - 'nsn-chain/Cargo.toml'
+      - '.github/workflows/pallets.yml'
+  workflow_dispatch:
+
+env:
+  RUST_TOOLCHAIN: stable-2024-09-05
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: Check & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: rustfmt, clippy
+          target: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: nsn-chain/target
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check formatting
+        working-directory: nsn-chain
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy (strict)
+        working-directory: nsn-chain
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check build
+        working-directory: nsn-chain
+        run: cargo check --release --locked
+
+  test-pallets:
+    name: Test Pallet
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pallet:
+          - nsn-stake
+          - nsn-reputation
+          - nsn-director
+          - nsn-bft
+          - nsn-storage
+          - nsn-treasury
+          - nsn-task-market
+          - nsn-model-registry
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            nsn-chain/target
+          key: ${{ runner.os }}-cargo-test-${{ matrix.pallet }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        working-directory: nsn-chain
+        run: cargo test --package pallet-${{ matrix.pallet }} --all-features -- --nocapture
+
+      - name: Install tarpaulin
+        run: |
+          # Only install if not already cached
+          if ! command -v cargo-tarpaulin &> /dev/null; then
+            cargo install cargo-tarpaulin --version 0.30.0
+          else
+            echo "cargo-tarpaulin already installed (cached)"
+          fi
+
+      - name: Generate coverage
+        working-directory: nsn-chain
+        run: cargo tarpaulin --package pallet-${{ matrix.pallet }} --all-features --out Xml --output-dir ../coverage-${{ matrix.pallet }}
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-${{ matrix.pallet }}/cobertura.xml
+          flags: pallet-${{ matrix.pallet }}
+          name: pallet-${{ matrix.pallet }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Set to false for initial setup. Once CODECOV_TOKEN is configured,
+          # change to true to fail CI on coverage upload errors
+          fail_ci_if_error: false
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [check]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            nsn-chain/target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run integration tests
+        working-directory: nsn-chain
+        run: cargo test --release --all -- --nocapture --test-threads=1
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Run cargo-audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: nsn-chain
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo-deny
+        working-directory: nsn-chain
+        run: cargo deny check
+
+  build-wasm:
+    name: Build Runtime WASM
+    runs-on: ubuntu-latest
+    needs: [check, test-pallets]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            nsn-chain/target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build runtime WASM
+        working-directory: nsn-chain
+        run: |
+          cargo build --release --target wasm32-unknown-unknown -p nsn-runtime
+
+      - name: Locate WASM artifact
+        id: locate-wasm
+        working-directory: nsn-chain
+        run: |
+          WASM_PATH=$(find target/wasm32-unknown-unknown/release -name "nsn_runtime.wasm" -o -name "nsn_runtime.compact.wasm" | head -1)
+          echo "wasm_path=$WASM_PATH" >> $GITHUB_OUTPUT
+          ls -lh $WASM_PATH
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nsn-runtime-wasm
+          path: nsn-chain/${{ steps.locate-wasm.outputs.wasm_path }}
+          retention-days: 30
+
+      - name: Check benchmark weights (if baseline exists)
+        working-directory: nsn-chain
+        run: |
+          if [ -f "../benchmarks/baseline.json" ]; then
+            echo "Baseline weights found, checking for regressions..."
+            # Install jq for JSON parsing
+            sudo apt-get update && sudo apt-get install -y jq
+            # Run weight regression check (validates baseline format)
+            chmod +x ../scripts/check-weight-regression.sh
+            ../scripts/check-weight-regression.sh ../benchmarks/baseline.json
+            echo "✅ Weight baseline validation passed"
+          else
+            echo "⚠️  No baseline weights found, skipping weight regression check"
+          fi
+
+  deploy-nsn-testnet:
+    name: Deploy to NSN Testnet
+    runs-on: ubuntu-latest
+    needs: [build-wasm, security, integration-tests]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nsn-runtime-wasm
+          path: ./wasm
+
+      - name: Install Polkadot JS Tools
+        run: |
+          npm install -g @polkadot/api-cli
+          polkadot-js-api --version
+
+      - name: Submit runtime upgrade to NSN Testnet
+        env:
+          NSN_SUDO_SEED: ${{ secrets.NSN_TESTNET_SUDO_SEED }}
+          NSN_TESTNET_WS: ${{ secrets.NSN_TESTNET_WS_URL || 'wss://testnet.nsn.network' }}
+        run: |
+          chmod +x ./scripts/submit-runtime-upgrade.sh
+          ./scripts/submit-runtime-upgrade.sh \
+            --network nsn-testnet \
+            --wasm ./wasm/nsn_runtime.wasm \
+            --sudo-seed "$NSN_SUDO_SEED" \
+            --ws-url "$NSN_TESTNET_WS"
+
+      - name: Upload deployment logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-logs
+          path: deployment.log
+          retention-days: 7

@@ -1,0 +1,73 @@
+# Prometheus configuration for NSN local development environment
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'nsn-local'
+    environment: 'development'
+
+# Alertmanager configuration (optional for local dev)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - localhost:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # NSN Substrate node metrics
+  - job_name: 'substrate-node'
+    static_configs:
+      - targets: ['substrate-node:9615']
+        labels:
+          service: 'substrate-node'
+          chain: 'nsn-dev'
+    metric_relabel_configs:
+      # Keep only NSN-specific metrics
+      - source_labels: [__name__]
+        regex: '(substrate_.*|polkadot_.*|nsn_.*)'
+        action: keep
+
+  # Vortex AI engine metrics
+  - job_name: 'vortex'
+    static_configs:
+      - targets: ['vortex:9100']
+        labels:
+          service: 'vortex'
+          component: 'ai-engine'
+    scrape_interval: 10s  # More frequent for GPU metrics
+
+  # STUN/TURN servers (if they expose metrics)
+  - job_name: 'stun-turn'
+    static_configs:
+      - targets: ['stun-server:3478', 'turn-server:3479']
+        labels:
+          service: 'nat-traversal'
+    scrape_timeout: 5s
+    # These are placeholder targets - coturn doesn't expose Prometheus metrics by default
+
+  # Grafana self-monitoring (optional)
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          service: 'grafana'
+    metrics_path: '/metrics'
+
+  # Jaeger metrics (optional)
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+        labels:
+          service: 'jaeger'

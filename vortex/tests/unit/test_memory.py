@@ -75,11 +75,13 @@ class TestVRAMUtilities:
 
         log_vram_snapshot("test_snapshot")
 
-        # Verify logger.log was called with correct message
+        # Verify logger.log was called with correct arguments
         mock_logger.log.assert_called_once()
-        args = mock_logger.log.call_args[0]
-        assert "test_snapshot" in args[1]
-        assert "6.20GB" in args[1] or "allocated" in args[1]
+        call_args, call_kwargs = mock_logger.log.call_args
+        # Check format string contains placeholders
+        assert "VRAM snapshot" in call_args[1]
+        # Check label is passed as argument
+        assert "test_snapshot" in call_args
 
     @patch("torch.cuda.is_available", return_value=True)
     @patch("torch.cuda.empty_cache")

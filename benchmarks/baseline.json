@@ -1,0 +1,160 @@
+{
+  "_metadata": {
+    "description": "Baseline weight measurements for NSN Chain pallets",
+    "version": "1.0.0",
+    "generated": "2025-12-31",
+    "toolchain": "stable-2024-09-05",
+    "note": "Weights are measured in reference time (picoseconds) and proof size (bytes). This is a placeholder baseline - run 'cargo build --release --features runtime-benchmarks' and benchmark suite to generate actual values."
+  },
+  "pallet-nsn-stake": {
+    "deposit_stake": {
+      "ref_time": 50000000,
+      "proof_size": 3500,
+      "description": "Stake NSN tokens for a specific role"
+    },
+    "delegate": {
+      "ref_time": 45000000,
+      "proof_size": 3200,
+      "description": "Delegate stake to another validator"
+    },
+    "slash": {
+      "ref_time": 60000000,
+      "proof_size": 4000,
+      "description": "Slash staked tokens for protocol violations"
+    },
+    "withdraw_stake": {
+      "ref_time": 48000000,
+      "proof_size": 3400,
+      "description": "Withdraw unlocked stake"
+    }
+  },
+  "pallet-nsn-reputation": {
+    "record_event": {
+      "ref_time": 40000000,
+      "proof_size": 2800,
+      "description": "Record a reputation event with Merkle proof"
+    },
+    "prune_old_events": {
+      "ref_time": 120000000,
+      "proof_size": 8000,
+      "description": "Prune events older than retention period"
+    }
+  },
+  "pallet-nsn-director": {
+    "submit_bft_result": {
+      "ref_time": 80000000,
+      "proof_size": 5500,
+      "description": "Submit BFT consensus result for a slot"
+    },
+    "challenge_bft_result": {
+      "ref_time": 95000000,
+      "proof_size": 6200,
+      "description": "Challenge a BFT result with bond"
+    },
+    "resolve_challenge": {
+      "ref_time": 110000000,
+      "proof_size": 7000,
+      "description": "Resolve pending challenge with validator attestations"
+    },
+    "finalize_slot": {
+      "ref_time": 65000000,
+      "proof_size": 4500,
+      "description": "Finalize slot after challenge period"
+    }
+  },
+  "pallet-nsn-bft": {
+    "submit_embeddings_hash": {
+      "ref_time": 35000000,
+      "proof_size": 2400,
+      "description": "Submit CLIP embeddings hash for BFT round"
+    },
+    "record_consensus_round": {
+      "ref_time": 42000000,
+      "proof_size": 3000,
+      "description": "Record completed BFT consensus round"
+    }
+  },
+  "pallet-nsn-storage": {
+    "create_deal": {
+      "ref_time": 75000000,
+      "proof_size": 5000,
+      "description": "Create erasure-coded pinning deal"
+    },
+    "initiate_audit": {
+      "ref_time": 55000000,
+      "proof_size": 3800,
+      "description": "Initiate random audit of pinned shard"
+    },
+    "submit_audit_proof": {
+      "ref_time": 70000000,
+      "proof_size": 4800,
+      "description": "Submit proof for pinning audit"
+    },
+    "claim_pinning_rewards": {
+      "ref_time": 52000000,
+      "proof_size": 3600,
+      "description": "Claim accumulated pinning rewards"
+    }
+  },
+  "pallet-nsn-treasury": {
+    "distribute_rewards": {
+      "ref_time": 150000000,
+      "proof_size": 9500,
+      "description": "Distribute treasury rewards to roles"
+    },
+    "fund_treasury": {
+      "ref_time": 38000000,
+      "proof_size": 2600,
+      "description": "Add funds to treasury"
+    }
+  },
+  "pallet-nsn-task-market": {
+    "submit_task": {
+      "ref_time": 85000000,
+      "proof_size": 5800,
+      "description": "Submit new AI compute task to marketplace"
+    },
+    "accept_task": {
+      "ref_time": 62000000,
+      "proof_size": 4200,
+      "description": "Accept task as compute provider"
+    },
+    "submit_result": {
+      "ref_time": 90000000,
+      "proof_size": 6000,
+      "description": "Submit task execution result"
+    },
+    "verify_result": {
+      "ref_time": 78000000,
+      "proof_size": 5200,
+      "description": "Verify submitted task result"
+    },
+    "cancel_task": {
+      "ref_time": 58000000,
+      "proof_size": 3900,
+      "description": "Cancel pending task"
+    }
+  },
+  "pallet-nsn-model-registry": {
+    "register_model": {
+      "ref_time": 72000000,
+      "proof_size": 4900,
+      "description": "Register AI model capabilities"
+    },
+    "update_model": {
+      "ref_time": 68000000,
+      "proof_size": 4600,
+      "description": "Update model metadata"
+    },
+    "deregister_model": {
+      "ref_time": 48000000,
+      "proof_size": 3200,
+      "description": "Remove model from registry"
+    },
+    "query_capabilities": {
+      "ref_time": 25000000,
+      "proof_size": 1800,
+      "description": "Query models by capability tags"
+    }
+  }
+}

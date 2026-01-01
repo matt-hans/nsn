@@ -1,0 +1,18 @@
+{
+  "_metadata": {
+    "description": "Test weights with no regression",
+    "version": "1.0.0"
+  },
+  "pallet-nsn-stake": {
+    "deposit_stake": {
+      "ref_time": 52000000,
+      "proof_size": 3500,
+      "description": "Stake NSN tokens - only 4% increase"
+    },
+    "delegate": {
+      "ref_time": 43000000,
+      "proof_size": 3200,
+      "description": "Delegate - 4.4% improvement"
+    }
+  }
+}

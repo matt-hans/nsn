@@ -1,0 +1,57 @@
+# Multi-stage build for NSN Substrate node
+FROM rust:1.75-bookworm as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    clang \
+    libclang-dev \
+    cmake \
+    git \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy workspace files
+COPY nsn-chain/Cargo.toml nsn-chain/Cargo.lock ./
+COPY nsn-chain/rust-toolchain.toml ./
+COPY nsn-chain/node ./node
+COPY nsn-chain/runtime ./runtime
+COPY nsn-chain/pallets ./pallets
+
+# Copy node-core primitives (dependency)
+COPY node-core/crates/primitives /node-core/crates/primitives
+
+# Build the node binary
+RUN cargo build --release --bin nsn-node
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 -U -s /bin/sh nsn && \
+    mkdir -p /data && \
+    chown -R nsn:nsn /data
+
+WORKDIR /app
+
+# Copy the built binary from builder stage
+COPY --from=builder /app/target/release/nsn-node /usr/local/bin/nsn-node
+
+# Copy chain spec
+COPY docker/chain-spec-dev.json /app/chain-spec.json
+
+# Set ownership
+RUN chown -R nsn:nsn /app
+
+USER nsn
+
+EXPOSE 9944 9933 30333 9615
+
+ENTRYPOINT ["/usr/local/bin/nsn-node"]

@@ -1,0 +1,64 @@
+# Vortex AI Engine with GPU support
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH="${CUDA_HOME}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    git \
+    curl \
+    build-essential \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set python3.11 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+
+WORKDIR /app
+
+# Copy requirements first for Docker layer caching
+COPY vortex/pyproject.toml vortex/README.md ./
+RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir \
+    torch==2.1.0 \
+    torchvision==0.16.0 \
+    torchaudio==2.1.0 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# Install vortex package
+COPY vortex/ ./vortex/
+RUN cd vortex && pip3 install --no-cache-dir -e .
+
+# Create directories for models and output
+RUN mkdir -p /models /output /app/logs
+
+# Copy model download script
+COPY docker/scripts/download-models.py /app/scripts/download-models.py
+RUN chmod +x /app/scripts/download-models.py
+
+# Create non-root user
+RUN useradd -m -u 1000 -U -s /bin/sh vortex && \
+    chown -R vortex:vortex /app /models /output
+
+USER vortex
+
+EXPOSE 50051 9100
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python3 -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'" || exit 1
+
+# Default command - starts the Vortex gRPC server
+CMD ["python3", "-m", "vortex.server", "--models-path", "/models", "--output-path", "/output"]
