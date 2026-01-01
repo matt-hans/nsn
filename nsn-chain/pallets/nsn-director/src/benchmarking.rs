@@ -18,43 +18,43 @@ use sp_std::vec;
 
 #[benchmarks]
 mod benchmarks {
-	use super::*;
+    use super::*;
 
-	#[benchmark]
-	fn submit_bft_result() {
-		// Setup: Create caller and stake
-		let caller: T::AccountId = whitelisted_caller();
+    #[benchmark]
+    fn submit_bft_result() {
+        // Setup: Create caller and stake
+        let caller: T::AccountId = whitelisted_caller();
 
-		// TODO: Set up elected directors for benchmark slot
+        // TODO: Set up elected directors for benchmark slot
 
-		#[extrinsic_call]
-		submit_bft_result(
-			RawOrigin::Signed(caller),
-			100u64,
-			BoundedVec::try_from(vec![]).unwrap(),
-			T::Hash::default(),
-		);
-	}
+        #[extrinsic_call]
+        submit_bft_result(
+            RawOrigin::Signed(caller),
+            100u64,
+            BoundedVec::try_from(vec![]).unwrap(),
+            T::Hash::default(),
+        );
+    }
 
-	#[benchmark]
-	fn challenge_bft_result() {
-		let caller: T::AccountId = whitelisted_caller();
+    #[benchmark]
+    fn challenge_bft_result() {
+        let caller: T::AccountId = whitelisted_caller();
 
-		// TODO: Set up BFT result to challenge
+        // TODO: Set up BFT result to challenge
 
-		#[extrinsic_call]
-		challenge_bft_result(RawOrigin::Signed(caller), 100u64, T::Hash::default());
-	}
+        #[extrinsic_call]
+        challenge_bft_result(RawOrigin::Signed(caller), 100u64, T::Hash::default());
+    }
 
-	#[benchmark]
-	fn resolve_challenge() {
-		// TODO: Set up pending challenge
+    #[benchmark]
+    fn resolve_challenge() {
+        // TODO: Set up pending challenge
 
-		#[extrinsic_call]
-		resolve_challenge(
-			RawOrigin::Root,
-			100u64,
-			BoundedVec::try_from(vec![]).unwrap(),
-		);
-	}
+        #[extrinsic_call]
+        resolve_challenge(
+            RawOrigin::Root,
+            100u64,
+            BoundedVec::try_from(vec![]).unwrap(),
+        );
+    }
 }

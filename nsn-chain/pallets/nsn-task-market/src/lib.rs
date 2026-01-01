@@ -31,6 +31,8 @@
 
 pub use pallet::*;
 
+use frame_support::pallet_prelude::DispatchResult;
+
 mod types;
 pub use types::{FailReason, RendererInfo, TaskIntent, TaskLane, TaskPriority, TaskStatus};
 
@@ -75,7 +77,7 @@ pub mod pallet {
         },
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{CheckedAdd, SaturatedConversion, Zero};
+    use sp_runtime::traits::{CheckedAdd, Hash, SaturatedConversion, Saturating, Zero};
 
     /// Balance type alias using ReservableCurrency
     pub type BalanceOf<T> =
@@ -220,7 +222,11 @@ pub mod pallet {
     #[pallet::getter(fn renderer_registry)]
     pub type RendererRegistry<T: Config> = StorageValue<
         _,
-        BoundedBTreeMap<BoundedVec<u8, T::MaxModelIdLen>, RendererInfoOf<T>, T::MaxRegisteredRenderers>,
+        BoundedBTreeMap<
+            BoundedVec<u8, T::MaxModelIdLen>,
+            RendererInfoOf<T>,
+            T::MaxRegisteredRenderers,
+        >,
         ValueQuery,
     >;
 
@@ -244,7 +250,10 @@ pub mod pallet {
             executor: T::AccountId,
         },
         /// A task started execution
-        TaskStarted { task_id: u64, executor: T::AccountId },
+        TaskStarted {
+            task_id: u64,
+            executor: T::AccountId,
+        },
         /// A task was completed successfully
         TaskCompleted {
             task_id: u64,
@@ -379,7 +388,10 @@ pub mod pallet {
             );
 
             // Validate renderer/model requirements
-            ensure!(!model_requirements.is_empty(), Error::<T>::InvalidRendererId);
+            ensure!(
+                !model_requirements.is_empty(),
+                Error::<T>::InvalidRendererId
+            );
             Self::ensure_renderer_allowed(&model_requirements, lane.clone())?;
 
             // Validate minimum escrow
@@ -508,7 +520,10 @@ pub mod pallet {
             Tasks::<T>::try_mutate(task_id, |maybe_task| -> DispatchResult {
                 let task = maybe_task.as_mut().ok_or(Error::<T>::TaskNotFound)?;
 
-                ensure!(task.status == TaskStatus::Assigned, Error::<T>::TaskNotAssigned);
+                ensure!(
+                    task.status == TaskStatus::Assigned,
+                    Error::<T>::TaskNotAssigned
+                );
 
                 let executor = task.executor.as_ref().ok_or(Error::<T>::TaskNotAssigned)?;
                 ensure!(&caller == executor, Error::<T>::NotExecutor);
@@ -745,7 +760,7 @@ pub mod pallet {
                 ensure!(deterministic, Error::<T>::RendererNotDeterministic);
             }
 
-            RendererRegistry::<T>::try_mutate(|registry| {
+            RendererRegistry::<T>::try_mutate(|registry| -> Result<(), DispatchError> {
                 if registry.contains_key(&renderer_id) {
                     return Err(Error::<T>::RendererAlreadyRegistered.into());
                 }
@@ -782,7 +797,7 @@ pub mod pallet {
         ) -> DispatchResult {
             T::RendererRegistrarOrigin::ensure_origin(origin)?;
 
-            RendererRegistry::<T>::try_mutate(|registry| {
+            RendererRegistry::<T>::try_mutate(|registry| -> Result<(), DispatchError> {
                 if registry.remove(&renderer_id).is_none() {
                     return Err(Error::<T>::RendererNotRegistered.into());
                 }
@@ -950,7 +965,8 @@ pub mod pallet {
                             Tasks::<T>::insert(task_id, task);
                             queue.remove(idx);
                             expired += 1;
-                            total_weight = total_weight.saturating_add(T::DbWeight::get().reads_writes(2, 2));
+                            total_weight =
+                                total_weight.saturating_add(T::DbWeight::get().reads_writes(2, 2));
                             Self::deposit_event(Event::TaskExpired { task_id });
                             continue;
                         }
@@ -994,7 +1010,8 @@ pub mod pallet {
                                 );
                                 T::ReputationUpdater::record_task_result(executor, false);
                             }
-                            total_weight = total_weight.saturating_add(T::DbWeight::get().reads_writes(2, 2));
+                            total_weight =
+                                total_weight.saturating_add(T::DbWeight::get().reads_writes(2, 2));
                         }
                     }
                     count += 1;

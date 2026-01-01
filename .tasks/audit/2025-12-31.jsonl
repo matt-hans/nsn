@@ -26,3 +26,12 @@
 {"timestamp":"2025-12-31T12:00:00Z","agent":"verify-quality","task_id":"T027","stage":4,"result":"PASS","score":88,"duration_ms":300000,"issues":7}
 {"timestamp":"2025-12-31T08:24:20Z","agent":"verify-integration","task_id":"T027","stage":5,"result":"PASS","score":88,"duration_ms":45000,"issues":3}
 {"timestamp":"2025-12-31T12:00:00Z","agent":"verify-regression","task_id":"T027","stage":5,"result":"PASS","score":100,"duration_ms":180000,"issues":0}
+{"timestamp":"2025-12-31T19:19:55-05:00","agent":"verify-syntax","task_id":"T038","stage":1,"result":"WARN","score":85,"duration_ms":3200,"issues":3}
+{"timestamp":"2025-12-31T00:00:00Z","agent":"verify-complexity","task_id":"T038","stage":1,"result":"PASS","score":95,"duration_ms":1500,"issues":0}
+{"timestamp":"2025-12-31T00:00:00Z","agent":"verify-dependency","task_id":"T038","stage":1,"result":"PASS","score":85,"duration_ms":4500,"issues":2}
+{"timestamp":"2025-12-31T18:30:00Z","agent":"verify-execution","task_id":"T038","stage":2,"result":"BLOCK","score":35,"duration_ms":15000,"issues":2}
+{"timestamp":"2025-12-31T00:00:00Z","agent":"verify-security","task_id":"T038","stage":3,"result":"PASS","score":85,"duration_ms":3000,"issues":5}
+{"timestamp":"2025-12-31T12:34:56Z","agent":"verify-error-handling","task_id":"T038","stage":4,"result":"WARN","score":72,"duration_ms":245,"issues":6}
+{"timestamp":"2025-12-31T19:25:34Z","agent":"verify-documentation","task_id":"T038","stage":4,"result":"WARN","score":85,"duration_ms":2100,"issues":7}
+{"timestamp":"2025-12-31T23:59:59Z","agent":"verify-quality","task_id":"T038","stage":4,"result":"PASS","score":87,"duration_ms":300000,"issues":7,"critical":0,"high":3,"medium":4,"low":5,"duplication_pct":7,"complexity_avg":"low","technical_debt":3}
+{"timestamp":"2025-12-31T19:25:34Z","agent":"verify-documentation","task_id":"T038","stage":4,"result":"WARN","score":85,"duration_ms":2100,"issues":7,"critical":0,"high":2,"medium":3,"low":2}

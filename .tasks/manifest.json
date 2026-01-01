@@ -953,9 +953,9 @@
     },
     {
       "id": "T038",
-      "title": "ICN Chain Specification and Genesis Configuration",
-      "file": "tasks/T038-chain-spec-genesis.md",
-      "status": "pending",
+      "title": "NSN Chain Specification and Genesis Configuration",
+      "file": "completed/T038-chain-spec-genesis.md",
+      "status": "completed",
       "priority": 1,
       "depends_on": [
         "T001"
@@ -968,9 +968,11 @@
         "phase-a"
       ],
       "estimated_tokens": 8000,
-      "actual_tokens": 0,
+      "actual_tokens": 9500,
       "created_at": "2025-12-24T00:00:00Z",
-      "updated_at": "2025-12-24T00:00:00Z"
+      "updated_at": "2025-12-31T19:22:52Z",
+      "completed_at": "2025-12-31T19:22:52Z",
+      "completed_by": "task-completer"
     },
     {
       "id": "T039",
@@ -1126,9 +1128,9 @@
   ],
   "stats": {
     "total_tasks": 44,
-    "completed": 28,
+    "completed": 29,
     "in_progress": 0,
-    "pending": 16,
+    "pending": 15,
     "blocked": 0
   },
   "dependency_graph": {

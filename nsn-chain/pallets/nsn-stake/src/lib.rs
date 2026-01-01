@@ -32,6 +32,8 @@
 
 pub use pallet::*;
 
+use frame_support::weights::Weight;
+
 mod types;
 pub use types::{NodeMode, NodeRole, Region, SlashReason, StakeInfo};
 
@@ -652,7 +654,7 @@ pub mod pallet {
 
     // Helper functions
     impl<T: Config> Pallet<T> {
-        fn set_node_mode_internal(account: &T::AccountId, mode: NodeMode) -> Weight {
+        pub fn set_node_mode_internal(account: &T::AccountId, mode: NodeMode) -> Weight {
             if !Stakes::<T>::contains_key(account) {
                 return T::DbWeight::get().reads(1);
             }
@@ -664,7 +666,7 @@ pub mod pallet {
             T::DbWeight::get().reads_writes(1, 1)
         }
 
-        fn set_node_role_internal(account: &T::AccountId, role: NodeRole) -> Weight {
+        pub fn set_node_role_internal(account: &T::AccountId, role: NodeRole) -> Weight {
             if !Stakes::<T>::contains_key(account) {
                 return T::DbWeight::get().reads(1);
             }

@@ -37,44 +37,44 @@ pub const REWARD_INTERVAL_BLOCKS: u32 = 100;
 
 /// Status of a pinning deal.
 #[derive(
-	Encode,
-	Decode,
-	DecodeWithMemTracking,
-	Clone,
-	PartialEq,
-	Eq,
-	RuntimeDebug,
-	TypeInfo,
-	MaxEncodedLen,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 pub enum DealStatus {
-	/// Deal is active and rewards are being distributed
-	Active,
-	/// Deal has expired (past expires_at block)
-	Expired,
-	/// Deal was cancelled by creator (future feature)
-	Cancelled,
+    /// Deal is active and rewards are being distributed
+    Active,
+    /// Deal has expired (past expires_at block)
+    Expired,
+    /// Deal was cancelled by creator (future feature)
+    Cancelled,
 }
 
 /// Status of an audit challenge.
 #[derive(
-	Encode,
-	Decode,
-	DecodeWithMemTracking,
-	Clone,
-	PartialEq,
-	Eq,
-	RuntimeDebug,
-	TypeInfo,
-	MaxEncodedLen,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 pub enum AuditStatus {
-	/// Audit pending (waiting for proof submission)
-	Pending,
-	/// Audit passed (proof valid)
-	Passed,
-	/// Audit failed (proof invalid or timeout)
-	Failed,
+    /// Audit pending (waiting for proof submission)
+    Pending,
+    /// Audit passed (proof valid)
+    Passed,
+    /// Audit failed (proof invalid or timeout)
+    Failed,
 }
 
 /// 32-byte Merkle root for a shard (root of content Merkle tree)
@@ -101,31 +101,35 @@ pub type MerkleRoot = [u8; 32];
 #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 #[scale_info(skip_type_params(AccountId, Balance, BlockNumber, MaxShards))]
 pub struct PinningDeal<AccountId, Balance, BlockNumber, MaxShards: Get<u32>> {
-	/// Unique deal identifier
-	pub deal_id: DealId,
-	/// Account that created the deal
-	pub creator: AccountId,
-	/// Hashes of all shards (14 for Reed-Solomon 10+4)
-	pub shards: BoundedVec<ShardHash, MaxShards>,
-	/// Merkle roots for each shard (for audit verification)
-	/// Each root commits to 64-byte chunks of the shard content
-	pub merkle_roots: BoundedVec<MerkleRoot, MaxShards>,
-	/// Block when deal was created
-	pub created_at: BlockNumber,
-	/// Block when deal expires (no more rewards after this)
-	pub expires_at: BlockNumber,
-	/// Total reward pool for this deal
-	pub total_reward: Balance,
-	/// Current deal status
-	pub status: DealStatus,
+    /// Unique deal identifier
+    pub deal_id: DealId,
+    /// Account that created the deal
+    pub creator: AccountId,
+    /// Hashes of all shards (14 for Reed-Solomon 10+4)
+    pub shards: BoundedVec<ShardHash, MaxShards>,
+    /// Merkle roots for each shard (for audit verification)
+    /// Each root commits to 64-byte chunks of the shard content
+    pub merkle_roots: BoundedVec<MerkleRoot, MaxShards>,
+    /// Block when deal was created
+    pub created_at: BlockNumber,
+    /// Block when deal expires (no more rewards after this)
+    pub expires_at: BlockNumber,
+    /// Total reward pool for this deal
+    pub total_reward: Balance,
+    /// Current deal status
+    pub status: DealStatus,
 }
 
 // Manual MaxEncodedLen for PinningDeal
-impl<AccountId: MaxEncodedLen, Balance: MaxEncodedLen, BlockNumber: MaxEncodedLen, MaxShards: Get<u32>>
-	MaxEncodedLen for PinningDeal<AccountId, Balance, BlockNumber, MaxShards>
+impl<
+        AccountId: MaxEncodedLen,
+        Balance: MaxEncodedLen,
+        BlockNumber: MaxEncodedLen,
+        MaxShards: Get<u32>,
+    > MaxEncodedLen for PinningDeal<AccountId, Balance, BlockNumber, MaxShards>
 {
-	fn max_encoded_len() -> usize {
-		32 // deal_id
+    fn max_encoded_len() -> usize {
+        32 // deal_id
 			+ AccountId::max_encoded_len() // creator
 			+ <BoundedVec<ShardHash, MaxShards>>::max_encoded_len() // shards
 			+ <BoundedVec<MerkleRoot, MaxShards>>::max_encoded_len() // merkle_roots
@@ -133,7 +137,7 @@ impl<AccountId: MaxEncodedLen, Balance: MaxEncodedLen, BlockNumber: MaxEncodedLe
 			+ BlockNumber::max_encoded_len() // expires_at
 			+ Balance::max_encoded_len() // total_reward
 			+ DealStatus::max_encoded_len() // status
-	}
+    }
 }
 
 use frame_support::{pallet_prelude::*, BoundedVec};
@@ -156,14 +160,24 @@ pub const MAX_MERKLE_DEPTH: u32 = 16;
 /// - If bit i of leaf_index is 0: hash(current || sibling[i])
 /// - If bit i of leaf_index is 1: hash(sibling[i] || current)
 /// Final result should equal the stored Merkle root.
-#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
 pub struct MerkleProof {
-	/// The 64-byte chunk of data being proven
-	pub leaf_data: [u8; 64],
-	/// Sibling hashes from leaf to root
-	pub siblings: BoundedVec<[u8; 32], ConstU32<MAX_MERKLE_DEPTH>>,
-	/// Index of the leaf in the tree (determines path direction)
-	pub leaf_index: u32,
+    /// The 64-byte chunk of data being proven
+    pub leaf_data: [u8; 64],
+    /// Sibling hashes from leaf to root
+    pub siblings: BoundedVec<[u8; 32], ConstU32<MAX_MERKLE_DEPTH>>,
+    /// Index of the leaf in the tree (determines path direction)
+    pub leaf_index: u32,
 }
 
 /// Audit challenge for a pinner.
@@ -183,82 +197,82 @@ pub struct MerkleProof {
 #[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo)]
 #[scale_info(skip_type_params(AccountId, BlockNumber))]
 pub struct PinningAudit<AccountId, BlockNumber> {
-	/// Unique audit identifier
-	pub audit_id: AuditId,
-	/// Account being audited
-	pub pinner: AccountId,
-	/// Shard hash being audited
-	pub shard_hash: ShardHash,
-	/// Challenge parameters
-	pub challenge: AuditChallenge,
-	/// Block number when response is due
-	pub deadline: BlockNumber,
-	/// Current audit status
-	pub status: AuditStatus,
+    /// Unique audit identifier
+    pub audit_id: AuditId,
+    /// Account being audited
+    pub pinner: AccountId,
+    /// Shard hash being audited
+    pub shard_hash: ShardHash,
+    /// Challenge parameters
+    pub challenge: AuditChallenge,
+    /// Block number when response is due
+    pub deadline: BlockNumber,
+    /// Current audit status
+    pub status: AuditStatus,
 }
 
 // Manual MaxEncodedLen for PinningAudit
 impl<AccountId: MaxEncodedLen, BlockNumber: MaxEncodedLen> MaxEncodedLen
-	for PinningAudit<AccountId, BlockNumber>
+    for PinningAudit<AccountId, BlockNumber>
 {
-	fn max_encoded_len() -> usize {
-		32 // audit_id
+    fn max_encoded_len() -> usize {
+        32 // audit_id
 			+ AccountId::max_encoded_len() // pinner
 			+ 32 // shard_hash
 			+ AuditChallenge::max_encoded_len() // challenge
 			+ BlockNumber::max_encoded_len() // deadline
 			+ AuditStatus::max_encoded_len() // status
-	}
+    }
 }
 
 /// Audit challenge parameters.
 ///
 /// Randomly generated using VRF to prevent prediction.
 #[derive(
-	Encode,
-	Decode,
-	DecodeWithMemTracking,
-	Clone,
-	PartialEq,
-	Eq,
-	RuntimeDebug,
-	TypeInfo,
-	MaxEncodedLen,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 pub struct AuditChallenge {
-	/// Byte offset within shard to request
-	pub byte_offset: u32,
-	/// Number of bytes to request (fixed at 64)
-	pub byte_length: u32,
-	/// Random nonce for proof freshness
-	pub nonce: [u8; 16],
+    /// Byte offset within shard to request
+    pub byte_offset: u32,
+    /// Number of bytes to request (fixed at 64)
+    pub byte_length: u32,
+    /// Random nonce for proof freshness
+    pub nonce: [u8; 16],
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn test_erasure_coding_constants() {
-		assert_eq!(ERASURE_DATA_SHARDS, 10);
-		assert_eq!(ERASURE_PARITY_SHARDS, 4);
-		assert_eq!(TOTAL_SHARDS_PER_CHUNK, 14);
-		assert_eq!(REPLICATION_FACTOR, 5);
-	}
+    #[test]
+    fn test_erasure_coding_constants() {
+        assert_eq!(ERASURE_DATA_SHARDS, 10);
+        assert_eq!(ERASURE_PARITY_SHARDS, 4);
+        assert_eq!(TOTAL_SHARDS_PER_CHUNK, 14);
+        assert_eq!(REPLICATION_FACTOR, 5);
+    }
 
-	#[test]
-	fn test_deal_status_encoding() {
-		let active = DealStatus::Active;
-		let expired = DealStatus::Expired;
-		assert_ne!(active, expired);
-	}
+    #[test]
+    fn test_deal_status_encoding() {
+        let active = DealStatus::Active;
+        let expired = DealStatus::Expired;
+        assert_ne!(active, expired);
+    }
 
-	#[test]
-	fn test_audit_status_encoding() {
-		let pending = AuditStatus::Pending;
-		let passed = AuditStatus::Passed;
-		let failed = AuditStatus::Failed;
-		assert_ne!(pending, passed);
-		assert_ne!(passed, failed);
-	}
+    #[test]
+    fn test_audit_status_encoding() {
+        let pending = AuditStatus::Pending;
+        let passed = AuditStatus::Passed;
+        let failed = AuditStatus::Failed;
+        assert_ne!(pending, passed);
+        assert_ne!(passed, failed);
+    }
 }

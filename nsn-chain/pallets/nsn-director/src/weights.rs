@@ -20,71 +20,71 @@ use frame_support::{traits::Get, weights::Weight};
 
 /// Weight functions for pallet_nsn_director.
 pub trait WeightInfo {
-	fn submit_bft_result() -> Weight;
-	fn challenge_bft_result() -> Weight;
-	fn resolve_challenge() -> Weight;
+    fn submit_bft_result() -> Weight;
+    fn challenge_bft_result() -> Weight;
+    fn resolve_challenge() -> Weight;
 }
 
 // Placeholder weights with PoV sizes
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
 
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-	/// Storage: ElectedDirectors (r:1 w:0)
-	/// Proof: ElectedDirectors (max_values: Some(1), max_size: Some(256), added: 751, mode: MaxEncodedLen)
-	/// Storage: BftResults (r:1 w:1)
-	/// Proof: BftResults (max_values: None, max_size: Some(512), added: 2987, mode: MaxEncodedLen)
-	/// Storage: SlotStatuses (r:0 w:1)
-	/// Proof: SlotStatuses (max_values: None, max_size: Some(16), added: 2491, mode: MaxEncodedLen)
-	/// Storage: Cooldowns (r:0 w:5)
-	/// Proof: Cooldowns (max_values: None, max_size: Some(40), added: 2515, mode: MaxEncodedLen)
-	fn submit_bft_result() -> Weight {
-		// PoV size: ElectedDirectors(256) + BftResults(512) + overhead(128) = 896 bytes
-		Weight::from_parts(50_000_000, 3738)
-			.saturating_add(T::DbWeight::get().reads(2))
-			.saturating_add(T::DbWeight::get().writes(7))
-	}
+    /// Storage: ElectedDirectors (r:1 w:0)
+    /// Proof: ElectedDirectors (max_values: Some(1), max_size: Some(256), added: 751, mode: MaxEncodedLen)
+    /// Storage: BftResults (r:1 w:1)
+    /// Proof: BftResults (max_values: None, max_size: Some(512), added: 2987, mode: MaxEncodedLen)
+    /// Storage: SlotStatuses (r:0 w:1)
+    /// Proof: SlotStatuses (max_values: None, max_size: Some(16), added: 2491, mode: MaxEncodedLen)
+    /// Storage: Cooldowns (r:0 w:5)
+    /// Proof: Cooldowns (max_values: None, max_size: Some(40), added: 2515, mode: MaxEncodedLen)
+    fn submit_bft_result() -> Weight {
+        // PoV size: ElectedDirectors(256) + BftResults(512) + overhead(128) = 896 bytes
+        Weight::from_parts(50_000_000, 3738)
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(7))
+    }
 
-	/// Storage: BftResults (r:1 w:0)
-	/// Proof: BftResults (max_values: None, max_size: Some(512), added: 2987, mode: MaxEncodedLen)
-	/// Storage: FinalizedSlots (r:1 w:0)
-	/// Proof: FinalizedSlots (max_values: None, max_size: Some(16), added: 2491, mode: MaxEncodedLen)
-	/// Storage: PendingChallenges (r:1 w:1)
-	/// Proof: PendingChallenges (max_values: None, max_size: Some(256), added: 2731, mode: MaxEncodedLen)
-	/// Storage: Stakes (r:1 w:0)
-	/// Proof: Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
-	fn challenge_bft_result() -> Weight {
-		// PoV size: BftResults(512) + FinalizedSlots(16) + PendingChallenges(256) + Stakes(128) + overhead(192) = 1104 bytes
-		Weight::from_parts(75_000_000, 10812)
-			.saturating_add(T::DbWeight::get().reads(4))
-			.saturating_add(T::DbWeight::get().writes(2))
-	}
+    /// Storage: BftResults (r:1 w:0)
+    /// Proof: BftResults (max_values: None, max_size: Some(512), added: 2987, mode: MaxEncodedLen)
+    /// Storage: FinalizedSlots (r:1 w:0)
+    /// Proof: FinalizedSlots (max_values: None, max_size: Some(16), added: 2491, mode: MaxEncodedLen)
+    /// Storage: PendingChallenges (r:1 w:1)
+    /// Proof: PendingChallenges (max_values: None, max_size: Some(256), added: 2731, mode: MaxEncodedLen)
+    /// Storage: Stakes (r:1 w:0)
+    /// Proof: Stakes (max_values: None, max_size: Some(128), added: 2603, mode: MaxEncodedLen)
+    fn challenge_bft_result() -> Weight {
+        // PoV size: BftResults(512) + FinalizedSlots(16) + PendingChallenges(256) + Stakes(128) + overhead(192) = 1104 bytes
+        Weight::from_parts(75_000_000, 10812)
+            .saturating_add(T::DbWeight::get().reads(4))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
 
-	/// Storage: PendingChallenges (r:1 w:1)
-	/// Storage: BftResults (r:1 w:0)
-	/// Storage: ElectedDirectors (r:1 w:0)
-	/// Storage: Stakes (r:5 w:5) - for slashing
-	/// Storage: ReputationScores (r:5 w:5) - for recording events
-	/// Storage: FinalizedSlots (r:0 w:1)
-	/// Storage: SlotStatuses (r:0 w:1)
-	fn resolve_challenge() -> Weight {
-		// PoV size: PendingChallenges(256) + BftResults(512) + ElectedDirectors(256) + Stakes(128*5) + ReputationScores(64*5) + overhead(256) = 2240 bytes
-		Weight::from_parts(150_000_000, 18000)
-			.saturating_add(T::DbWeight::get().reads(13))
-			.saturating_add(T::DbWeight::get().writes(13))
-	}
+    /// Storage: PendingChallenges (r:1 w:1)
+    /// Storage: BftResults (r:1 w:0)
+    /// Storage: ElectedDirectors (r:1 w:0)
+    /// Storage: Stakes (r:5 w:5) - for slashing
+    /// Storage: ReputationScores (r:5 w:5) - for recording events
+    /// Storage: FinalizedSlots (r:0 w:1)
+    /// Storage: SlotStatuses (r:0 w:1)
+    fn resolve_challenge() -> Weight {
+        // PoV size: PendingChallenges(256) + BftResults(512) + ElectedDirectors(256) + Stakes(128*5) + ReputationScores(64*5) + overhead(256) = 2240 bytes
+        Weight::from_parts(150_000_000, 18000)
+            .saturating_add(T::DbWeight::get().reads(13))
+            .saturating_add(T::DbWeight::get().writes(13))
+    }
 }
 
 // For tests
 impl WeightInfo for () {
-	fn submit_bft_result() -> Weight {
-		Weight::from_parts(50_000_000, 3738)
-	}
+    fn submit_bft_result() -> Weight {
+        Weight::from_parts(50_000_000, 3738)
+    }
 
-	fn challenge_bft_result() -> Weight {
-		Weight::from_parts(75_000_000, 10812)
-	}
+    fn challenge_bft_result() -> Weight {
+        Weight::from_parts(75_000_000, 10812)
+    }
 
-	fn resolve_challenge() -> Weight {
-		Weight::from_parts(150_000_000, 18000)
-	}
+    fn resolve_challenge() -> Weight {
+        Weight::from_parts(150_000_000, 18000)
+    }
 }

@@ -97,19 +97,29 @@ pub const MAX_DIRECTORS_PER_EPOCH: u32 = 5;
 /// 2. Canonical director calls `submit_bft_result()`
 /// 3. Result enters PENDING state with 50-block challenge period
 /// 4. After challenge period (no challenge), auto-finalized in `on_finalize()`
-#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
 #[scale_info(skip_type_params(AccountId, Hash))]
 pub struct BftConsensusResult<AccountId, Hash> {
-	/// Slot number this result applies to
-	pub slot: u64,
-	/// Whether BFT consensus was reached
-	pub success: bool,
-	/// Hash of agreed CLIP embeddings
-	pub canonical_hash: Hash,
-	/// Director who submitted this result
-	pub submitter: AccountId,
-	/// Block when this result was submitted (for deadline calculation)
-	pub submitted_at_block: u64,
+    /// Slot number this result applies to
+    pub slot: u64,
+    /// Whether BFT consensus was reached
+    pub success: bool,
+    /// Hash of agreed CLIP embeddings
+    pub canonical_hash: Hash,
+    /// Director who submitted this result
+    pub submitter: AccountId,
+    /// Block when this result was submitted (for deadline calculation)
+    pub submitted_at_block: u64,
 }
 
 /// Challenge against a BFT result.
@@ -131,21 +141,31 @@ pub struct BftConsensusResult<AccountId, Hash> {
 /// * Challenge bond: 25 NSN (forfeited if rejected)
 /// * Director slash: 100 NSN per fraudulent director
 /// * Challenger reward: 10 NSN (if upheld)
-#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
 #[scale_info(skip_type_params(AccountId, Hash))]
 pub struct BftChallenge<AccountId, Hash> {
-	/// Slot number being challenged
-	pub slot: u64,
-	/// Account that submitted the challenge
-	pub challenger: AccountId,
-	/// Block when challenge was submitted
-	pub challenge_block: u64,
-	/// Deadline block for challenge resolution
-	pub deadline: u64,
-	/// Hash of evidence (off-chain reference)
-	pub evidence_hash: Hash,
-	/// Whether challenge has been resolved
-	pub resolved: bool,
+    /// Slot number being challenged
+    pub slot: u64,
+    /// Account that submitted the challenge
+    pub challenger: AccountId,
+    /// Block when challenge was submitted
+    pub challenge_block: u64,
+    /// Deadline block for challenge resolution
+    pub deadline: u64,
+    /// Hash of evidence (off-chain reference)
+    pub evidence_hash: Hash,
+    /// Whether challenge has been resolved
+    pub resolved: bool,
 }
 
 /// Validator attestation for a challenge.
@@ -158,15 +178,25 @@ pub struct BftChallenge<AccountId, Hash> {
 /// * `validator` - Validator account providing attestation
 /// * `agrees_with_challenge` - True if validator confirms fraud
 /// * `attestation_hash` - Hash of attestation proof (CLIP embeddings, etc.)
-#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+#[derive(
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
 #[scale_info(skip_type_params(AccountId, Hash))]
 pub struct ValidatorAttestation<AccountId, Hash> {
-	/// Validator account
-	pub validator: AccountId,
-	/// Whether validator agrees with the challenge
-	pub agrees_with_challenge: bool,
-	/// Hash of attestation proof
-	pub attestation_hash: Hash,
+    /// Validator account
+    pub validator: AccountId,
+    /// Whether validator agrees with the challenge
+    pub agrees_with_challenge: bool,
+    /// Hash of attestation proof
+    pub attestation_hash: Hash,
 }
 
 // =============================================================================
@@ -191,28 +221,28 @@ pub type EpochId = u64;
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 #[scale_info(skip_type_params(MaxDirectors))]
 pub struct Epoch<BlockNumber, AccountId, MaxDirectors: Get<u32>> {
-	/// Unique epoch identifier
-	pub id: EpochId,
-	/// Block number when epoch starts
-	pub start_block: BlockNumber,
-	/// Block number when epoch ends
-	pub end_block: BlockNumber,
-	/// Elected directors for this epoch
-	pub directors: BoundedVec<AccountId, MaxDirectors>,
-	/// Current status of the epoch
-	pub status: EpochStatus,
+    /// Unique epoch identifier
+    pub id: EpochId,
+    /// Block number when epoch starts
+    pub start_block: BlockNumber,
+    /// Block number when epoch ends
+    pub end_block: BlockNumber,
+    /// Elected directors for this epoch
+    pub directors: BoundedVec<AccountId, MaxDirectors>,
+    /// Current status of the epoch
+    pub status: EpochStatus,
 }
 
 /// Epoch lifecycle status
 #[derive(Clone, Encode, Decode, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
 pub enum EpochStatus {
-	/// Epoch scheduled but not yet active (On-Deck phase)
-	#[default]
-	Scheduled,
-	/// Epoch is currently active
-	Active,
-	/// Epoch has completed
-	Completed,
+    /// Epoch scheduled but not yet active (On-Deck phase)
+    #[default]
+    Scheduled,
+    /// Epoch is currently active
+    Active,
+    /// Epoch has completed
+    Completed,
 }
 
 // =============================================================================
@@ -230,21 +260,32 @@ pub enum EpochStatus {
 /// 3. Submitted: BFT result submitted on-chain
 /// 4. Challenged (optional): Challenge submitted during 50-block period
 /// 5. Finalized: Result finalized, reputation updated
-#[derive(Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen, Default)]
+#[derive(
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Clone,
+    PartialEq,
+    Eq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+    Default,
+)]
 pub enum SlotStatus {
-	/// Slot not yet processed
-	#[default]
-	Pending,
-	/// Directors have been elected for this slot
-	Elected,
-	/// BFT result submitted, in challenge period
-	Submitted,
-	/// Result has been challenged
-	Challenged,
-	/// Result finalized successfully
-	Finalized,
-	/// Slot failed (no consensus or challenge upheld)
-	Failed,
+    /// Slot not yet processed
+    #[default]
+    Pending,
+    /// Directors have been elected for this slot
+    Elected,
+    /// BFT result submitted, in challenge period
+    Submitted,
+    /// Result has been challenged
+    Challenged,
+    /// Result finalized successfully
+    Finalized,
+    /// Slot failed (no consensus or challenge upheld)
+    Failed,
 }
 
 /// Election candidate with computed weight.
@@ -260,12 +301,12 @@ pub enum SlotStatus {
 /// ±20% jitter breaks deterministic patterns.
 #[derive(Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct ElectionCandidate<AccountId> {
-	/// Candidate account
-	pub account: AccountId,
-	/// Computed weight for selection
-	pub weight: u64,
-	/// Region of the candidate
-	pub region: pallet_nsn_stake::Region,
+    /// Candidate account
+    pub account: AccountId,
+    /// Computed weight for selection
+    pub weight: u64,
+    /// Region of the candidate
+    pub region: pallet_nsn_stake::Region,
 }
 
 // =============================================================================
@@ -278,33 +319,33 @@ pub struct ElectionCandidate<AccountId> {
 /// and election metadata.
 #[derive(Clone, PartialEq, Eq, RuntimeDebug)]
 pub struct ElectionResult<AccountId> {
-	/// Slot number
-	pub slot: u64,
-	/// Elected directors (exactly 5, or fewer if insufficient candidates)
-	pub directors: Vec<AccountId>,
-	/// Number of eligible candidates
-	pub candidate_count: u32,
-	/// Whether multi-region constraint was satisfied
-	pub multi_region_satisfied: bool,
+    /// Slot number
+    pub slot: u64,
+    /// Elected directors (exactly 5, or fewer if insufficient candidates)
+    pub directors: Vec<AccountId>,
+    /// Number of eligible candidates
+    pub candidate_count: u32,
+    /// Whether multi-region constraint was satisfied
+    pub multi_region_satisfied: bool,
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn test_constants() {
-		assert_eq!(DIRECTORS_PER_SLOT, 5);
-		assert_eq!(BFT_THRESHOLD, 3);
-		assert_eq!(COOLDOWN_SLOTS, 20);
-		assert_eq!(CHALLENGE_PERIOD_BLOCKS, 50);
-		assert_eq!(JITTER_PERCENT, 20);
-		assert_eq!(BLOCKS_PER_SLOT, 8);
-	}
+    #[test]
+    fn test_constants() {
+        assert_eq!(DIRECTORS_PER_SLOT, 5);
+        assert_eq!(BFT_THRESHOLD, 3);
+        assert_eq!(COOLDOWN_SLOTS, 20);
+        assert_eq!(CHALLENGE_PERIOD_BLOCKS, 50);
+        assert_eq!(JITTER_PERCENT, 20);
+        assert_eq!(BLOCKS_PER_SLOT, 8);
+    }
 
-	#[test]
-	fn test_slot_status_default() {
-		let status = SlotStatus::default();
-		assert_eq!(status, SlotStatus::Pending);
-	}
+    #[test]
+    fn test_slot_status_default() {
+        let status = SlotStatus::default();
+        assert_eq!(status, SlotStatus::Pending);
+    }
 }

@@ -15,11 +15,11 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::BlockNumberFor;
 use sp_core::H256;
+use sp_runtime::traits::Randomness;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     BuildStorage,
 };
-use sp_runtime::traits::Randomness;
 
 pub type AccountId = u64;
 pub type Balance = u128;
@@ -122,7 +122,10 @@ parameter_types! {
 
 pub struct MockLaneNodeProvider;
 impl pallet_nsn_task_market::LaneNodeProvider<AccountId, Balance> for MockLaneNodeProvider {
-    fn eligible_nodes(lane: pallet_nsn_task_market::TaskLane, max: u32) -> Vec<(AccountId, Balance)> {
+    fn eligible_nodes(
+        lane: pallet_nsn_task_market::TaskLane,
+        max: u32,
+    ) -> Vec<(AccountId, Balance)> {
         let mut candidates = match lane {
             pallet_nsn_task_market::TaskLane::Lane0 => vec![(ALICE, 100)],
             pallet_nsn_task_market::TaskLane::Lane1 => vec![(ALICE, 100), (BOB, 90), (CHARLIE, 80)],
@@ -149,7 +152,10 @@ impl pallet_nsn_task_market::ReputationUpdater<AccountId> for MockReputationUpda
 
 pub struct MockTaskSlashHandler;
 impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for MockTaskSlashHandler {
-    fn slash_for_abandonment(_account: &AccountId, _amount: Balance) -> frame_support::dispatch::DispatchResult {
+    fn slash_for_abandonment(
+        _account: &AccountId,
+        _amount: Balance,
+    ) -> frame_support::dispatch::DispatchResult {
         Ok(())
     }
 }

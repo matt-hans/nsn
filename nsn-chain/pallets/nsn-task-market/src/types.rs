@@ -4,11 +4,11 @@
 //! Types for pallet-nsn-task-market
 
 use frame_support::pallet_prelude::*;
+/// Task lane designation (Lane 0 vs Lane 1).
+pub use nsn_primitives::Lane as TaskLane;
 use parity_scale_codec::{Decode, DecodeWithMemTracking, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
-/// Task lane designation (Lane 0 vs Lane 1).
-pub use nsn_primitives::Lane as TaskLane;
 
 /// Status of a task in the task market
 #[derive(
@@ -66,7 +66,6 @@ pub enum FailReason {
     Other,
 }
 
-
 /// Task priority for queue ordering
 #[derive(
     Clone,
@@ -123,8 +122,7 @@ impl<BlockNumber: Default> Default for RendererInfo<BlockNumber> {
     }
 }
 
-impl<BlockNumber: MaxEncodedLen> MaxEncodedLen for RendererInfo<BlockNumber>
-{
+impl<BlockNumber: MaxEncodedLen> MaxEncodedLen for RendererInfo<BlockNumber> {
     fn max_encoded_len() -> usize {
         TaskLane::max_encoded_len()
             + bool::max_encoded_len()
@@ -141,8 +139,8 @@ impl<BlockNumber: MaxEncodedLen> MaxEncodedLen for RendererInfo<BlockNumber>
 #[scale_info(skip_type_params(MaxModelIdLen, MaxCidLen))]
 pub struct TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
 where
-    MaxModelIdLen: Get<u32>,
-    MaxCidLen: Get<u32>,
+    MaxModelIdLen: Get<u32> + Clone,
+    MaxCidLen: Get<u32> + Clone,
 {
     /// Task identifier (unique)
     pub id: u64,

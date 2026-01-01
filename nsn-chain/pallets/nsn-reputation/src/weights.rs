@@ -24,58 +24,57 @@ use frame_support::{traits::Get, weights::Weight};
 
 /// Weight functions for pallet_nsn_reputation.
 pub trait WeightInfo {
-	fn record_event() -> Weight;
-	fn record_aggregated_events(events: u32) -> Weight;
-	fn update_retention() -> Weight;
+    fn record_event() -> Weight;
+    fn record_aggregated_events(events: u32) -> Weight;
+    fn update_retention() -> Weight;
 }
 
 // Placeholder weights with PoV sizes
 pub struct SubstrateWeight<T>(core::marker::PhantomData<T>);
 
 impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
-	/// Storage: ReputationScores (r:1 w:1)
-	/// Proof: ReputationScores (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
-	/// Storage: PendingEvents (r:1 w:1)
-	/// Proof: PendingEvents (max_values: Some(1), max_size: Some(32000), added: 32495, mode: MaxEncodedLen)
-	fn record_event() -> Weight {
-		// PoV size: ReputationScores(64) + PendingEvents header(~100) + overhead(128) = 292 bytes
-		Weight::from_parts(15_000_000, 35034)
-			.saturating_add(T::DbWeight::get().reads(2))
-			.saturating_add(T::DbWeight::get().writes(2))
-	}
+    /// Storage: ReputationScores (r:1 w:1)
+    /// Proof: ReputationScores (max_values: None, max_size: Some(64), added: 2539, mode: MaxEncodedLen)
+    /// Storage: PendingEvents (r:1 w:1)
+    /// Proof: PendingEvents (max_values: Some(1), max_size: Some(32000), added: 32495, mode: MaxEncodedLen)
+    fn record_event() -> Weight {
+        // PoV size: ReputationScores(64) + PendingEvents header(~100) + overhead(128) = 292 bytes
+        Weight::from_parts(15_000_000, 35034)
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(2))
+    }
 
-	/// Storage: ReputationScores (r:1 w:1)
-	/// Storage: PendingEvents (r:1 w:1)
-	/// Storage: AggregatedEvents (r:0 w:1)
-	fn record_aggregated_events(events: u32) -> Weight {
-		// PoV size: ReputationScores(64) + PendingEvents(~32 per event) + overhead(128)
-		Weight::from_parts(15_000_000, 35034)
-			.saturating_add(Weight::from_parts(5_000_000, 32).saturating_mul(events as u64))
-			.saturating_add(T::DbWeight::get().reads(2))
-			.saturating_add(T::DbWeight::get().writes(3))
-	}
+    /// Storage: ReputationScores (r:1 w:1)
+    /// Storage: PendingEvents (r:1 w:1)
+    /// Storage: AggregatedEvents (r:0 w:1)
+    fn record_aggregated_events(events: u32) -> Weight {
+        // PoV size: ReputationScores(64) + PendingEvents(~32 per event) + overhead(128)
+        Weight::from_parts(15_000_000, 35034)
+            .saturating_add(Weight::from_parts(5_000_000, 32).saturating_mul(events as u64))
+            .saturating_add(T::DbWeight::get().reads(2))
+            .saturating_add(T::DbWeight::get().writes(3))
+    }
 
-	/// Storage: RetentionPeriod (r:0 w:1)
-	/// Proof: RetentionPeriod (max_values: Some(1), max_size: Some(4), added: 499, mode: MaxEncodedLen)
-	fn update_retention() -> Weight {
-		// PoV size: RetentionPeriod(4) + overhead(64) = 68 bytes
-		Weight::from_parts(5_000_000, 499)
-			.saturating_add(T::DbWeight::get().writes(1))
-	}
+    /// Storage: RetentionPeriod (r:0 w:1)
+    /// Proof: RetentionPeriod (max_values: Some(1), max_size: Some(4), added: 499, mode: MaxEncodedLen)
+    fn update_retention() -> Weight {
+        // PoV size: RetentionPeriod(4) + overhead(64) = 68 bytes
+        Weight::from_parts(5_000_000, 499).saturating_add(T::DbWeight::get().writes(1))
+    }
 }
 
 // For tests
 impl WeightInfo for () {
-	fn record_event() -> Weight {
-		Weight::from_parts(15_000_000, 35034)
-	}
+    fn record_event() -> Weight {
+        Weight::from_parts(15_000_000, 35034)
+    }
 
-	fn record_aggregated_events(events: u32) -> Weight {
-		Weight::from_parts(15_000_000, 35034)
-			.saturating_add(Weight::from_parts(5_000_000, 32).saturating_mul(events as u64))
-	}
+    fn record_aggregated_events(events: u32) -> Weight {
+        Weight::from_parts(15_000_000, 35034)
+            .saturating_add(Weight::from_parts(5_000_000, 32).saturating_mul(events as u64))
+    }
 
-	fn update_retention() -> Weight {
-		Weight::from_parts(5_000_000, 499)
-	}
+    fn update_retention() -> Weight {
+        Weight::from_parts(5_000_000, 499)
+    }
 }

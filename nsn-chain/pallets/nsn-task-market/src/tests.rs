@@ -242,8 +242,14 @@ fn preempt_lane1_tasks_when_lane0_pending() {
             100
         ));
 
-        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 0));
-        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 1));
+        assert_ok!(NsnTaskMarket::accept_assignment(
+            RuntimeOrigin::signed(BOB),
+            0
+        ));
+        assert_ok!(NsnTaskMarket::accept_assignment(
+            RuntimeOrigin::signed(BOB),
+            1
+        ));
 
         assert_eq!(NsnTaskMarket::assigned_lane1_tasks().len(), 2);
 
@@ -307,7 +313,10 @@ fn renderer_deregister_does_not_cancel_inflight_task() {
             100
         ));
 
-        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::accept_assignment(
+            RuntimeOrigin::signed(BOB),
+            0
+        ));
 
         assert_ok!(NsnTaskMarket::deregister_renderer(
             RuntimeOrigin::root(),
@@ -349,7 +358,10 @@ fn lane0_completion_requires_attestation() {
             100
         ));
 
-        assert_ok!(NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 0));
+        assert_ok!(NsnTaskMarket::accept_assignment(
+            RuntimeOrigin::signed(BOB),
+            0
+        ));
 
         assert_noop!(
             NsnTaskMarket::complete_task(
@@ -752,12 +764,7 @@ fn complete_task_not_assigned_fails() {
 
         // WHEN: Bob tries to complete an open task
         assert_noop!(
-            NsnTaskMarket::complete_task(
-                RuntimeOrigin::signed(BOB),
-                0,
-                default_output_cid(),
-                None
-            ),
+            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0, default_output_cid(), None),
             Error::<Test>::TaskNotAssigned
         );
     });
@@ -887,12 +894,7 @@ fn complete_already_completed_task_fails() {
 
         // WHEN: Bob tries to complete again
         assert_noop!(
-            NsnTaskMarket::complete_task(
-                RuntimeOrigin::signed(BOB),
-                0,
-                default_output_cid(),
-                None
-            ),
+            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0, default_output_cid(), None),
             Error::<Test>::TaskNotAssigned
         );
     });

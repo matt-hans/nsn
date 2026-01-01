@@ -87,12 +87,12 @@ pub enum Region {
     MaxEncodedLen,
 )]
 pub enum SlashReason {
-	BftFailure,
-	AuditTimeout,
-	AuditInvalid,
-	MissedSlot,
-	ContentViolation,
-	TaskAbandonment,
+    BftFailure,
+    AuditTimeout,
+    AuditInvalid,
+    MissedSlot,
+    ContentViolation,
+    TaskAbandonment,
 }
 
 /// Node operational mode for dual-lane architecture
