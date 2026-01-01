@@ -135,12 +135,15 @@ impl<BlockNumber: MaxEncodedLen> MaxEncodedLen for RendererInfo<BlockNumber> {
 /// A compute task intent in the task market
 ///
 /// Generic over AccountId, Balance, BlockNumber, and bounded length types for flexibility.
-#[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+#[derive(Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo)]
 #[scale_info(skip_type_params(MaxModelIdLen, MaxCidLen))]
 pub struct TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
 where
-    MaxModelIdLen: Get<u32> + Clone,
-    MaxCidLen: Get<u32> + Clone,
+    AccountId: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+    Balance: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+    BlockNumber: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+    MaxModelIdLen: Get<u32>,
+    MaxCidLen: Get<u32>,
 {
     /// Task identifier (unique)
     pub id: u64,
@@ -173,9 +176,9 @@ where
 }
 
 impl<
-        AccountId: Default,
-        Balance: Default,
-        BlockNumber: Default,
+        AccountId: Default + Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        Balance: Default + Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        BlockNumber: Default + Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
         MaxModelIdLen: Get<u32>,
         MaxCidLen: Get<u32>,
     > Default for TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
@@ -200,11 +203,40 @@ impl<
     }
 }
 
+// Manual Clone implementation for TaskIntent (no bounds needed on length type params)
+impl<
+        AccountId: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        Balance: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        BlockNumber: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        MaxModelIdLen: Get<u32>,
+        MaxCidLen: Get<u32>,
+    > Clone for TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>
+{
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            lane: self.lane.clone(),
+            priority: self.priority.clone(),
+            requester: self.requester.clone(),
+            executor: self.executor.clone(),
+            status: self.status.clone(),
+            escrow: self.escrow.clone(),
+            created_at: self.created_at.clone(),
+            deadline: self.deadline.clone(),
+            model_requirements: self.model_requirements.clone(),
+            input_cid: self.input_cid.clone(),
+            compute_budget: self.compute_budget,
+            output_cid: self.output_cid.clone(),
+            attestation_cid: self.attestation_cid.clone(),
+        }
+    }
+}
+
 // Manual MaxEncodedLen for TaskIntent
 impl<
-        AccountId: MaxEncodedLen,
-        Balance: MaxEncodedLen,
-        BlockNumber: MaxEncodedLen,
+        AccountId: MaxEncodedLen + Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        Balance: MaxEncodedLen + Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+        BlockNumber: MaxEncodedLen + Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
         MaxModelIdLen: Get<u32>,
         MaxCidLen: Get<u32>,
     > MaxEncodedLen for TaskIntent<AccountId, Balance, BlockNumber, MaxModelIdLen, MaxCidLen>

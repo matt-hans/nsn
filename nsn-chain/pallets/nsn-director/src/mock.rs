@@ -174,6 +174,8 @@ impl pallet_nsn_director::Config for Test {
     type EpochDuration = EpochDuration;
     type EpochLookahead = EpochLookahead;
     type MaxDirectorsPerEpoch = MaxDirectorsPerEpoch;
+    type NodeModeUpdater = NsnStake;
+    type NodeRoleUpdater = NsnStake;
     type WeightInfo = ();
 }
 

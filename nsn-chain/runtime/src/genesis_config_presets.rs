@@ -1,6 +1,7 @@
 use crate::{
-    AccountId, BalancesConfig, CollatorSelectionConfig, ParachainInfoConfig, PolkadotXcmConfig,
-    RuntimeGenesisConfig, SessionConfig, SessionKeys, SudoConfig, EXISTENTIAL_DEPOSIT, NSN,
+    AccountId, Balance, BalancesConfig, CollatorSelectionConfig, ParachainInfoConfig,
+    PolkadotXcmConfig, RuntimeGenesisConfig, SessionConfig, SessionKeys, SudoConfig,
+    EXISTENTIAL_DEPOSIT, NSN,
 };
 
 use alloc::{vec, vec::Vec};
@@ -206,7 +207,7 @@ fn nsn_mainnet_genesis_template() -> Value {
                 (ecosystem_account, TOTAL_SUPPLY * 15 / 100),                  // 150M NSN
                 (team_account, TOTAL_SUPPLY * 15 / 100), // 150M NSN (vesting TBD)
                 (liquidity_account, TOTAL_SUPPLY * 10 / 100), // 100M NSN
-                (sudo_account, 1_000_000 * NSN),         // 1M NSN for operational expenses
+                (sudo_account.clone(), 1_000_000 * NSN),  // 1M NSN for operational expenses
             ],
         },
         parachain_info: ParachainInfoConfig {

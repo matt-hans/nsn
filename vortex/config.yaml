@@ -60,8 +60,12 @@ plugins:
     # Lane-specific latency budgets (ms)
     lane0_max_latency_ms: 15000
     lane1_max_latency_ms: 120000
-    # Untrusted plugins must be explicitly allowlisted
-    allow_untrusted: true
+    # SECURITY: Untrusted plugins are DISABLED by default.
+    # Only explicitly allowlisted plugins can execute.
+    # Set to true ONLY for development/testing with trusted plugin sources.
+    # WARNING: Enabling untrusted plugins allows arbitrary Python code execution!
+    allow_untrusted: false
+    # Allowlist of plugin names that may execute even with allow_untrusted=false
     allowlist: []
 
 # Slot timing orchestration (T020)

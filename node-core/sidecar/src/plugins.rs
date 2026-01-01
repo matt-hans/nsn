@@ -116,7 +116,9 @@ impl Default for PluginPolicy {
             max_vram_gb: 11.5,
             lane0_max_latency_ms: 15_000,
             lane1_max_latency_ms: 120_000,
-            allow_untrusted: true,
+            // SECURITY: Untrusted plugins are disabled by default.
+            // Only explicitly allowlisted plugins can execute.
+            allow_untrusted: false,
             allowlist: HashSet::new(),
         }
     }

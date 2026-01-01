@@ -53,6 +53,7 @@ use polkadot_runtime_common::{
 };
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::AccountIdConversion, Perbill};
+use sp_std::vec::Vec;
 use sp_version::RuntimeVersion;
 use xcm::latest::prelude::BodyId;
 
@@ -210,7 +211,7 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
     type ReservedXcmpWeight = ReservedXcmpWeight;
     type CheckAssociatedRelayNumber = RelayNumberMonotonicallyIncreases;
     type ConsensusHook = ConsensusHook;
-    type SelectCore = cumulus_pallet_parachain_system::DefaultCoreSelector<Runtime>;
+    type RelayParentOffset = ConstU32<1>;
 }
 
 impl parachain_info::Config for Runtime {}
@@ -277,6 +278,8 @@ impl pallet_session::Config for Runtime {
     type Keys = SessionKeys;
     type DisablingStrategy = ();
     type WeightInfo = ();
+    type Currency = Balances;
+    type KeyDeposit = ExistentialDeposit;
 }
 
 #[docify::export(aura_config)]
@@ -384,6 +387,8 @@ parameter_types! {
     pub const StorageMaxPinnersPerShard: u32 = 10;
     pub const StorageMaxActiveDeals: u32 = 100;
     pub const StorageMaxPendingAudits: u32 = 100;
+    pub const StorageMaxSelectableCandidates: u32 = 50;
+    pub const StoragePalletId: PalletId = PalletId(*b"nsn/stor");
 }
 
 parameter_types! {
@@ -434,9 +439,10 @@ impl pallet_nsn_reputation::Config for Runtime {
     type WeightInfo = pallet_nsn_reputation::weights::SubstrateWeight<Runtime>;
 }
 
-impl pallet_nsn_task_market::LaneNodeProvider<AccountId, Balance>
-    for pallet_nsn_stake::Pallet<Runtime>
-{
+/// Wrapper struct for LaneNodeProvider implementation (avoids orphan rules)
+pub struct StakeLaneNodeProvider;
+
+impl pallet_nsn_task_market::LaneNodeProvider<AccountId, Balance> for StakeLaneNodeProvider {
     fn eligible_nodes(
         lane: pallet_nsn_task_market::TaskLane,
         max: u32,
@@ -492,17 +498,19 @@ impl pallet_nsn_task_market::LaneNodeProvider<AccountId, Balance>
     }
 }
 
-impl pallet_nsn_task_market::ReputationUpdater<AccountId>
-    for pallet_nsn_reputation::Pallet<Runtime>
-{
+/// Wrapper struct for ReputationUpdater implementation (avoids orphan rules)
+pub struct ReputationUpdaterWrapper;
+
+impl pallet_nsn_task_market::ReputationUpdater<AccountId> for ReputationUpdaterWrapper {
     fn record_task_result(account: &AccountId, success: bool) {
         let _ = pallet_nsn_reputation::Pallet::<Runtime>::record_task_outcome(account, success);
     }
 }
 
-impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance>
-    for pallet_nsn_stake::Pallet<Runtime>
-{
+/// Wrapper struct for TaskSlashHandler implementation (avoids orphan rules)
+pub struct StakeSlashHandler;
+
+impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for StakeSlashHandler {
     fn slash_for_abandonment(
         account: &AccountId,
         amount: Balance,
@@ -544,6 +552,8 @@ impl pallet_nsn_storage::Config for Runtime {
     type MaxPinnersPerShard = StorageMaxPinnersPerShard;
     type MaxActiveDeals = StorageMaxActiveDeals;
     type MaxPendingAudits = StorageMaxPendingAudits;
+    type MaxSelectableCandidates = StorageMaxSelectableCandidates;
+    type PalletId = StoragePalletId;
     type WeightInfo = pallet_nsn_storage::weights::SubstrateWeight<Runtime>;
 }
 
@@ -568,9 +578,9 @@ impl pallet_nsn_task_market::Config for Runtime {
     type MaxLane1LatencyMs = TaskMarketMaxLane1LatencyMs;
     type MaxRendererVramMb = TaskMarketMaxRendererVramMb;
     type MinEscrow = TaskMarketMinEscrow;
-    type LaneNodeProvider = pallet_nsn_stake::Pallet<Runtime>;
-    type ReputationUpdater = pallet_nsn_reputation::Pallet<Runtime>;
-    type TaskSlashHandler = pallet_nsn_stake::Pallet<Runtime>;
+    type LaneNodeProvider = StakeLaneNodeProvider;
+    type ReputationUpdater = ReputationUpdaterWrapper;
+    type TaskSlashHandler = StakeSlashHandler;
     type TaskAbandonmentSlash = TaskMarketTaskAbandonmentSlash;
     type TreasuryAccount = TreasuryAccount;
     type WeightInfo = pallet_nsn_task_market::weights::SubstrateWeight<Runtime>;

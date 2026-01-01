@@ -81,7 +81,9 @@ plugins:
     max_vram_gb: 11.5
     lane0_max_latency_ms: 15000
     lane1_max_latency_ms: 120000
-    allow_untrusted: true
+    # SECURITY: Untrusted plugins are DISABLED by default.
+    # Only plugins in the allowlist can execute.
+    allow_untrusted: false
     allowlist: ["example-renderer"]
 ```
 

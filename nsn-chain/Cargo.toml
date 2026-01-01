@@ -35,6 +35,7 @@ pallet-nsn-model-registry = { path = "./pallets/nsn-model-registry", default-fea
 nsn-primitives = { path = "../node-core/crates/primitives", default-features = false }
 
 # Substrate/Polkadot SDK crates (version-aligned for compatibility)
+cumulus-pallet-parachain-system = { version = "0.25.0", default-features = false }
 frame-benchmarking = { version = "45.0.0", default-features = false }
 frame-support = { version = "45.0.0", default-features = false }
 frame-system = { version = "45.0.0", default-features = false }

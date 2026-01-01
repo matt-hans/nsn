@@ -29,8 +29,11 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate alloc;
+
 pub use pallet::*;
 
+use alloc::vec::Vec;
 use frame_support::pallet_prelude::DispatchResult;
 
 mod types;
