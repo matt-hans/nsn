@@ -87,12 +87,14 @@ pub struct StorageManager {
 impl StorageManager {
     pub fn new(config: StorageBackendConfig) -> Result<Self, StorageError> {
         let (backend, kind): (Arc<dyn StorageBackend>, StorageBackendKind) = match config {
-            StorageBackendConfig::Local { root } => {
-                (Arc::new(LocalBackend::new(root)?), StorageBackendKind::Local)
-            }
-            StorageBackendConfig::Ipfs { api_url } => {
-                (Arc::new(IpfsBackend::new(api_url)?), StorageBackendKind::Ipfs)
-            }
+            StorageBackendConfig::Local { root } => (
+                Arc::new(LocalBackend::new(root)?),
+                StorageBackendKind::Local,
+            ),
+            StorageBackendConfig::Ipfs { api_url } => (
+                Arc::new(IpfsBackend::new(api_url)?),
+                StorageBackendKind::Ipfs,
+            ),
         };
 
         Ok(Self {
@@ -192,7 +194,10 @@ impl StorageManager {
 
     fn record_metric(&self, operation: &str, failed: bool) {
         if let Some(metrics) = &self.metrics {
-            metrics.operations_total.with_label_values(&[operation]).inc();
+            metrics
+                .operations_total
+                .with_label_values(&[operation])
+                .inc();
             if failed {
                 metrics
                     .operations_failed_total
@@ -241,10 +246,7 @@ mod tests {
         let cid = "QmMetricsCid".to_string();
         storage.put(&cid, b"data").await.expect("put");
 
-        let count = metrics
-            .operations_total
-            .with_label_values(&["put"])
-            .get();
+        let count = metrics.operations_total.with_label_values(&["put"]).get();
         assert_eq!(count, 1);
     }
 

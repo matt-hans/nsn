@@ -80,10 +80,7 @@ mod tests {
         let registry = Registry::new();
         let metrics = StorageMetrics::new(&registry).expect("metrics");
 
-        let initial = metrics
-            .operations_total
-            .with_label_values(&["put"])
-            .get();
+        let initial = metrics.operations_total.with_label_values(&["put"]).get();
         assert_eq!(initial, 0);
     }
 }

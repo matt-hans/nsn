@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info, warn};
 
@@ -54,6 +54,26 @@ pub struct TaskState {
     /// Output CID if task completed successfully
     pub output_cid: Option<String>,
 }
+
+/// Completion event emitted when a task finishes successfully.
+#[derive(Debug, Clone)]
+pub struct TaskCompletionEvent {
+    /// Completed task identifier.
+    pub task_id: String,
+    /// Output CID produced by the task.
+    pub output_cid: String,
+    /// Lane used for execution.
+    pub lane: u32,
+    /// Plugin name if provided.
+    pub plugin_name: Option<String>,
+    /// Model identifier used for execution.
+    pub model_id: String,
+    /// Execution time in milliseconds.
+    pub execution_time_ms: u64,
+}
+
+/// Sender for task completion events.
+pub type TaskCompletionSender = mpsc::UnboundedSender<TaskCompletionEvent>;
 
 /// Task status enumeration.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +183,8 @@ pub struct SidecarService {
     plugins_enabled: bool,
     /// Service configuration
     config: SidecarServiceConfig,
+    /// Optional task completion notifier.
+    task_completion_tx: Option<TaskCompletionSender>,
 }
 
 impl SidecarService {
@@ -181,6 +203,7 @@ impl SidecarService {
             plugins: Arc::new(plugins),
             plugins_enabled,
             config,
+            task_completion_tx: None,
         }
     }
 
@@ -198,6 +221,7 @@ impl SidecarService {
             plugins: Arc::new(plugins),
             plugins_enabled,
             config,
+            task_completion_tx: None,
         }
     }
 
@@ -214,6 +238,17 @@ impl SidecarService {
     /// Get a reference to the VRAM tracker.
     pub fn vram_tracker(&self) -> &Arc<RwLock<VramTracker>> {
         &self.vram_tracker
+    }
+
+    /// Attach a task completion sender to emit task completion events.
+    pub fn set_task_completion_sender(&mut self, sender: TaskCompletionSender) {
+        self.task_completion_tx = Some(sender);
+    }
+
+    fn emit_task_completion(&self, event: TaskCompletionEvent) {
+        if let Some(sender) = &self.task_completion_tx {
+            let _ = sender.send(event);
+        }
     }
 
     fn build_plugins(config: &SidecarServiceConfig) -> (PluginRegistry, bool) {
@@ -344,11 +379,9 @@ impl SidecarService {
             ));
         }
 
-        let command = self
-            .config
-            .plugin_exec_command
-            .as_ref()
-            .ok_or_else(|| SidecarError::TaskExecutionFailed("plugin runner not configured".to_string()))?;
+        let command = self.config.plugin_exec_command.as_ref().ok_or_else(|| {
+            SidecarError::TaskExecutionFailed("plugin runner not configured".to_string())
+        })?;
 
         if command.is_empty() {
             return Err(SidecarError::TaskExecutionFailed(
@@ -361,10 +394,9 @@ impl SidecarService {
         } else {
             let value: serde_json::Value = serde_json::from_slice(&req.parameters)
                 .map_err(|e| SidecarError::InvalidRequest(e.to_string()))?;
-            value
-                .as_object()
-                .cloned()
-                .ok_or_else(|| SidecarError::InvalidRequest("parameters must be a JSON object".to_string()))?
+            value.as_object().cloned().ok_or_else(|| {
+                SidecarError::InvalidRequest("parameters must be a JSON object".to_string())
+            })?
         };
 
         payload
@@ -375,7 +407,9 @@ impl SidecarService {
             .or_insert(serde_json::Value::String(req.task_id.clone()));
         payload
             .entry("lane".to_string())
-            .or_insert(serde_json::Value::Number(serde_json::Number::from(req.lane)));
+            .or_insert(serde_json::Value::Number(serde_json::Number::from(
+                req.lane,
+            )));
         payload
             .entry("plugin".to_string())
             .or_insert(serde_json::Value::String(req.plugin_name.clone()));
@@ -419,7 +453,9 @@ impl SidecarService {
             .get("output")
             .and_then(|val| val.as_object())
             .ok_or_else(|| {
-                SidecarError::TaskExecutionFailed("plugin output missing 'output' object".to_string())
+                SidecarError::TaskExecutionFailed(
+                    "plugin output missing 'output' object".to_string(),
+                )
             })?;
 
         let output_cid = output_obj
@@ -434,7 +470,11 @@ impl SidecarService {
             .and_then(|val| val.as_f64())
             .unwrap_or(0.0) as u64;
 
-        Ok((output_cid.to_string(), response.to_string().into_bytes(), duration_ms))
+        Ok((
+            output_cid.to_string(),
+            response.to_string().into_bytes(),
+            duration_ms,
+        ))
     }
 }
 
@@ -827,10 +867,10 @@ impl Sidecar for SidecarService {
         let lane = if using_plugin { Some(req.lane) } else { None };
 
         if !using_plugin {
-            return Err(
-                SidecarError::TaskExecutionFailed("non-plugin execution is not supported".to_string())
-                    .into(),
-            );
+            return Err(SidecarError::TaskExecutionFailed(
+                "non-plugin execution is not supported".to_string(),
+            )
+            .into());
         }
 
         // Resolve container and validate plugin policy if needed
@@ -945,6 +985,21 @@ impl Sidecar for SidecarService {
             execution_time_ms = execution_time_ms,
             "Task completed"
         );
+
+        if req.lane == 0 && !output_cid.is_empty() {
+            self.emit_task_completion(TaskCompletionEvent {
+                task_id: req.task_id.clone(),
+                output_cid: output_cid.clone(),
+                lane: req.lane,
+                plugin_name: if req.plugin_name.is_empty() {
+                    None
+                } else {
+                    Some(req.plugin_name.clone())
+                },
+                model_id: req.model_id.clone(),
+                execution_time_ms,
+            });
+        }
 
         Ok(Response::new(proto::ExecuteTaskResponse {
             success: true,
@@ -1096,10 +1151,10 @@ fn estimate_model_vram(model_id: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bollard::Docker;
     use std::env;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use bollard::Docker;
 
     async fn docker_available() -> bool {
         if env::var("NSN_DOCKER_TESTS").ok().as_deref() != Some("1") {

@@ -211,17 +211,26 @@ pub struct AttestationBundle {
 
 /// Attestation submission interface.
 pub trait AttestationSubmitter {
-    fn submit_attestation(&mut self, attestation: AttestationBundle) -> Result<(), AttestationError>;
+    fn submit_attestation(
+        &mut self,
+        attestation: AttestationBundle,
+    ) -> Result<(), AttestationError>;
 }
 
 impl<T: AttestationSubmitter + ?Sized> AttestationSubmitter for &mut T {
-    fn submit_attestation(&mut self, attestation: AttestationBundle) -> Result<(), AttestationError> {
+    fn submit_attestation(
+        &mut self,
+        attestation: AttestationBundle,
+    ) -> Result<(), AttestationError> {
         (**self).submit_attestation(attestation)
     }
 }
 
 impl AttestationSubmitter for Box<dyn AttestationSubmitter> {
-    fn submit_attestation(&mut self, attestation: AttestationBundle) -> Result<(), AttestationError> {
+    fn submit_attestation(
+        &mut self,
+        attestation: AttestationBundle,
+    ) -> Result<(), AttestationError> {
         (**self).submit_attestation(attestation)
     }
 }
@@ -231,7 +240,10 @@ impl AttestationSubmitter for Box<dyn AttestationSubmitter> {
 pub struct NoopAttestationSubmitter;
 
 impl AttestationSubmitter for NoopAttestationSubmitter {
-    fn submit_attestation(&mut self, _attestation: AttestationBundle) -> Result<(), AttestationError> {
+    fn submit_attestation(
+        &mut self,
+        _attestation: AttestationBundle,
+    ) -> Result<(), AttestationError> {
         Ok(())
     }
 }
@@ -259,7 +271,10 @@ struct AttestationMessage {
 }
 
 impl AttestationSubmitter for P2pAttestationSubmitter {
-    fn submit_attestation(&mut self, attestation: AttestationBundle) -> Result<(), AttestationError> {
+    fn submit_attestation(
+        &mut self,
+        attestation: AttestationBundle,
+    ) -> Result<(), AttestationError> {
         let message = AttestationMessage {
             task_id: attestation.task_id.0,
             output_cid: attestation.output_cid,
@@ -306,7 +321,10 @@ where
     A: AttestationSubmitter,
     B: AttestationSubmitter,
 {
-    fn submit_attestation(&mut self, attestation: AttestationBundle) -> Result<(), AttestationError> {
+    fn submit_attestation(
+        &mut self,
+        attestation: AttestationBundle,
+    ) -> Result<(), AttestationError> {
         let primary_result = self.primary.submit_attestation(attestation.clone());
         let secondary_result = self.secondary.submit_attestation(attestation);
 
@@ -515,8 +533,10 @@ impl<S: AttestationSubmitter> RedundantScheduler<S> {
                 }
             }
 
-            task.results
-                .insert(executor, ExecutionResult::new(output_cid, semantic_score, duration_ms));
+            task.results.insert(
+                executor,
+                ExecutionResult::new(output_cid, semantic_score, duration_ms),
+            );
             task.status = RedundantTaskStatus::InProgress;
         }
 
@@ -782,7 +802,8 @@ impl<S: AttestationSubmitter> RedundantScheduler<S> {
                     task.resolved_at = Some(now);
                     self.metrics.tasks_resolved += 1;
                     self.metrics.consensus_successes += 1;
-                    self.metrics.total_latency_ms += now.duration_since(task.created_at).as_millis();
+                    self.metrics.total_latency_ms +=
+                        now.duration_since(task.created_at).as_millis();
                 }
 
                 Ok(())
@@ -794,7 +815,8 @@ impl<S: AttestationSubmitter> RedundantScheduler<S> {
                     task.resolved_at = Some(now);
                     self.metrics.tasks_resolved += 1;
                     self.metrics.consensus_failures += 1;
-                    self.metrics.total_latency_ms += now.duration_since(task.created_at).as_millis();
+                    self.metrics.total_latency_ms +=
+                        now.duration_since(task.created_at).as_millis();
                 }
                 Ok(())
             }

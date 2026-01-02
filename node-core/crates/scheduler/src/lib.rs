@@ -50,9 +50,9 @@ mod tests;
 pub use epoch::{EpochEvent, EpochTracker, ON_DECK_LEAD_TIME_SECS};
 pub use redundancy::{
     AttestationBundle, AttestationError, AttestationSubmitter, ConsensusFailureReason,
-    ConsensusMode, ConsensusOutcome, ConsensusPolicy, ConsensusRecord, ExecutionResult,
-    ExecutorInfo, ExecutorRegistry, NoopAttestationSubmitter, P2pAttestationSubmitter,
-    DualAttestationSubmitter, RedundancyConfig, RedundancyError, RedundancyMetrics,
+    ConsensusMode, ConsensusOutcome, ConsensusPolicy, ConsensusRecord, DualAttestationSubmitter,
+    ExecutionResult, ExecutorInfo, ExecutorRegistry, NoopAttestationSubmitter,
+    P2pAttestationSubmitter, RedundancyConfig, RedundancyError, RedundancyMetrics,
     RedundantAssignment, RedundantScheduler, RedundantTask, RedundantTaskStatus,
     StaticExecutorRegistry,
 };

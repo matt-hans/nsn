@@ -52,7 +52,7 @@ pub use bootstrap::{
     deduplicate_and_rank, discover_via_dht, fetch_http_peers, get_hardcoded_peers,
     resolve_dns_seed, resolve_trusted_signers, verify_signature, BootstrapConfig, BootstrapError,
     BootstrapProtocol, ManifestPeer, PeerInfo, PeerManifest, SignerConfig, SignerSource,
-    TrustedSignerSet, TrustLevel,
+    TrustLevel, TrustedSignerSet,
 };
 pub use config::P2pConfig;
 pub use gossipsub::{create_gossipsub_behaviour, subscribe_to_all_topics, GossipsubError};

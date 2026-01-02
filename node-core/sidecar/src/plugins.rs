@@ -199,8 +199,8 @@ impl PluginRegistry {
             return Ok(Self { plugins, policy });
         }
 
-        for entry in std::fs::read_dir(dir)
-            .map_err(|e| SidecarError::PluginRegistryError(e.to_string()))?
+        for entry in
+            std::fs::read_dir(dir).map_err(|e| SidecarError::PluginRegistryError(e.to_string()))?
         {
             let entry = entry.map_err(|e| SidecarError::PluginRegistryError(e.to_string()))?;
             let path = entry.path();

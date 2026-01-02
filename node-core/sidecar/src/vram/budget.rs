@@ -128,7 +128,11 @@ impl VramBudget {
 
     /// Set the reserved space.
     pub fn set_reserved(&mut self, reserved_gb: f32) {
-        debug!(old = self.reserved_gb, new = reserved_gb, "Reserved space changed");
+        debug!(
+            old = self.reserved_gb,
+            new = reserved_gb,
+            "Reserved space changed"
+        );
         self.reserved_gb = reserved_gb;
     }
 
@@ -163,14 +167,12 @@ impl VramBudget {
         }
 
         match self.policy {
-            AllocationPolicy::Strict => {
-                Err(format!(
-                    "Allocation of {} GB would exceed budget (used: {}, allocatable: {})",
-                    size_gb,
-                    current_used,
-                    self.allocatable()
-                ))
-            }
+            AllocationPolicy::Strict => Err(format!(
+                "Allocation of {} GB would exceed budget (used: {}, allocatable: {})",
+                size_gb,
+                current_used,
+                self.allocatable()
+            )),
             AllocationPolicy::Soft => {
                 warn!(
                     size_gb = size_gb,

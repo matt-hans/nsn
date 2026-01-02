@@ -102,7 +102,10 @@ pub use container::{
 };
 pub use error::{SidecarError, SidecarResult};
 pub use plugins::{PluginManifest, PluginPolicy, PluginRegistry, PluginResources};
-pub use service::{SidecarService, SidecarServiceConfig, TaskState, TaskStatus};
+pub use service::{
+    SidecarService, SidecarServiceConfig, TaskCompletionEvent, TaskCompletionSender, TaskState,
+    TaskStatus,
+};
 pub use vram::{
     AllocationPolicy, NvidiaError, NvidiaGpu, VramBudget, VramError, VramManager, VramStatus,
     VramTracker,

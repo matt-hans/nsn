@@ -356,16 +356,16 @@ impl VramManager {
         let available = self.budget.remaining(tracked);
 
         #[cfg(feature = "nvidia")]
-        let (actual_gb, gpu_name, gpu_temp, gpu_util, gpu_available) = if let Some(ref gpu) = self.gpu
-        {
-            let actual = gpu.used_memory_gb().ok();
-            let name = gpu.name().ok();
-            let temp = gpu.temperature().ok();
-            let util = gpu.utilization_percent().ok();
-            (actual, name, temp, util, true)
-        } else {
-            (None, None, None, None, false)
-        };
+        let (actual_gb, gpu_name, gpu_temp, gpu_util, gpu_available) =
+            if let Some(ref gpu) = self.gpu {
+                let actual = gpu.used_memory_gb().ok();
+                let name = gpu.name().ok();
+                let temp = gpu.temperature().ok();
+                let util = gpu.utilization_percent().ok();
+                (actual, name, temp, util, true)
+            } else {
+                (None, None, None, None, false)
+            };
 
         #[cfg(not(feature = "nvidia"))]
         let (actual_gb, gpu_name, gpu_temp, gpu_util, gpu_available) =
@@ -602,10 +602,7 @@ mod tests {
     #[cfg(not(feature = "nvidia"))]
     fn test_with_gpu_disabled() {
         let result = VramManager::with_gpu(0);
-        assert!(matches!(
-            result,
-            Err(NvidiaError::FeatureDisabled)
-        ));
+        assert!(matches!(result, Err(NvidiaError::FeatureDisabled)));
     }
 
     #[test]

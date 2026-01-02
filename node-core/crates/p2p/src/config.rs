@@ -3,11 +3,11 @@
 //! Defines configuration parameters for libp2p networking including ports,
 //! connection limits, timeouts, and keypair paths.
 
+use crate::bootstrap::BootstrapConfig;
+use crate::security::SecureP2pConfig;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
-use crate::security::SecureP2pConfig;
-use crate::bootstrap::BootstrapConfig;
 
 /// P2P network configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

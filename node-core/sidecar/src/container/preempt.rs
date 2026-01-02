@@ -48,7 +48,10 @@ impl PreemptionReason {
 
     /// Returns true if this reason requires immediate preemption
     pub fn is_urgent(&self) -> bool {
-        matches!(self, PreemptionReason::Lane0Priority | PreemptionReason::VramBudgetExceeded)
+        matches!(
+            self,
+            PreemptionReason::Lane0Priority | PreemptionReason::VramBudgetExceeded
+        )
     }
 }
 
@@ -213,7 +216,8 @@ impl PreemptionManager {
     ) -> PreemptionResult {
         // For MVP, always use graceful strategy (Double-Tap)
         // In production, urgent reasons could use Immediate strategy in emergencies
-        self.preempt_with_strategy(container_id, task_id, reason, PreemptionStrategy::Graceful).await
+        self.preempt_with_strategy(container_id, task_id, reason, PreemptionStrategy::Graceful)
+            .await
     }
 
     /// Preempt a container with a specific strategy.
@@ -280,10 +284,12 @@ impl PreemptionManager {
         // Execute preemption based on strategy
         let result = match strategy {
             PreemptionStrategy::Graceful => {
-                self.graceful_preempt(container_id, task_id, reason, start_time).await
+                self.graceful_preempt(container_id, task_id, reason, start_time)
+                    .await
             }
             PreemptionStrategy::Immediate => {
-                self.immediate_preempt(container_id, task_id, reason, start_time).await
+                self.immediate_preempt(container_id, task_id, reason, start_time)
+                    .await
             }
         };
 
@@ -357,7 +363,8 @@ impl PreemptionManager {
                     "Graceful shutdown failed, proceeding to force kill"
                 );
                 // Second tap: Force kill
-                self.force_kill(container_id, task_id, reason, start_time).await
+                self.force_kill(container_id, task_id, reason, start_time)
+                    .await
             }
             Err(_) => {
                 // Timeout exceeded
@@ -368,7 +375,8 @@ impl PreemptionManager {
                     "Graceful shutdown timeout exceeded, proceeding to force kill"
                 );
                 // Second tap: Force kill
-                self.force_kill(container_id, task_id, reason, start_time).await
+                self.force_kill(container_id, task_id, reason, start_time)
+                    .await
             }
         }
     }
@@ -387,7 +395,8 @@ impl PreemptionManager {
             "Immediate force kill (emergency preemption)"
         );
 
-        self.force_kill(container_id, task_id, reason, start_time).await
+        self.force_kill(container_id, task_id, reason, start_time)
+            .await
     }
 
     /// Send graceful cancel signal to container (First Tap)
@@ -511,11 +520,13 @@ mod tests {
     async fn test_graceful_preemption() {
         let manager = PreemptionManager::with_timeout_secs(2);
 
-        let result = manager.preempt(
-            "container-graceful",
-            "task-graceful",
-            PreemptionReason::Lane0Priority,
-        ).await;
+        let result = manager
+            .preempt(
+                "container-graceful",
+                "task-graceful",
+                PreemptionReason::Lane0Priority,
+            )
+            .await;
 
         assert!(result.success);
         assert!(result.was_graceful); // Should complete gracefully in MVP stub
@@ -526,12 +537,14 @@ mod tests {
     async fn test_immediate_preemption() {
         let manager = PreemptionManager::new();
 
-        let result = manager.preempt_with_strategy(
-            "container-immediate",
-            "task-immediate",
-            PreemptionReason::ManualRequest,
-            PreemptionStrategy::Immediate,
-        ).await;
+        let result = manager
+            .preempt_with_strategy(
+                "container-immediate",
+                "task-immediate",
+                PreemptionReason::ManualRequest,
+                PreemptionStrategy::Immediate,
+            )
+            .await;
 
         assert!(result.success);
         assert!(!result.was_graceful); // Immediate kill is never graceful
@@ -547,14 +560,22 @@ mod tests {
 
         // Try to preempt the same container concurrently
         let handle1 = tokio::spawn(async move {
-            manager1.preempt("container-1", "task-1", PreemptionReason::Lane0Priority).await
+            manager1
+                .preempt("container-1", "task-1", PreemptionReason::Lane0Priority)
+                .await
         });
 
         // Small delay to ensure first preemption starts
         tokio::time::sleep(Duration::from_millis(10)).await;
 
         let handle2 = tokio::spawn(async move {
-            manager2.preempt("container-1", "task-2", PreemptionReason::VramBudgetExceeded).await
+            manager2
+                .preempt(
+                    "container-1",
+                    "task-2",
+                    PreemptionReason::VramBudgetExceeded,
+                )
+                .await
         });
 
         let result1 = handle1.await.unwrap();
@@ -575,7 +596,9 @@ mod tests {
         // Start preemption in background
         let manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
-            manager_clone.preempt("container-1", "task-1", PreemptionReason::Lane0Priority).await
+            manager_clone
+                .preempt("container-1", "task-1", PreemptionReason::Lane0Priority)
+                .await
         });
 
         // Small delay to let preemption start
@@ -608,8 +631,14 @@ mod tests {
     #[test]
     fn test_reason_as_str() {
         assert_eq!(PreemptionReason::Lane0Priority.as_str(), "lane0_priority");
-        assert_eq!(PreemptionReason::VramBudgetExceeded.as_str(), "vram_budget_exceeded");
-        assert_eq!(PreemptionReason::EpochTransition.as_str(), "epoch_transition");
+        assert_eq!(
+            PreemptionReason::VramBudgetExceeded.as_str(),
+            "vram_budget_exceeded"
+        );
+        assert_eq!(
+            PreemptionReason::EpochTransition.as_str(),
+            "epoch_transition"
+        );
         assert_eq!(PreemptionReason::ManualRequest.as_str(), "manual_request");
     }
 

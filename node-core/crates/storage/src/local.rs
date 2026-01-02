@@ -17,11 +17,7 @@ impl LocalBackend {
     }
 
     fn validate_cid(&self, cid: &Cid) -> Result<(), StorageError> {
-        if cid.trim().is_empty()
-            || cid.contains('/')
-            || cid.contains('\\')
-            || cid.contains("..")
-        {
+        if cid.trim().is_empty() || cid.contains('/') || cid.contains('\\') || cid.contains("..") {
             return Err(StorageError::InvalidCid(cid.clone()));
         }
         Ok(())

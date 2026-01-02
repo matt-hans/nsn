@@ -109,8 +109,7 @@ pub fn build_video_chunks(
         return Err(VideoChunkError::InvalidChunkSize);
     }
 
-    let total_chunks =
-        ((payload.len() + config.chunk_size - 1) / config.chunk_size) as u32;
+    let total_chunks = ((payload.len() + config.chunk_size - 1) / config.chunk_size) as u32;
     let signer = keypair.public().encode_protobuf();
 
     let mut chunks = Vec::with_capacity(total_chunks as usize);
@@ -121,8 +120,7 @@ pub fn build_video_chunks(
         let payload_hash = *blake3::hash(slice).as_bytes();
         let timestamp_ms = now_ms();
         let is_keyframe = chunk_index == 0
-            || (config.keyframe_interval > 0
-                && chunk_index % config.keyframe_interval == 0);
+            || (config.keyframe_interval > 0 && chunk_index % config.keyframe_interval == 0);
 
         let header = VideoChunkHeader {
             version: config.version,
@@ -159,8 +157,7 @@ pub fn build_video_chunks(
 
 /// Decode a video chunk from bytes.
 pub fn decode_video_chunk(data: &[u8]) -> Result<VideoChunk, VideoChunkError> {
-    VideoChunk::decode(&mut &data[..])
-        .map_err(|err| VideoChunkError::DecodeFailed(err.to_string()))
+    VideoChunk::decode(&mut &data[..]).map_err(|err| VideoChunkError::DecodeFailed(err.to_string()))
 }
 
 /// Verify a video chunk signature and payload hash.
@@ -268,8 +265,7 @@ mod tests {
             version: VIDEO_CHUNK_VERSION,
         };
 
-        let chunks = build_video_chunks("QmTest", 7, &payload, &keypair, &config)
-            .expect("chunks");
+        let chunks = build_video_chunks("QmTest", 7, &payload, &keypair, &config).expect("chunks");
         assert_eq!(chunks.len(), 4);
         assert!(chunks[0].header.is_keyframe);
         assert!(chunks[2].header.is_keyframe);

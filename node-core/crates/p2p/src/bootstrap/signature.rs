@@ -87,8 +87,7 @@ impl TrustedSignerSet {
         revoked: HashSet<PublicKey>,
         quorum: usize,
     ) -> Result<Self, BootstrapError> {
-        let active_filtered: HashSet<PublicKey> =
-            active.difference(&revoked).cloned().collect();
+        let active_filtered: HashSet<PublicKey> = active.difference(&revoked).cloned().collect();
         if active_filtered.is_empty() {
             return Err(BootstrapError::NoTrustedSigners);
         }
@@ -113,7 +112,8 @@ pub async fn resolve_trusted_signers(
     match config.source {
         SignerSource::Static => load_from_hex(&config),
         SignerSource::Chain => {
-            match tokio::time::timeout(config.chain_timeout, fetch_signers_from_chain(rpc_url)).await
+            match tokio::time::timeout(config.chain_timeout, fetch_signers_from_chain(rpc_url))
+                .await
             {
                 Ok(Ok(chain_set)) => Ok(chain_set),
                 Ok(Err(err)) => {
@@ -144,9 +144,7 @@ pub async fn resolve_trusted_signers(
 }
 
 fn effective_config(config: &SignerConfig) -> SignerConfig {
-    if !config.trusted_signers_hex.is_empty()
-        || env::var("NSN_BOOTSTRAP_TRUSTED_SIGNERS").is_ok()
-    {
+    if !config.trusted_signers_hex.is_empty() || env::var("NSN_BOOTSTRAP_TRUSTED_SIGNERS").is_ok() {
         return config.clone();
     }
     SignerConfig::default()
@@ -194,30 +192,43 @@ async fn fetch_signers_from_chain(rpc_url: &str) -> Result<TrustedSignerSet, Boo
         .await
         .map_err(|e| BootstrapError::ChainSignerFetchFailed(e.to_string()))?;
 
-    let trusted_query =
-        storage("NsnBootstrap", "TrustedSigners", Vec::<subxt::dynamic::Value>::new());
+    let trusted_query = storage(
+        "NsnBootstrap",
+        "TrustedSigners",
+        Vec::<subxt::dynamic::Value>::new(),
+    );
     let trusted_value = storage_at
         .fetch(&trusted_query)
         .await
         .map_err(|e| BootstrapError::ChainSignerFetchFailed(e.to_string()))?
         .ok_or_else(|| {
-            BootstrapError::ChainSignerFetchFailed("NsnBootstrap::TrustedSigners missing".to_string())
+            BootstrapError::ChainSignerFetchFailed(
+                "NsnBootstrap::TrustedSigners missing".to_string(),
+            )
         })?;
     let trusted = decode_value::<Vec<Vec<u8>>>(trusted_value.encoded())?;
 
-    let revoked_query =
-        storage("NsnBootstrap", "RevokedSigners", Vec::<subxt::dynamic::Value>::new());
+    let revoked_query = storage(
+        "NsnBootstrap",
+        "RevokedSigners",
+        Vec::<subxt::dynamic::Value>::new(),
+    );
     let revoked_value = storage_at
         .fetch(&revoked_query)
         .await
         .map_err(|e| BootstrapError::ChainSignerFetchFailed(e.to_string()))?
         .ok_or_else(|| {
-            BootstrapError::ChainSignerFetchFailed("NsnBootstrap::RevokedSigners missing".to_string())
+            BootstrapError::ChainSignerFetchFailed(
+                "NsnBootstrap::RevokedSigners missing".to_string(),
+            )
         })?;
     let revoked = decode_value::<Vec<Vec<u8>>>(revoked_value.encoded())?;
 
-    let quorum_query =
-        storage("NsnBootstrap", "SignerQuorum", Vec::<subxt::dynamic::Value>::new());
+    let quorum_query = storage(
+        "NsnBootstrap",
+        "SignerQuorum",
+        Vec::<subxt::dynamic::Value>::new(),
+    );
     let quorum_value = storage_at
         .fetch(&quorum_query)
         .await
@@ -234,7 +245,8 @@ async fn fetch_signers_from_chain(rpc_url: &str) -> Result<TrustedSignerSet, Boo
 }
 
 fn decode_value<T: Decode>(bytes: &[u8]) -> Result<T, BootstrapError> {
-    Decode::decode(&mut &bytes[..]).map_err(|e| BootstrapError::ChainSignerFetchFailed(e.to_string()))
+    Decode::decode(&mut &bytes[..])
+        .map_err(|e| BootstrapError::ChainSignerFetchFailed(e.to_string()))
 }
 
 fn parse_bytes(raw: &[Vec<u8>]) -> Result<HashSet<PublicKey>, BootstrapError> {

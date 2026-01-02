@@ -36,7 +36,7 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::{interval, MissedTickBehavior};
 use tracing::{debug, error, info, warn};
 
@@ -187,6 +187,9 @@ pub struct P2pService {
     /// Security state (rate limiting, DoS detection, graylist)
     security: SecurityState,
 
+    /// Video chunk latency stream (ms)
+    video_latency_tx: broadcast::Sender<u64>,
+
     /// Shutdown flag
     shutdown: bool,
 }
@@ -229,8 +232,7 @@ impl P2pService {
 
         // Create security metrics (registered on the same registry)
         let security_metrics = Arc::new(
-            SecurityMetrics::new(&metrics.registry)
-                .expect("Failed to create security metrics"),
+            SecurityMetrics::new(&metrics.registry).expect("Failed to create security metrics"),
         );
 
         let rpc_url_for_signers = rpc_url.clone();
@@ -262,7 +264,11 @@ impl P2pService {
 
         // Resolve trusted bootstrap signers
         let trusted_signers = if config.bootstrap.require_signed_manifests
-            || !config.bootstrap.signer_config.trusted_signers_hex.is_empty()
+            || !config
+                .bootstrap
+                .signer_config
+                .trusted_signers_hex
+                .is_empty()
         {
             resolve_trusted_signers(&config.bootstrap.signer_config, &rpc_url_for_signers)
                 .await
@@ -276,8 +282,11 @@ impl P2pService {
         };
 
         // Discover bootstrap peers
-        let bootstrap_protocol =
-            BootstrapProtocol::new(config.bootstrap.clone(), trusted_signers, Some(metrics.clone()));
+        let bootstrap_protocol = BootstrapProtocol::new(
+            config.bootstrap.clone(),
+            trusted_signers,
+            Some(metrics.clone()),
+        );
         let bootstrap_peers = match bootstrap_protocol.discover_peers().await {
             Ok(peers) => peers,
             Err(err) => {
@@ -316,10 +325,7 @@ impl P2pService {
         // Dial bootstrap peers
         for target in &bootstrap_targets {
             if let Err(err) = swarm.dial(target.dial_addr.clone()) {
-                warn!(
-                    "Failed to dial bootstrap peer {}: {}",
-                    target.peer_id, err
-                );
+                warn!("Failed to dial bootstrap peer {}: {}", target.peer_id, err);
             }
         }
 
@@ -344,11 +350,15 @@ impl P2pService {
             Some(reputation_oracle.clone()),
             security_metrics.clone(),
         );
-        let bandwidth_limiter =
-            BandwidthLimiter::new(security_config.bandwidth_limiter.clone(), security_metrics.clone());
+        let bandwidth_limiter = BandwidthLimiter::new(
+            security_config.bandwidth_limiter.clone(),
+            security_metrics.clone(),
+        );
         let graylist = Graylist::new(security_config.graylist.clone(), security_metrics.clone());
-        let dos_detector =
-            DosDetector::new(security_config.dos_detector.clone(), security_metrics.clone());
+        let dos_detector = DosDetector::new(
+            security_config.dos_detector.clone(),
+            security_metrics.clone(),
+        );
 
         let security = SecurityState {
             rate_limiter,
@@ -359,6 +369,8 @@ impl P2pService {
             violation_counts: HashMap::new(),
             graylist_threshold: security_config.graylist.threshold_violations,
         };
+
+        let (video_latency_tx, _video_latency_rx) = broadcast::channel(1024);
 
         Ok((
             Self {
@@ -375,6 +387,7 @@ impl P2pService {
                 pending_start_providing: HashMap::new(),
                 local_provided_shards: Vec::new(),
                 security,
+                video_latency_tx,
                 shutdown: false,
             },
             command_tx,
@@ -394,6 +407,11 @@ impl P2pService {
     /// Get command sender
     pub fn command_sender(&self) -> mpsc::UnboundedSender<ServiceCommand> {
         self.command_tx.clone()
+    }
+
+    /// Subscribe to decoded video chunk latencies (ms).
+    pub fn subscribe_video_latency(&self) -> broadcast::Receiver<u64> {
+        self.video_latency_tx.subscribe()
     }
 
     /// Start the P2P service
@@ -566,7 +584,8 @@ impl P2pService {
         self.security.dos_detector.record_connection_attempt().await;
 
         if self.security.dos_detector.detect_connection_flood().await {
-            self.graylist_peer(peer_id, "Connection flood detected").await;
+            self.graylist_peer(peer_id, "Connection flood detected")
+                .await;
             return;
         }
 
@@ -597,6 +616,7 @@ impl P2pService {
                             self.metrics
                                 .video_chunk_latency_seconds
                                 .observe(latency_ms as f64 / 1000.0);
+                            let _ = self.video_latency_tx.send(latency_ms);
                         }
                     }
                 }
@@ -633,8 +653,7 @@ impl P2pService {
         match self.security.rate_limiter.check_rate_limit(peer_id).await {
             Ok(()) => true,
             Err(RateLimitError::LimitExceeded { .. }) => {
-                self.record_violation(peer_id, "Rate limit exceeded")
-                    .await;
+                self.record_violation(peer_id, "Rate limit exceeded").await;
                 false
             }
         }

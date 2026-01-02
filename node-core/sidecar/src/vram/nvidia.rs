@@ -194,9 +194,9 @@ mod nvml_impl {
             })?;
 
             use nvml_wrapper::enum_wrappers::device::TemperatureSensor;
-            let temperature = device
-                .temperature(TemperatureSensor::Gpu)
-                .map_err(|e| NvidiaError::QueryFailed(format!("Failed to get temperature: {}", e)))?;
+            let temperature = device.temperature(TemperatureSensor::Gpu).map_err(|e| {
+                NvidiaError::QueryFailed(format!("Failed to get temperature: {}", e))
+            })?;
 
             let bytes_to_gb = |b: u64| b as f32 / (1024.0 * 1024.0 * 1024.0);
 

@@ -17,6 +17,4 @@ pub use manager::{
     ContainerInfo, ContainerManager, ContainerManagerConfig, ContainerMetrics, ContainerStatus,
     LoadedModelInfo, ModelLoadState, ResourceLimits,
 };
-pub use preempt::{
-    PreemptionManager, PreemptionReason, PreemptionResult, PreemptionStrategy,
-};
+pub use preempt::{PreemptionManager, PreemptionReason, PreemptionResult, PreemptionStrategy};

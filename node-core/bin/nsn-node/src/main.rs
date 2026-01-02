@@ -17,13 +17,17 @@ use nsn_scheduler::{
     AttestationSubmitter, DualAttestationSubmitter, NoopAttestationSubmitter,
     P2pAttestationSubmitter, RedundancyConfig, RedundantScheduler,
 };
+use nsn_sidecar::proto::sidecar_server::SidecarServer;
+use nsn_sidecar::{SidecarService, SidecarServiceConfig, TaskCompletionEvent};
 use nsn_storage::{StorageAuditReport, StorageBackendKind, StorageManager};
 use nsn_types::NodeCapability;
 use sp_core::{sr25519, Pair};
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, Level};
+use tonic::transport::Server;
+use tracing::{error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser)]
@@ -129,6 +133,15 @@ enum Mode {
         #[arg(long, default_value = "/var/lib/nsn/storage")]
         storage_path: String,
     },
+    /// Run as a latency receiver for video chunks
+    LatencyReceiver {
+        /// Rolling window size for latency percentiles
+        #[arg(long, default_value = "512")]
+        window_size: usize,
+        /// Reporting interval (ms)
+        #[arg(long, default_value = "2000")]
+        report_every_ms: u64,
+    },
 }
 
 #[derive(Clone, Debug, ValueEnum)]
@@ -146,12 +159,13 @@ enum StorageBackendMode {
 }
 
 impl Mode {
-    fn to_node_mode(&self) -> NodeCapability {
+    fn to_node_mode(&self) -> Option<NodeCapability> {
         match self {
-            Mode::SuperNode { .. } => NodeCapability::SuperNode,
-            Mode::DirectorOnly { .. } => NodeCapability::DirectorOnly,
-            Mode::ValidatorOnly { .. } => NodeCapability::ValidatorOnly,
-            Mode::StorageOnly { .. } => NodeCapability::StorageOnly,
+            Mode::SuperNode { .. } => Some(NodeCapability::SuperNode),
+            Mode::DirectorOnly { .. } => Some(NodeCapability::DirectorOnly),
+            Mode::ValidatorOnly { .. } => Some(NodeCapability::ValidatorOnly),
+            Mode::StorageOnly { .. } => Some(NodeCapability::StorageOnly),
+            Mode::LatencyReceiver { .. } => None,
         }
     }
 }
@@ -179,10 +193,22 @@ async fn main() -> Result<()> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
+    let latency_config = match &cli.mode {
+        Mode::LatencyReceiver {
+            window_size,
+            report_every_ms,
+        } => Some((*window_size, *report_every_ms)),
+        _ => None,
+    };
+
     let node_mode = cli.mode.to_node_mode();
 
     info!("Starting NSN Node");
-    info!("Mode: {:?}", node_mode);
+    if let Some(mode) = node_mode {
+        info!("Mode: {:?}", mode);
+    } else {
+        info!("Mode: LatencyReceiver");
+    }
     info!("Config: {}", cli.config);
 
     // TODO: Load configuration from file
@@ -195,20 +221,25 @@ async fn main() -> Result<()> {
     p2p_config.metrics_port = cli.p2p_metrics_port;
     p2p_config.keypair_path = cli.p2p_keypair_path.clone();
 
-    let (mut p2p_service, p2p_cmd_tx) =
-        P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
+    let (mut p2p_service, p2p_cmd_tx) = P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
+    let mut latency_rx = latency_config.map(|_| p2p_service.subscribe_video_latency());
     tokio::spawn(async move {
         if let Err(err) = p2p_service.start().await {
             tracing::error!("P2P service failed: {}", err);
         }
     });
 
+    if let Some((window_size, report_every_ms)) = latency_config {
+        let rx = latency_rx
+            .take()
+            .ok_or_else(|| anyhow!("latency receiver not initialized"))?;
+        run_latency_receiver(rx, window_size, Duration::from_millis(report_every_ms)).await?;
+        return Ok(());
+    }
+
     let mut attestation_submitter =
         Some(build_attestation_submitter(&cli, p2p_cmd_tx.clone()).await?);
-    info!(
-        "Attestation submit mode: {:?}",
-        cli.attestation_submit_mode
-    );
+    info!("Attestation submit mode: {:?}", cli.attestation_submit_mode);
 
     let registry_refresh = Duration::from_secs(cli.executor_registry_refresh_secs);
 
@@ -249,9 +280,8 @@ async fn main() -> Result<()> {
         Mode::SuperNode { gpu_device } => {
             info!("SuperNode mode: GPU device {}", gpu_device);
             // TODO: Initialize scheduler, sidecar, storage
-            let executor_registry = Arc::new(
-                ChainExecutorRegistry::new(cli.rpc_url.clone(), registry_refresh).await?,
-            );
+            let executor_registry =
+                Arc::new(ChainExecutorRegistry::new(cli.rpc_url.clone(), registry_refresh).await?);
             let _executor_registry_task = executor_registry.clone().start_refresh();
             let submitter = attestation_submitter
                 .take()
@@ -262,19 +292,20 @@ async fn main() -> Result<()> {
             if matches!(storage.backend_kind(), StorageBackendKind::Local) {
                 let _storage = StorageManager::local(storage_root)?;
             }
+            start_sidecar_with_lane0_publish(storage.clone(), p2p_cmd_tx.clone(), &cli).await?;
         }
         Mode::DirectorOnly { gpu_device } => {
             info!("DirectorOnly mode: GPU device {}", gpu_device);
             // TODO: Initialize scheduler, sidecar
-            let executor_registry = Arc::new(
-                ChainExecutorRegistry::new(cli.rpc_url.clone(), registry_refresh).await?,
-            );
+            let executor_registry =
+                Arc::new(ChainExecutorRegistry::new(cli.rpc_url.clone(), registry_refresh).await?);
             let _executor_registry_task = executor_registry.clone().start_refresh();
             let submitter = attestation_submitter
                 .take()
                 .ok_or_else(|| anyhow!("attestation submitter already consumed"))?;
             let _redundant_scheduler =
                 RedundantScheduler::new(RedundancyConfig::default(), submitter);
+            start_sidecar_with_lane0_publish(storage.clone(), p2p_cmd_tx.clone(), &cli).await?;
         }
         Mode::ValidatorOnly { gpu_device } => {
             info!("ValidatorOnly mode: GPU device {}", gpu_device);
@@ -288,6 +319,7 @@ async fn main() -> Result<()> {
                 let _storage = StorageManager::local(storage_root)?;
             }
         }
+        Mode::LatencyReceiver { .. } => {}
     }
 
     info!("NSN Node initialized successfully");
@@ -337,7 +369,8 @@ async fn publish_video_from_storage(
     log_audit(&audit);
 
     let chunks = build_video_chunks(&normalized, slot, &payload, &keypair, &config)?;
-    publish_video_chunks(cmd_tx, chunks, Duration::from_millis(ack_timeout_ms)).await
+    publish_video_chunks(cmd_tx, chunks, Duration::from_millis(ack_timeout_ms))
+        .await
         .map_err(|err| anyhow!(err.to_string()))
 }
 
@@ -373,18 +406,220 @@ fn log_audit(report: &StorageAuditReport) {
     );
 }
 
+struct LatencyPercentiles {
+    p50: u64,
+    p95: u64,
+    p99: u64,
+}
+
+struct RollingLatencyWindow {
+    window: VecDeque<u64>,
+    max_samples: usize,
+}
+
+impl RollingLatencyWindow {
+    fn new(max_samples: usize) -> Self {
+        Self {
+            window: VecDeque::with_capacity(max_samples),
+            max_samples,
+        }
+    }
+
+    fn push(&mut self, value: u64) {
+        if self.max_samples == 0 {
+            return;
+        }
+
+        if self.window.len() == self.max_samples {
+            self.window.pop_front();
+        }
+        self.window.push_back(value);
+    }
+
+    fn percentiles(&self) -> Option<LatencyPercentiles> {
+        if self.window.is_empty() {
+            return None;
+        }
+
+        let mut values: Vec<u64> = self.window.iter().copied().collect();
+        values.sort_unstable();
+
+        Some(LatencyPercentiles {
+            p50: percentile(&values, 50.0),
+            p95: percentile(&values, 95.0),
+            p99: percentile(&values, 99.0),
+        })
+    }
+}
+
+fn percentile(sorted: &[u64], pct: f64) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let clamped = pct.clamp(0.0, 100.0);
+    let idx = ((clamped / 100.0) * (sorted.len().saturating_sub(1)) as f64).round() as usize;
+    let safe_idx = idx.min(sorted.len() - 1);
+    sorted[safe_idx]
+}
+
+async fn run_latency_receiver(
+    mut rx: tokio::sync::broadcast::Receiver<u64>,
+    window_size: usize,
+    report_every: Duration,
+) -> Result<()> {
+    let mut window = RollingLatencyWindow::new(window_size.max(1));
+    let mut ticker = tokio::time::interval(report_every);
+
+    info!(
+        window_size = window_size,
+        report_every_ms = report_every.as_millis(),
+        "Latency receiver started"
+    );
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                if let Some(p) = window.percentiles() {
+                    println!(
+                        "latency_ms p50={} p95={} p99={} samples={}",
+                        p.p50,
+                        p.p95,
+                        p.p99,
+                        window.window.len()
+                    );
+                }
+            }
+            msg = rx.recv() => {
+                match msg {
+                    Ok(latency_ms) => window.push(latency_ms),
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!(skipped = skipped, "Latency receiver lagged");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        warn!("Latency channel closed");
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn start_sidecar_with_lane0_publish(
+    storage: StorageManager,
+    p2p_cmd_tx: tokio::sync::mpsc::UnboundedSender<nsn_p2p::ServiceCommand>,
+    cli: &Cli,
+) -> Result<()> {
+    let (task_tx, task_rx) = tokio::sync::mpsc::unbounded_channel::<TaskCompletionEvent>();
+    let mut sidecar_service = SidecarService::with_config(SidecarServiceConfig::default());
+    sidecar_service.set_task_completion_sender(task_tx);
+    let bind_addr = sidecar_service.config().bind_addr;
+
+    tokio::spawn(async move {
+        if let Err(err) = Server::builder()
+            .add_service(SidecarServer::new(sidecar_service))
+            .serve(bind_addr)
+            .await
+        {
+            error!("Sidecar server failed: {}", err);
+        }
+    });
+
+    let publish_slot = cli.publish_slot;
+    let keypair_path = cli.p2p_keypair_path.clone();
+    let chunk_size = cli.publish_chunk_size;
+    let keyframe_interval = cli.publish_keyframe_interval;
+    let ack_timeout_ms = cli.publish_ack_timeout_ms;
+    let storage_clone = storage.clone();
+    let p2p_cmd_tx_clone = p2p_cmd_tx.clone();
+
+    tokio::spawn(async move {
+        run_lane0_auto_publish(
+            task_rx,
+            storage_clone,
+            p2p_cmd_tx_clone,
+            publish_slot,
+            keypair_path,
+            chunk_size,
+            keyframe_interval,
+            ack_timeout_ms,
+        )
+        .await;
+    });
+
+    info!("Sidecar server started");
+    Ok(())
+}
+
+async fn run_lane0_auto_publish(
+    mut task_rx: tokio::sync::mpsc::UnboundedReceiver<TaskCompletionEvent>,
+    storage: StorageManager,
+    p2p_cmd_tx: tokio::sync::mpsc::UnboundedSender<nsn_p2p::ServiceCommand>,
+    publish_slot: u64,
+    keypair_path: Option<PathBuf>,
+    chunk_size: usize,
+    keyframe_interval: u32,
+    ack_timeout_ms: u64,
+) {
+    while let Some(event) = task_rx.recv().await {
+        if event.lane != 0 {
+            continue;
+        }
+
+        if event.output_cid.is_empty() {
+            warn!(task_id = %event.task_id, "Lane 0 task completed without output CID");
+            continue;
+        }
+
+        info!(
+            task_id = %event.task_id,
+            output_cid = %event.output_cid,
+            "Publishing Lane 0 output"
+        );
+
+        match publish_video_from_storage(
+            &storage,
+            &p2p_cmd_tx,
+            &event.output_cid,
+            publish_slot,
+            keypair_path.as_ref(),
+            chunk_size,
+            keyframe_interval,
+            ack_timeout_ms,
+        )
+        .await
+        {
+            Ok(report) => {
+                info!(
+                    task_id = %event.task_id,
+                    total_chunks = report.total_chunks,
+                    published = report.published,
+                    failed = report.failed,
+                    max_ack_ms = report.max_ack_ms,
+                    avg_ack_ms = report.avg_ack_ms,
+                    "Lane 0 video distribution completed"
+                );
+            }
+            Err(err) => {
+                error!(
+                    task_id = %event.task_id,
+                    error = %err,
+                    "Lane 0 video distribution failed"
+                );
+            }
+        }
+    }
+}
+
 async fn build_attestation_submitter(
     cli: &Cli,
     p2p_cmd_tx: tokio::sync::mpsc::UnboundedSender<nsn_p2p::ServiceCommand>,
 ) -> Result<Box<dyn AttestationSubmitter>> {
     match cli.attestation_submit_mode {
-        AttestationSubmitMode::P2p => {
-            Ok(Box::new(P2pAttestationSubmitter::new(p2p_cmd_tx)))
-        }
+        AttestationSubmitMode::P2p => Ok(Box::new(P2pAttestationSubmitter::new(p2p_cmd_tx))),
         AttestationSubmitMode::Chain => {
             let signer = parse_attestation_signer(&cli.attestation_suri)?;
-            let submitter =
-                ChainAttestationSubmitter::new(cli.rpc_url.clone(), signer).await?;
+            let submitter = ChainAttestationSubmitter::new(cli.rpc_url.clone(), signer).await?;
             Ok(Box::new(submitter))
         }
         AttestationSubmitMode::Dual => {
@@ -416,9 +651,27 @@ mod tests {
     #[test]
     fn test_mode_to_node_mode() {
         let mode = Mode::SuperNode { gpu_device: 0 };
-        assert_eq!(mode.to_node_mode(), NodeCapability::SuperNode);
+        assert_eq!(mode.to_node_mode(), Some(NodeCapability::SuperNode));
 
         let mode = Mode::DirectorOnly { gpu_device: 0 };
-        assert_eq!(mode.to_node_mode(), NodeCapability::DirectorOnly);
+        assert_eq!(mode.to_node_mode(), Some(NodeCapability::DirectorOnly));
+
+        let mode = Mode::LatencyReceiver {
+            window_size: 10,
+            report_every_ms: 1000,
+        };
+        assert!(mode.to_node_mode().is_none());
+    }
+
+    #[test]
+    fn test_latency_percentiles() {
+        let mut window = RollingLatencyWindow::new(5);
+        for value in [10_u64, 20, 30, 40, 50] {
+            window.push(value);
+        }
+        let p = window.percentiles().expect("percentiles available");
+        assert_eq!(p.p50, 30);
+        assert_eq!(p.p95, 50);
+        assert_eq!(p.p99, 50);
     }
 }

@@ -28,7 +28,7 @@ pub struct PeerManifest {
     pub signer: Option<String>,
     /// Multiple signatures (hex)
     #[serde(default)]
-    pub signatures: Option<Vec<String>>, 
+    pub signatures: Option<Vec<String>>,
     /// Optional signer public keys (hex protobuf)
     #[serde(default)]
     pub signers: Option<Vec<String>>,
@@ -103,10 +103,7 @@ pub async fn fetch_http_peers(
         .await
         .map_err(|e| BootstrapError::JsonParseFailed(e.to_string()))?;
 
-    debug!(
-        "Fetched manifest with {} peers",
-        manifest.peers.len()
-    );
+    debug!("Fetched manifest with {} peers", manifest.peers.len());
 
     let signatures = manifest.signature_list();
 
@@ -125,9 +122,7 @@ pub async fn fetch_http_peers(
 
     // Parse peers
     let mut peers = Vec::new();
-    let signature_bytes = signatures
-        .get(0)
-        .and_then(|sig| hex::decode(sig).ok());
+    let signature_bytes = signatures.get(0).and_then(|sig| hex::decode(sig).ok());
 
     for peer_entry in manifest.peers {
         match parse_manifest_peer(peer_entry, signature_bytes.clone()) {

@@ -3,7 +3,9 @@
 //! Provides a chain-backed executor registry sourced from on-chain stake and
 //! reputation data.
 
-use nsn_scheduler::{AttestationBundle, AttestationError, AttestationSubmitter, ExecutorInfo, ExecutorRegistry};
+use nsn_scheduler::{
+    AttestationBundle, AttestationError, AttestationSubmitter, ExecutorInfo, ExecutorRegistry,
+};
 use nsn_types::{Lane, NodeCapability};
 use parity_scale_codec::Decode;
 use sp_core::crypto::AccountId32;
@@ -109,7 +111,10 @@ pub struct ChainExecutorRegistry {
 
 impl ChainExecutorRegistry {
     /// Create a new registry with the given chain RPC URL.
-    pub async fn new(rpc_url: String, refresh_interval: Duration) -> Result<Self, ChainClientError> {
+    pub async fn new(
+        rpc_url: String,
+        refresh_interval: Duration,
+    ) -> Result<Self, ChainClientError> {
         let client = OnlineClient::<PolkadotConfig>::from_url(rpc_url).await?;
         Ok(Self {
             client,
@@ -147,7 +152,9 @@ impl ChainExecutorRegistry {
                 NodeRole::Relay | NodeRole::None => None,
             };
 
-            let Some(capability) = capability else { continue };
+            let Some(capability) = capability else {
+                continue;
+            };
             let mode = modes
                 .get(&account)
                 .cloned()
@@ -196,10 +203,12 @@ impl ChainExecutorRegistry {
         Ok(modes)
     }
 
-    async fn fetch_reputations(
-        &self,
-    ) -> Result<HashMap<AccountId32, u64>, ChainClientError> {
-        let query = storage("NsnReputation", "ReputationScores", Vec::<subxt::dynamic::Value>::new());
+    async fn fetch_reputations(&self) -> Result<HashMap<AccountId32, u64>, ChainClientError> {
+        let query = storage(
+            "NsnReputation",
+            "ReputationScores",
+            Vec::<subxt::dynamic::Value>::new(),
+        );
         let mut iter = self.client.storage().at_latest().await?.iter(query).await?;
         let mut reputations = HashMap::new();
 
@@ -235,10 +244,7 @@ pub struct ChainAttestationSubmitter {
 }
 
 impl ChainAttestationSubmitter {
-    pub async fn new(
-        rpc_url: String,
-        signer: sr25519::Pair,
-    ) -> Result<Self, ChainClientError> {
+    pub async fn new(rpc_url: String, signer: sr25519::Pair) -> Result<Self, ChainClientError> {
         let client = OnlineClient::<PolkadotConfig>::from_url(rpc_url).await?;
         let signer = subxt::tx::PairSigner::new(signer);
         Ok(Self { client, signer })
@@ -246,7 +252,10 @@ impl ChainAttestationSubmitter {
 }
 
 impl AttestationSubmitter for ChainAttestationSubmitter {
-    fn submit_attestation(&mut self, attestation: AttestationBundle) -> Result<(), AttestationError> {
+    fn submit_attestation(
+        &mut self,
+        attestation: AttestationBundle,
+    ) -> Result<(), AttestationError> {
         let attestation_cid = option_bytes(attestation.attestation_cid);
         let call = tx(
             "NsnTaskMarket",
@@ -296,8 +305,7 @@ fn account_from_key(key_bytes: &[u8]) -> Result<AccountId32, ChainClientError> {
 }
 
 fn decode_value<T: Decode>(bytes: &[u8]) -> Result<T, ChainClientError> {
-    Decode::decode(&mut &bytes[..])
-        .map_err(|err| ChainClientError::Decode(err.to_string()))
+    Decode::decode(&mut &bytes[..]).map_err(|err| ChainClientError::Decode(err.to_string()))
 }
 
 fn option_bytes(value: Option<String>) -> Value {
@@ -315,8 +323,14 @@ mod tests {
     fn mode_allows_lane_filters_correctly() {
         assert!(mode_allows_lane(&NodeMode::Lane1Active, Lane::Lane1));
         assert!(!mode_allows_lane(&NodeMode::Lane1Active, Lane::Lane0));
-        assert!(mode_allows_lane(&NodeMode::Lane0Active { epoch_end: 1 }, Lane::Lane0));
-        assert!(mode_allows_lane(&NodeMode::Draining { epoch_start: 1 }, Lane::Lane0));
+        assert!(mode_allows_lane(
+            &NodeMode::Lane0Active { epoch_end: 1 },
+            Lane::Lane0
+        ));
+        assert!(mode_allows_lane(
+            &NodeMode::Draining { epoch_start: 1 },
+            Lane::Lane0
+        ));
         assert!(!mode_allows_lane(&NodeMode::Offline, Lane::Lane1));
     }
 }

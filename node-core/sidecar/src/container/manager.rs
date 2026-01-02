@@ -12,8 +12,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bollard::container::{
-    Config, CreateContainerOptions, InspectContainerOptions, RemoveContainerOptions, StartContainerOptions,
-    StatsOptions, StopContainerOptions,
+    Config, CreateContainerOptions, InspectContainerOptions, RemoveContainerOptions,
+    StartContainerOptions, StatsOptions, StopContainerOptions,
 };
 use bollard::image::CreateImageOptions;
 use bollard::models::{ContainerStateStatusEnum, DeviceRequest, HostConfig, PortBinding};
@@ -490,7 +490,10 @@ impl ContainerManager {
         let config = Config {
             image: Some(image_cid.clone()),
             host_config: Some(host_config),
-            exposed_ports: Some(HashMap::from([(format!("{}/tcp", container_grpc_port), HashMap::new())])),
+            exposed_ports: Some(HashMap::from([(
+                format!("{}/tcp", container_grpc_port),
+                HashMap::new(),
+            )])),
             ..Default::default()
         };
 
@@ -573,9 +576,7 @@ impl ContainerManager {
         let runtime_id = Self::runtime_id(&container).to_string();
 
         if force {
-            let _ = docker
-                .kill_container::<String>(&runtime_id, None)
-                .await;
+            let _ = docker.kill_container::<String>(&runtime_id, None).await;
         } else {
             let _ = docker
                 .stop_container(
