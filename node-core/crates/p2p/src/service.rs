@@ -19,6 +19,7 @@ use super::security::{
     SecurityMetrics,
 };
 use super::topics::TopicCategory;
+use super::video::{chunk_latency_ms, decode_video_chunk, verify_video_chunk};
 use futures::StreamExt;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
@@ -587,6 +588,18 @@ impl P2pService {
 
             if self.enforce_inbound_limits(&peer_id, message_len).await {
                 self.metrics.gossipsub_messages_received_total.inc();
+                if let Some(TopicCategory::VideoChunks) =
+                    super::topics::parse_topic(&message.topic.to_string())
+                {
+                    if let Ok(chunk) = decode_video_chunk(&message.data) {
+                        if verify_video_chunk(&chunk).is_ok() {
+                            let latency_ms = chunk_latency_ms(&chunk);
+                            self.metrics
+                                .video_chunk_latency_seconds
+                                .observe(latency_ms as f64 / 1000.0);
+                        }
+                    }
+                }
             } else {
                 debug!("Dropped GossipSub message from {}", peer_id);
             }

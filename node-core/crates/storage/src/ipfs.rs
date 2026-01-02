@@ -1,8 +1,9 @@
-use crate::{Cid, StorageBackend, StorageError};
+use crate::{Cid, PinStatus, StorageBackend, StorageError};
 use async_trait::async_trait;
 use reqwest::multipart;
 use reqwest::Client;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct IpfsBackend {
@@ -14,6 +15,18 @@ pub struct IpfsBackend {
 struct IpfsAddResponse {
     #[serde(rename = "Hash")]
     hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct IpfsPinLsResponse {
+    #[serde(rename = "Keys")]
+    keys: Option<HashMap<String, IpfsPinEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IpfsPinEntry {
+    #[serde(rename = "Type")]
+    _kind: Option<String>,
 }
 
 impl IpfsBackend {
@@ -92,6 +105,28 @@ impl StorageBackend for IpfsBackend {
             .error_for_status()?;
 
         Ok(())
+    }
+
+    async fn pin_status(&self, cid: &Cid) -> Result<PinStatus, StorageError> {
+        let response = self
+            .client
+            .post(self.endpoint(&format!("pin/ls?arg={cid}")))
+            .send()
+            .await?
+            .error_for_status()?;
+
+        let body: IpfsPinLsResponse = response.json().await?;
+        let pinned = body
+            .keys
+            .as_ref()
+            .map(|keys| keys.contains_key(cid))
+            .unwrap_or(false);
+
+        Ok(if pinned {
+            PinStatus::Pinned
+        } else {
+            PinStatus::NotPinned
+        })
     }
 }
 

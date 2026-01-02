@@ -207,6 +207,40 @@ pub struct SecurityMetadata {
     pub timestamp: u64,
 }
 
+/// Video chunk header for Lane 0 distribution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+pub struct VideoChunkHeader {
+    /// Schema version for the chunk format.
+    pub version: u16,
+    /// Slot number for the video.
+    pub slot: u64,
+    /// Content identifier for the full video (IPFS CID or other).
+    pub content_id: String,
+    /// Zero-based chunk index.
+    pub chunk_index: u32,
+    /// Total number of chunks in the stream.
+    pub total_chunks: u32,
+    /// Timestamp when this chunk was published (ms since Unix epoch).
+    pub timestamp_ms: u64,
+    /// Whether this chunk represents a keyframe boundary.
+    pub is_keyframe: bool,
+    /// Blake3 hash of the chunk payload.
+    pub payload_hash: [u8; 32],
+}
+
+/// Signed video chunk message for GossipSub distribution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+pub struct VideoChunk {
+    /// Header metadata.
+    pub header: VideoChunkHeader,
+    /// Raw chunk payload bytes.
+    pub payload: Vec<u8>,
+    /// Signer public key (libp2p protobuf-encoded bytes).
+    pub signer: Vec<u8>,
+    /// Signature over the header + payload hash.
+    pub signature: Vec<u8>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

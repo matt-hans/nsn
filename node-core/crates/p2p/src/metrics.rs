@@ -48,6 +48,9 @@ pub struct P2pMetrics {
     /// GossipSub mesh size by topic
     pub gossipsub_mesh_size: Gauge,
 
+    /// Video chunk latency histogram (seconds)
+    pub video_chunk_latency_seconds: Histogram,
+
     /// NAT traversal attempts by strategy
     pub nat_traversal_attempts_total: Counter,
 
@@ -147,6 +150,12 @@ impl P2pMetrics {
         )?;
         registry.register(Box::new(gossipsub_mesh_size.clone()))?;
 
+        let video_chunk_latency_seconds = Histogram::with_opts(HistogramOpts::new(
+            "nsn_p2p_video_chunk_latency_seconds",
+            "End-to-end latency for video chunks (seconds)",
+        ))?;
+        registry.register(Box::new(video_chunk_latency_seconds.clone()))?;
+
         let nat_traversal_attempts_total = Counter::new(
             "nsn_p2p_nat_traversal_attempts_total",
             "Total NAT traversal attempts by strategy",
@@ -201,6 +210,7 @@ impl P2pMetrics {
             gossipsub_messages_received_total,
             gossipsub_publish_failures_total,
             gossipsub_mesh_size,
+            video_chunk_latency_seconds,
             nat_traversal_attempts_total,
             nat_traversal_successes_total,
             nat_traversal_failures_total,

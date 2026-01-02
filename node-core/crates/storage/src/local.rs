@@ -88,4 +88,14 @@ impl StorageBackend for LocalBackend {
         }
         Ok(())
     }
+
+    async fn pin_status(&self, cid: &Cid) -> Result<crate::PinStatus, StorageError> {
+        self.validate_cid(cid)?;
+        let path = self.pin_path(cid);
+        if tokio::fs::metadata(&path).await.is_ok() {
+            Ok(crate::PinStatus::Pinned)
+        } else {
+            Ok(crate::PinStatus::NotPinned)
+        }
+    }
 }

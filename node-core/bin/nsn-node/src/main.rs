@@ -9,12 +9,15 @@
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use nsn_chain_client::{ChainAttestationSubmitter, ChainExecutorRegistry};
-use nsn_p2p::{P2pConfig, P2pService};
+use nsn_p2p::{
+    build_video_chunks, publish_video_chunks, P2pConfig, P2pService, VideoChunkConfig,
+    DEFAULT_CHUNK_SIZE_BYTES,
+};
 use nsn_scheduler::{
     AttestationSubmitter, DualAttestationSubmitter, NoopAttestationSubmitter,
     P2pAttestationSubmitter, RedundancyConfig, RedundantScheduler,
 };
-use nsn_storage::StorageManager;
+use nsn_storage::{StorageAuditReport, StorageBackendKind, StorageManager};
 use nsn_types::NodeCapability;
 use sp_core::{sr25519, Pair};
 use std::path::PathBuf;
@@ -66,6 +69,38 @@ struct Cli {
     /// Attestation signer SURI (required for chain/dual modes)
     #[arg(long)]
     attestation_suri: Option<String>,
+
+    /// P2P identity keypair path (used for signing video chunks)
+    #[arg(long)]
+    p2p_keypair_path: Option<PathBuf>,
+
+    /// Storage backend (local or ipfs)
+    #[arg(long, value_enum, default_value = "ipfs")]
+    storage_backend: StorageBackendMode,
+
+    /// IPFS API URL (for ipfs storage backend)
+    #[arg(long, default_value = "http://127.0.0.1:5001")]
+    ipfs_api_url: String,
+
+    /// Optional CID to publish as a video stream over P2P
+    #[arg(long)]
+    publish_video_cid: Option<String>,
+
+    /// Slot number to associate with published video
+    #[arg(long, default_value = "0")]
+    publish_slot: u64,
+
+    /// Chunk size in bytes for video distribution
+    #[arg(long, default_value_t = DEFAULT_CHUNK_SIZE_BYTES)]
+    publish_chunk_size: usize,
+
+    /// Keyframe interval in chunks (0 = only first chunk is keyframe)
+    #[arg(long, default_value = "0")]
+    publish_keyframe_interval: u32,
+
+    /// Timeout for publish ack (ms)
+    #[arg(long, default_value = "5000")]
+    publish_ack_timeout_ms: u64,
 }
 
 #[derive(Subcommand)]
@@ -102,6 +137,12 @@ enum AttestationSubmitMode {
     Chain,
     Dual,
     None,
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum StorageBackendMode {
+    Local,
+    Ipfs,
 }
 
 impl Mode {
@@ -152,6 +193,7 @@ async fn main() -> Result<()> {
     let mut p2p_config = P2pConfig::default();
     p2p_config.listen_port = cli.p2p_listen_port;
     p2p_config.metrics_port = cli.p2p_metrics_port;
+    p2p_config.keypair_path = cli.p2p_keypair_path.clone();
 
     let (mut p2p_service, p2p_cmd_tx) =
         P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
@@ -162,13 +204,46 @@ async fn main() -> Result<()> {
     });
 
     let mut attestation_submitter =
-        Some(build_attestation_submitter(&cli, p2p_cmd_tx).await?);
+        Some(build_attestation_submitter(&cli, p2p_cmd_tx.clone()).await?);
     info!(
         "Attestation submit mode: {:?}",
         cli.attestation_submit_mode
     );
 
     let registry_refresh = Duration::from_secs(cli.executor_registry_refresh_secs);
+
+    let storage_path = match &cli.mode {
+        Mode::StorageOnly { storage_path } => storage_path.clone(),
+        _ => "/var/lib/nsn/storage".to_string(),
+    };
+
+    let storage = build_storage_manager(
+        cli.storage_backend.clone(),
+        storage_path.clone(),
+        cli.ipfs_api_url.clone(),
+    )?;
+
+    if let Some(cid) = cli.publish_video_cid.as_ref() {
+        let report = publish_video_from_storage(
+            &storage,
+            &p2p_cmd_tx,
+            cid,
+            cli.publish_slot,
+            cli.p2p_keypair_path.as_ref(),
+            cli.publish_chunk_size,
+            cli.publish_keyframe_interval,
+            cli.publish_ack_timeout_ms,
+        )
+        .await?;
+        info!(
+            total_chunks = report.total_chunks,
+            published = report.published,
+            failed = report.failed,
+            max_ack_ms = report.max_ack_ms,
+            avg_ack_ms = report.avg_ack_ms,
+            "Video distribution completed"
+        );
+    }
 
     match cli.mode {
         Mode::SuperNode { gpu_device } => {
@@ -183,8 +258,10 @@ async fn main() -> Result<()> {
                 .ok_or_else(|| anyhow!("attestation submitter already consumed"))?;
             let _redundant_scheduler =
                 RedundantScheduler::new(RedundancyConfig::default(), submitter);
-            let storage_root = PathBuf::from("/var/lib/nsn/storage");
-            let _storage = StorageManager::local(storage_root)?;
+            let storage_root = PathBuf::from(storage_path);
+            if matches!(storage.backend_kind(), StorageBackendKind::Local) {
+                let _storage = StorageManager::local(storage_root)?;
+            }
         }
         Mode::DirectorOnly { gpu_device } => {
             info!("DirectorOnly mode: GPU device {}", gpu_device);
@@ -206,7 +283,10 @@ async fn main() -> Result<()> {
         Mode::StorageOnly { storage_path } => {
             info!("StorageOnly mode: storage path {}", storage_path);
             // TODO: Initialize storage
-            let _storage = StorageManager::local(PathBuf::from(storage_path))?;
+            let storage_root = PathBuf::from(storage_path);
+            if matches!(storage.backend_kind(), StorageBackendKind::Local) {
+                let _storage = StorageManager::local(storage_root)?;
+            }
         }
     }
 
@@ -219,6 +299,78 @@ async fn main() -> Result<()> {
     info!("Shutting down NSN Node");
 
     Ok(())
+}
+
+fn build_storage_manager(
+    backend: StorageBackendMode,
+    storage_path: String,
+    ipfs_api_url: String,
+) -> Result<StorageManager> {
+    match backend {
+        StorageBackendMode::Local => Ok(StorageManager::local(PathBuf::from(storage_path))?),
+        StorageBackendMode::Ipfs => Ok(StorageManager::ipfs(ipfs_api_url)?),
+    }
+}
+
+async fn publish_video_from_storage(
+    storage: &StorageManager,
+    cmd_tx: &tokio::sync::mpsc::UnboundedSender<nsn_p2p::ServiceCommand>,
+    cid: &str,
+    slot: u64,
+    keypair_path: Option<&PathBuf>,
+    chunk_size: usize,
+    keyframe_interval: u32,
+    ack_timeout_ms: u64,
+) -> Result<nsn_p2p::VideoPublishReport> {
+    let normalized = normalize_cid(cid);
+    let payload = storage.get(&normalized).await?;
+
+    let keypair = load_or_create_keypair(keypair_path)?;
+    let config = VideoChunkConfig {
+        chunk_size,
+        keyframe_interval,
+        ..VideoChunkConfig::default()
+    };
+
+    storage.pin(&normalized).await?;
+    let audit = storage.audit_pin_status(&normalized).await?;
+    log_audit(&audit);
+
+    let chunks = build_video_chunks(&normalized, slot, &payload, &keypair, &config)?;
+    publish_video_chunks(cmd_tx, chunks, Duration::from_millis(ack_timeout_ms)).await
+        .map_err(|err| anyhow!(err.to_string()))
+}
+
+fn normalize_cid(cid: &str) -> String {
+    cid.trim()
+        .strip_prefix("ipfs://")
+        .or_else(|| cid.trim().strip_prefix("cid://"))
+        .unwrap_or(cid.trim())
+        .to_string()
+}
+
+fn load_or_create_keypair(path: Option<&PathBuf>) -> Result<libp2p::identity::Keypair> {
+    if let Some(path) = path {
+        if path.exists() {
+            Ok(nsn_p2p::load_keypair(path)?)
+        } else {
+            let keypair = nsn_p2p::generate_keypair();
+            nsn_p2p::save_keypair(&keypair, path)?;
+            Ok(keypair)
+        }
+    } else {
+        Ok(nsn_p2p::generate_keypair())
+    }
+}
+
+fn log_audit(report: &StorageAuditReport) {
+    info!(
+        cid = %report.cid,
+        backend = ?report.backend,
+        status = ?report.status,
+        checked_at_ms = report.checked_at_ms,
+        "Storage audit"
+    );
 }
 
 async fn build_attestation_submitter(
