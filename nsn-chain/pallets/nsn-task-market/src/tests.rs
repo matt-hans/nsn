@@ -4,7 +4,7 @@
 //! Unit tests for pallet-nsn-task-market
 
 use crate::{mock::*, Error, Event, FailReason, TaskLane, TaskPriority, TaskStatus};
-use frame_support::{assert_noop, assert_ok, BoundedVec};
+use frame_support::{assert_noop, assert_ok, traits::Hooks, BoundedVec};
 
 // ============================================================================
 // Helper Functions
@@ -25,8 +25,23 @@ fn default_output_cid() -> BoundedVec<u8, MaxCidLen> {
     BoundedVec::try_from(b"QmOutputCid123456789".to_vec()).unwrap()
 }
 
+/// Create a default attestation CID for testing
+fn default_attestation_cid() -> BoundedVec<u8, MaxCidLen> {
+    BoundedVec::try_from(b"QmAttestationCid123456789".to_vec()).unwrap()
+}
+
 /// Default compute budget for testing
 const DEFAULT_COMPUTE_BUDGET: u64 = 1000;
+
+/// Accept assignment and return the selected executor
+fn accept_and_get_executor(task_id: u64) -> AccountId {
+    assert_ok!(NsnTaskMarket::accept_assignment(
+        RuntimeOrigin::signed(BOB),
+        task_id
+    ));
+    let task = NsnTaskMarket::tasks(task_id).expect("Task should exist");
+    task.executor.expect("Executor should be assigned")
+}
 
 // ============================================================================
 // Green Path Tests (Happy Flows)
@@ -114,7 +129,7 @@ fn create_task_intent_fails_for_unregistered_renderer() {
                 100,
                 100
             ),
-            Error::RendererNotRegistered
+            Error::<Test>::RendererNotRegistered
         );
     });
 }
@@ -145,7 +160,7 @@ fn create_task_intent_fails_for_lane_mismatch() {
                 100,
                 100
             ),
-            Error::RendererLaneMismatch
+            Error::<Test>::RendererLaneMismatch
         );
     });
 }
@@ -165,7 +180,7 @@ fn register_renderer_rejects_lane0_nondeterministic() {
                 10_000,
                 6_000
             ),
-            Error::RendererNotDeterministic
+            Error::<Test>::RendererNotDeterministic
         );
     });
 }
@@ -212,7 +227,7 @@ fn lane0_priority_blocks_lane1_assignment() {
         // Accepting Lane 1 assignment should be blocked
         assert_noop!(
             NsnTaskMarket::accept_assignment(RuntimeOrigin::signed(BOB), 1),
-            Error::Lane0Priority
+            Error::<Test>::Lane0Priority
         );
     });
 }
@@ -242,10 +257,7 @@ fn preempt_lane1_tasks_when_lane0_pending() {
             100
         ));
 
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let _executor = accept_and_get_executor(0);
         assert_ok!(NsnTaskMarket::accept_assignment(
             RuntimeOrigin::signed(BOB),
             1
@@ -313,18 +325,15 @@ fn renderer_deregister_does_not_cancel_inflight_task() {
             100
         ));
 
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
         assert_ok!(NsnTaskMarket::deregister_renderer(
             RuntimeOrigin::root(),
             renderer_id
         ));
 
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             default_output_cid(),
             None
@@ -358,19 +367,16 @@ fn lane0_completion_requires_attestation() {
             100
         ));
 
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
         assert_noop!(
-            NsnTaskMarket::complete_task(
-                RuntimeOrigin::signed(ALICE),
+            NsnTaskMarket::submit_result(
+                RuntimeOrigin::signed(executor),
                 0,
                 default_output_cid(),
                 None
             ),
-            Error::MissingAttestation
+            Error::<Test>::MissingAttestation
         );
     });
 }
@@ -390,16 +396,13 @@ fn accept_assignment_succeeds() {
             100
         ));
 
-        // WHEN: Bob accepts the assignment
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        // WHEN: Assignment is accepted
+        let executor = accept_and_get_executor(0);
 
-        // THEN: Task is assigned to Bob
+        // THEN: Task is assigned to executor
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
         assert_eq!(task.status, TaskStatus::Assigned);
-        assert_eq!(task.executor, Some(BOB));
+        assert_eq!(task.executor, Some(executor));
 
         // Verify task removed from open queue
         assert_eq!(NsnTaskMarket::open_lane1_tasks().len(), 0);
@@ -410,14 +413,14 @@ fn accept_assignment_succeeds() {
             event,
             RuntimeEvent::NsnTaskMarket(Event::TaskAssigned {
                 task_id: 0,
-                executor: BOB
-            })
+                executor: e
+            }) if e == executor
         ));
     });
 }
 
 #[test]
-fn complete_task_succeeds() {
+fn submit_result_requires_verification_before_payout() {
     ExtBuilder::default().build().execute_with(|| {
         // GIVEN: Alice created a task, Bob accepted it
         assert_ok!(NsnTaskMarket::create_task_intent(
@@ -430,45 +433,172 @@ fn complete_task_succeeds() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
         let alice_balance_before = Balances::free_balance(ALICE);
-        let bob_balance_before = Balances::free_balance(BOB);
+        let executor_balance_before = Balances::free_balance(executor);
 
-        // WHEN: Bob completes the task with output_cid
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        // WHEN: Bob submits the task result
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             default_output_cid(),
             None
         ));
 
-        // THEN: Task is completed, payment transferred
+        // THEN: Task is submitted, escrow still reserved
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
-        assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.status, TaskStatus::Submitted);
         assert_eq!(task.output_cid, Some(default_output_cid()));
 
-        // Verify payment: unreserved from Alice, transferred to Bob
-        assert_eq!(Balances::reserved_balance(ALICE), 0);
-        assert_eq!(Balances::free_balance(ALICE), alice_balance_before - 100);
-        assert_eq!(Balances::free_balance(BOB), bob_balance_before + 70);
-        assert_eq!(Balances::free_balance(TREASURY_ACCOUNT), 10_020);
+        // Escrow still reserved, no payout yet
+        assert_eq!(Balances::reserved_balance(ALICE), 100);
+        assert_eq!(Balances::free_balance(ALICE), alice_balance_before);
+        assert_eq!(Balances::free_balance(executor), executor_balance_before);
 
         // Verify event
         let event = last_event();
         assert!(matches!(
             event,
-            RuntimeEvent::NsnTaskMarket(Event::TaskCompleted {
+            RuntimeEvent::NsnTaskMarket(Event::TaskSubmitted {
                 task_id: 0,
-                executor: BOB,
-                payment: 70,
+                executor: e,
                 output_cid: _,
-                attestation_cid: None
-            })
+                attestation_cid: None,
+                ..
+            }) if e == executor
         ));
+    });
+}
+
+#[test]
+fn task_verified_after_quorum_pays_executor() {
+    ExtBuilder::default().build().execute_with(|| {
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            default_model_requirements(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+        let executor = accept_and_get_executor(0);
+
+        let executor_balance_before = Balances::free_balance(executor);
+
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
+            0,
+            default_output_cid(),
+            None
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            80,
+            Some(default_attestation_cid())
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(CHARLIE),
+            0,
+            85,
+            Some(default_attestation_cid())
+        ));
+
+        let task = NsnTaskMarket::tasks(0).expect("Task should exist");
+        assert_eq!(task.status, TaskStatus::Verified);
+        assert_eq!(Balances::reserved_balance(ALICE), 0);
+        assert_eq!(Balances::free_balance(executor), executor_balance_before + 70);
+    });
+}
+
+#[test]
+fn invalid_attestation_rejected() {
+    ExtBuilder::default().build().execute_with(|| {
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            default_model_requirements(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+        let executor = accept_and_get_executor(0);
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
+            0,
+            default_output_cid(),
+            None
+        ));
+
+        // Non-validator cannot attest
+        assert_noop!(
+            NsnTaskMarket::submit_attestation(
+                RuntimeOrigin::signed(DAVE),
+                0,
+                80,
+                Some(default_attestation_cid())
+            ),
+            Error::<Test>::NotValidator
+        );
+
+        // Duplicate attestation rejected
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            80,
+            Some(default_attestation_cid())
+        ));
+        assert_noop!(
+            NsnTaskMarket::submit_attestation(
+                RuntimeOrigin::signed(ALICE),
+                0,
+                80,
+                Some(default_attestation_cid())
+            ),
+            Error::<Test>::DuplicateAttestation
+        );
+    });
+}
+
+#[test]
+fn verification_deadline_rejects_task_and_refunds() {
+    ExtBuilder::default().build().execute_with(|| {
+        assert_ok!(NsnTaskMarket::create_task_intent(
+            RuntimeOrigin::signed(ALICE),
+            TaskLane::Lane1,
+            TaskPriority::Normal,
+            default_model_requirements(),
+            default_input_cid(),
+            DEFAULT_COMPUTE_BUDGET,
+            100,
+            100
+        ));
+        let executor = accept_and_get_executor(0);
+
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
+            0,
+            default_output_cid(),
+            None
+        ));
+
+        let alice_balance_before = Balances::free_balance(ALICE);
+        roll_to(System::block_number() + VerificationPeriod::get() + 1);
+
+        assert_ok!(NsnTaskMarket::finalize_task(
+            RuntimeOrigin::signed(CHARLIE),
+            0
+        ));
+
+        let task = NsnTaskMarket::tasks(0).expect("Task should exist");
+        assert_eq!(task.status, TaskStatus::Rejected);
+        assert_eq!(Balances::reserved_balance(ALICE), 0);
+        assert_eq!(Balances::free_balance(ALICE), alice_balance_before + 100);
     });
 }
 
@@ -486,16 +616,13 @@ fn fail_task_by_executor_succeeds() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
         let alice_balance_before = Balances::free_balance(ALICE);
 
         // WHEN: Bob fails the task
         assert_ok!(NsnTaskMarket::fail_task(
-            RuntimeOrigin::signed(BOB),
+            RuntimeOrigin::signed(executor),
             0,
             FailReason::ExecutorFailed
         ));
@@ -534,10 +661,7 @@ fn fail_task_by_requester_on_assigned_task_succeeds() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let _executor = accept_and_get_executor(0);
 
         // WHEN: Alice (requester) fails the assigned task
         assert_ok!(NsnTaskMarket::fail_task(
@@ -718,10 +842,7 @@ fn accept_assignment_task_not_open_fails() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let _executor = accept_and_get_executor(0);
 
         // WHEN: Charlie tries to accept the same task
         assert_noop!(
@@ -732,11 +853,11 @@ fn accept_assignment_task_not_open_fails() {
 }
 
 #[test]
-fn complete_task_not_found_fails() {
+fn submit_result_not_found_fails() {
     ExtBuilder::default().build().execute_with(|| {
         // WHEN: Bob tries to complete a non-existent task
         assert_noop!(
-            NsnTaskMarket::complete_task(
+            NsnTaskMarket::submit_result(
                 RuntimeOrigin::signed(BOB),
                 999,
                 default_output_cid(),
@@ -748,7 +869,7 @@ fn complete_task_not_found_fails() {
 }
 
 #[test]
-fn complete_task_not_assigned_fails() {
+fn submit_result_not_assigned_fails() {
     ExtBuilder::default().build().execute_with(|| {
         // GIVEN: Task is open (not assigned)
         assert_ok!(NsnTaskMarket::create_task_intent(
@@ -764,14 +885,19 @@ fn complete_task_not_assigned_fails() {
 
         // WHEN: Bob tries to complete an open task
         assert_noop!(
-            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0, default_output_cid(), None),
+            NsnTaskMarket::submit_result(
+                RuntimeOrigin::signed(BOB),
+                0,
+                default_output_cid(),
+                None
+            ),
             Error::<Test>::TaskNotAssigned
         );
     });
 }
 
 #[test]
-fn complete_task_not_executor_fails() {
+fn submit_result_not_executor_fails() {
     ExtBuilder::default().build().execute_with(|| {
         // GIVEN: Task is assigned to Bob
         assert_ok!(NsnTaskMarket::create_task_intent(
@@ -784,15 +910,12 @@ fn complete_task_not_executor_fails() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let _executor = accept_and_get_executor(0);
 
-        // WHEN: Charlie tries to complete Bob's task
+        // WHEN: Dave tries to submit someone else's task
         assert_noop!(
-            NsnTaskMarket::complete_task(
-                RuntimeOrigin::signed(CHARLIE),
+            NsnTaskMarket::submit_result(
+                RuntimeOrigin::signed(DAVE),
                 0,
                 default_output_cid(),
                 None
@@ -850,15 +973,12 @@ fn fail_assigned_task_by_third_party_fails() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let _executor = accept_and_get_executor(0);
 
-        // WHEN: Charlie (neither executor nor requester) tries to fail
+        // WHEN: Dave (neither executor nor requester) tries to fail
         assert_noop!(
             NsnTaskMarket::fail_task(
-                RuntimeOrigin::signed(CHARLIE),
+                RuntimeOrigin::signed(DAVE),
                 0,
                 FailReason::ExecutorFailed
             ),
@@ -868,9 +988,9 @@ fn fail_assigned_task_by_third_party_fails() {
 }
 
 #[test]
-fn complete_already_completed_task_fails() {
+fn submit_result_twice_fails() {
     ExtBuilder::default().build().execute_with(|| {
-        // GIVEN: Task is completed
+        // GIVEN: Task is submitted
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
             TaskLane::Lane1,
@@ -881,20 +1001,22 @@ fn complete_already_completed_task_fails() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        let executor = accept_and_get_executor(0);
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             default_output_cid(),
             None
         ));
 
-        // WHEN: Bob tries to complete again
+        // WHEN: Bob tries to submit again
         assert_noop!(
-            NsnTaskMarket::complete_task(RuntimeOrigin::signed(BOB), 0, default_output_cid(), None),
+            NsnTaskMarket::submit_result(
+                RuntimeOrigin::signed(executor),
+                0,
+                default_output_cid(),
+                None
+            ),
             Error::<Test>::TaskNotAssigned
         );
     });
@@ -914,19 +1036,20 @@ fn fail_already_failed_task_fails() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
         assert_ok!(NsnTaskMarket::fail_task(
-            RuntimeOrigin::signed(BOB),
+            RuntimeOrigin::signed(executor),
             0,
             FailReason::ExecutorFailed
         ));
 
         // WHEN: Bob tries to fail again
         assert_noop!(
-            NsnTaskMarket::fail_task(RuntimeOrigin::signed(BOB), 0, FailReason::ExecutorFailed),
+            NsnTaskMarket::fail_task(
+                RuntimeOrigin::signed(executor),
+                0,
+                FailReason::ExecutorFailed
+            ),
             Error::<Test>::TaskNotAssigned
         );
     });
@@ -1035,7 +1158,7 @@ fn task_minimum_escrow() {
 }
 
 #[test]
-fn complete_task_with_minimum_escrow() {
+fn verify_task_with_minimum_escrow() {
     ExtBuilder::default().build().execute_with(|| {
         // GIVEN: Task with minimum escrow
         assert_ok!(NsnTaskMarket::create_task_intent(
@@ -1048,23 +1171,32 @@ fn complete_task_with_minimum_escrow() {
             100,
             10
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
-        let bob_balance_before = Balances::free_balance(BOB);
+        let executor_balance_before = Balances::free_balance(executor);
 
-        // WHEN: Complete task
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        // WHEN: Submit result and reach verification quorum
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             default_output_cid(),
             None
         ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            90,
+            Some(default_attestation_cid())
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(CHARLIE),
+            0,
+            90,
+            Some(default_attestation_cid())
+        ));
 
-        // THEN: Balance change reflects minimum escrow
-        assert_eq!(Balances::free_balance(BOB), bob_balance_before + 7);
+        // THEN: Balance change reflects minimum escrow payout
+        assert_eq!(Balances::free_balance(executor), executor_balance_before + 7);
         assert_eq!(Balances::free_balance(TREASURY_ACCOUNT), 10_002);
     });
 }
@@ -1136,10 +1268,7 @@ fn helper_functions_work() {
         assert!(!NsnTaskMarket::task_exists(1));
 
         // After assignment
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let _executor = accept_and_get_executor(0);
         assert_eq!(NsnTaskMarket::open_task_count(), 0);
         assert!(NsnTaskMarket::task_exists(0)); // Task still exists, just not open
     });
@@ -1148,59 +1277,86 @@ fn helper_functions_work() {
 #[test]
 fn self_assignment_works() {
     ExtBuilder::default().build().execute_with(|| {
-        // GIVEN: Alice creates a task
+        // GIVEN: Alice creates a Lane 0 task (only Alice eligible)
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-self".to_vec()).unwrap();
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            lane0_renderer.clone(),
+            TaskLane::Lane0,
+            true,
+            10_000,
+            6_000
+        ));
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            TaskLane::Lane1,
+            TaskLane::Lane0,
             TaskPriority::Normal,
-            default_model_requirements(),
+            lane0_renderer,
             default_input_cid(),
             DEFAULT_COMPUTE_BUDGET,
             100,
             100
         ));
 
-        // WHEN: Alice accepts her own task
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(ALICE),
-            0
-        ));
+        // WHEN: Assignment is accepted
+        let executor = accept_and_get_executor(0);
 
         // THEN: Alice is the executor
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
         assert_eq!(task.executor, Some(ALICE));
         assert_eq!(task.status, TaskStatus::Assigned);
+        assert_eq!(executor, ALICE);
     });
 }
 
 #[test]
 fn self_completion_works() {
     ExtBuilder::default().build().execute_with(|| {
-        // GIVEN: Alice creates and accepts her own task
+        // GIVEN: Alice creates and accepts her own Lane 0 task
+        let lane0_renderer: BoundedVec<u8, MaxModelIdLen> =
+            BoundedVec::try_from(b"lane0-self-complete".to_vec()).unwrap();
+        assert_ok!(NsnTaskMarket::register_renderer(
+            RuntimeOrigin::root(),
+            lane0_renderer.clone(),
+            TaskLane::Lane0,
+            true,
+            10_000,
+            6_000
+        ));
         assert_ok!(NsnTaskMarket::create_task_intent(
             RuntimeOrigin::signed(ALICE),
-            TaskLane::Lane1,
+            TaskLane::Lane0,
             TaskPriority::Normal,
-            default_model_requirements(),
+            lane0_renderer,
             default_input_cid(),
             DEFAULT_COMPUTE_BUDGET,
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(ALICE),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
         let alice_balance_before = Balances::free_balance(ALICE);
         let alice_reserved_before = Balances::reserved_balance(ALICE);
 
-        // WHEN: Alice completes her own task
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(ALICE),
+        // WHEN: Alice submits her own task and it is verified
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             default_output_cid(),
-            None
+            Some(default_attestation_cid())
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(BOB),
+            0,
+            85,
+            Some(default_attestation_cid())
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(CHARLIE),
+            0,
+            85,
+            Some(default_attestation_cid())
         ));
 
         // THEN: Escrow is unreserved and "transferred" to self (net zero change)
@@ -1237,14 +1393,11 @@ fn fail_reasons_are_recorded() {
                 100,
                 100
             ));
-            assert_ok!(NsnTaskMarket::accept_assignment(
-                RuntimeOrigin::signed(BOB),
-                i as u64
-            ));
+            let executor = accept_and_get_executor(i as u64);
 
             // Fail with specific reason
             assert_ok!(NsnTaskMarket::fail_task(
-                RuntimeOrigin::signed(BOB),
+                RuntimeOrigin::signed(executor),
                 i as u64,
                 reason.clone()
             ));
@@ -1289,7 +1442,7 @@ fn task_model_requirements_and_input_cid_stored() {
 }
 
 #[test]
-fn task_output_cid_stored_on_completion() {
+fn task_output_cid_stored_on_submission() {
     ExtBuilder::default().build().execute_with(|| {
         let output_cid: BoundedVec<u8, MaxCidLen> =
             BoundedVec::try_from(b"QmCustomOutputCid".to_vec()).unwrap();
@@ -1305,18 +1458,15 @@ fn task_output_cid_stored_on_completion() {
             100,
             100
         ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
 
         // Verify output_cid is None before completion
         let task_before = NsnTaskMarket::tasks(0).expect("Task should exist");
         assert_eq!(task_before.output_cid, None);
 
-        // WHEN: Complete with custom output_cid
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        // WHEN: Submit with custom output_cid
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             output_cid.clone(),
             None
@@ -1336,7 +1486,6 @@ fn task_output_cid_stored_on_completion() {
 fn full_task_lifecycle_success() {
     ExtBuilder::default().build().execute_with(|| {
         let initial_alice_balance = Balances::free_balance(ALICE);
-        let initial_bob_balance = Balances::free_balance(BOB);
 
         // Step 1: Create task
         assert_ok!(NsnTaskMarket::create_task_intent(
@@ -1353,27 +1502,42 @@ fn full_task_lifecycle_success() {
         assert_eq!(Balances::reserved_balance(ALICE), 500);
 
         // Step 2: Accept assignment
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
+        let initial_executor_balance = Balances::free_balance(executor);
 
-        // Step 3: Complete task
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        // Step 3: Submit result
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(executor),
             0,
             default_output_cid(),
             None
         ));
 
+        // Step 4: Submit attestations (quorum reached)
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            90,
+            Some(default_attestation_cid())
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(CHARLIE),
+            0,
+            90,
+            Some(default_attestation_cid())
+        ));
+
         // Final state verification
         assert_eq!(Balances::reserved_balance(ALICE), 0);
         assert_eq!(Balances::free_balance(ALICE), initial_alice_balance - 500);
-        assert_eq!(Balances::free_balance(BOB), initial_bob_balance + 350);
+        assert_eq!(
+            Balances::free_balance(executor),
+            initial_executor_balance + 350
+        );
         assert_eq!(Balances::free_balance(TREASURY_ACCOUNT), 10_100);
 
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
-        assert_eq!(task.status, TaskStatus::Completed);
+        assert_eq!(task.status, TaskStatus::Verified);
         assert_eq!(task.output_cid, Some(default_output_cid()));
     });
 }
@@ -1382,7 +1546,6 @@ fn full_task_lifecycle_success() {
 fn full_task_lifecycle_failure() {
     ExtBuilder::default().build().execute_with(|| {
         let initial_alice_balance = Balances::free_balance(ALICE);
-        let initial_bob_balance = Balances::free_balance(BOB);
 
         // Step 1: Create task
         assert_ok!(NsnTaskMarket::create_task_intent(
@@ -1397,14 +1560,12 @@ fn full_task_lifecycle_failure() {
         ));
 
         // Step 2: Accept assignment
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
+        let executor = accept_and_get_executor(0);
+        let initial_executor_balance = Balances::free_balance(executor);
 
         // Step 3: Fail task
         assert_ok!(NsnTaskMarket::fail_task(
-            RuntimeOrigin::signed(BOB),
+            RuntimeOrigin::signed(executor),
             0,
             FailReason::ExecutorFailed
         ));
@@ -1412,7 +1573,7 @@ fn full_task_lifecycle_failure() {
         // Final state verification: escrow returned to Alice
         assert_eq!(Balances::reserved_balance(ALICE), 0);
         assert_eq!(Balances::free_balance(ALICE), initial_alice_balance);
-        assert_eq!(Balances::free_balance(BOB), initial_bob_balance);
+        assert_eq!(Balances::free_balance(executor), initial_executor_balance);
 
         let task = NsnTaskMarket::tasks(0).expect("Task should exist");
         assert_eq!(task.status, TaskStatus::Failed);
@@ -1436,25 +1597,32 @@ fn multiple_concurrent_tasks_lifecycle() {
             ));
         }
 
-        // Bob accepts task 0, Charlie accepts task 1
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(BOB),
-            0
-        ));
-        assert_ok!(NsnTaskMarket::accept_assignment(
-            RuntimeOrigin::signed(CHARLIE),
-            1
-        ));
+        // Accept assignments
+        let exec0 = accept_and_get_executor(0);
+        let exec1 = accept_and_get_executor(1);
 
-        // Bob completes, Charlie fails
-        assert_ok!(NsnTaskMarket::complete_task(
-            RuntimeOrigin::signed(BOB),
+        // Bob submits and verifies task 0
+        assert_ok!(NsnTaskMarket::submit_result(
+            RuntimeOrigin::signed(exec0),
             0,
             default_output_cid(),
             None
         ));
-        assert_ok!(NsnTaskMarket::fail_task(
+        assert_ok!(NsnTaskMarket::submit_attestation(
+            RuntimeOrigin::signed(ALICE),
+            0,
+            90,
+            Some(default_attestation_cid())
+        ));
+        assert_ok!(NsnTaskMarket::submit_attestation(
             RuntimeOrigin::signed(CHARLIE),
+            0,
+            90,
+            Some(default_attestation_cid())
+        ));
+        // Charlie fails task 1
+        assert_ok!(NsnTaskMarket::fail_task(
+            RuntimeOrigin::signed(exec1),
             1,
             FailReason::ExecutorFailed
         ));
@@ -1469,7 +1637,7 @@ fn multiple_concurrent_tasks_lifecycle() {
         // Verify final states
         assert_eq!(
             NsnTaskMarket::tasks(0).unwrap().status,
-            TaskStatus::Completed
+            TaskStatus::Verified
         );
         assert_eq!(NsnTaskMarket::tasks(1).unwrap().status, TaskStatus::Failed);
         assert_eq!(NsnTaskMarket::tasks(2).unwrap().status, TaskStatus::Failed);

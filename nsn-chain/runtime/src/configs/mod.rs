@@ -372,6 +372,12 @@ parameter_types! {
     pub const TaskMarketMaxLane1LatencyMs: u32 = 120_000;
     pub const TaskMarketMaxRendererVramMb: u32 = 11_500;
     pub const TaskMarketMinEscrow: Balance = UNIT / 10; // 0.1 NSN minimum
+    pub const TaskMarketMaxAttestations: u32 = 5;
+    pub const TaskMarketMaxPendingVerifications: u32 = 1_000;
+    pub const TaskMarketVerificationQuorum: u32 = 2;
+    pub const TaskMarketVerificationPeriod: BlockNumber = 100; // ~10 minutes at 6s/block
+    pub const TaskMarketMinAttestationScore: u8 = 70;
+    pub const TaskMarketVerificationFailureSlash: Balance = 5 * UNIT;
     pub const TaskMarketTaskAbandonmentSlash: Balance = 5 * UNIT;
 }
 
@@ -519,6 +525,29 @@ impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for StakeSlash
     }
 }
 
+/// Wrapper for validator eligibility checks.
+pub struct StakeValidatorProvider;
+
+impl pallet_nsn_task_market::ValidatorProvider<AccountId> for StakeValidatorProvider {
+    fn is_validator(account: &AccountId) -> bool {
+        use pallet_nsn_stake::{NodeRole, Stakes};
+        use sp_runtime::traits::Zero;
+
+        let stake = Stakes::<Runtime>::get(account);
+        if stake.amount.is_zero() {
+            return false;
+        }
+        matches!(
+            stake.role,
+            NodeRole::Validator
+                | NodeRole::SuperNode
+                | NodeRole::Director
+                | NodeRole::ActiveDirector
+                | NodeRole::Reserve
+        )
+    }
+}
+
 impl pallet_insecure_randomness_collective_flip::Config for Runtime {}
 
 impl pallet_nsn_director::Config for Runtime {
@@ -578,9 +607,16 @@ impl pallet_nsn_task_market::Config for Runtime {
     type MaxLane1LatencyMs = TaskMarketMaxLane1LatencyMs;
     type MaxRendererVramMb = TaskMarketMaxRendererVramMb;
     type MinEscrow = TaskMarketMinEscrow;
+    type MaxAttestations = TaskMarketMaxAttestations;
+    type MaxPendingVerifications = TaskMarketMaxPendingVerifications;
+    type VerificationQuorum = TaskMarketVerificationQuorum;
+    type VerificationPeriod = TaskMarketVerificationPeriod;
+    type MinAttestationScore = TaskMarketMinAttestationScore;
+    type VerificationFailureSlash = TaskMarketVerificationFailureSlash;
     type LaneNodeProvider = StakeLaneNodeProvider;
     type ReputationUpdater = ReputationUpdaterWrapper;
     type TaskSlashHandler = StakeSlashHandler;
+    type ValidatorProvider = StakeValidatorProvider;
     type TaskAbandonmentSlash = TaskMarketTaskAbandonmentSlash;
     type TreasuryAccount = TreasuryAccount;
     type WeightInfo = pallet_nsn_task_market::weights::SubstrateWeight<Runtime>;

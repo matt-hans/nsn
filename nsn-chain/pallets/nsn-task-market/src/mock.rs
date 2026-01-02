@@ -15,7 +15,7 @@ use frame_support::{
 };
 use frame_system::pallet_prelude::BlockNumberFor;
 use sp_core::H256;
-use sp_runtime::traits::Randomness;
+use frame_support::traits::Randomness;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
     BuildStorage,
@@ -116,6 +116,18 @@ parameter_types! {
     pub const MaxRendererVramMb: u32 = 11_500;
     /// Minimum escrow amount required for task creation
     pub const MinEscrow: Balance = 10;
+    /// Maximum number of attestations per task
+    pub const MaxAttestations: u32 = 5;
+    /// Maximum pending verification tasks
+    pub const MaxPendingVerifications: u32 = 100;
+    /// Verification quorum required
+    pub const VerificationQuorum: u32 = 2;
+    /// Verification period in blocks
+    pub const VerificationPeriod: BlockNumber = 10;
+    /// Minimum average attestation score
+    pub const MinAttestationScore: u8 = 70;
+    /// Slash amount for verification failure
+    pub const VerificationFailureSlash: Balance = 5;
     /// Slash amount for task abandonment
     pub const TaskAbandonmentSlash: Balance = 5;
 }
@@ -160,6 +172,13 @@ impl pallet_nsn_task_market::TaskSlashHandler<AccountId, Balance> for MockTaskSl
     }
 }
 
+pub struct MockValidatorProvider;
+impl pallet_nsn_task_market::ValidatorProvider<AccountId> for MockValidatorProvider {
+    fn is_validator(account: &AccountId) -> bool {
+        matches!(account, &ALICE | &BOB | &CHARLIE)
+    }
+}
+
 pub struct TestRandomness;
 impl Randomness<H256, BlockNumber> for TestRandomness {
     fn random(_subject: &[u8]) -> (H256, BlockNumber) {
@@ -181,9 +200,16 @@ impl pallet_nsn_task_market::Config for Test {
     type MaxLane1LatencyMs = MaxLane1LatencyMs;
     type MaxRendererVramMb = MaxRendererVramMb;
     type MinEscrow = MinEscrow;
+    type MaxAttestations = MaxAttestations;
+    type MaxPendingVerifications = MaxPendingVerifications;
+    type VerificationQuorum = VerificationQuorum;
+    type VerificationPeriod = VerificationPeriod;
+    type MinAttestationScore = MinAttestationScore;
+    type VerificationFailureSlash = VerificationFailureSlash;
     type LaneNodeProvider = MockLaneNodeProvider;
     type ReputationUpdater = MockReputationUpdater;
     type TaskSlashHandler = MockTaskSlashHandler;
+    type ValidatorProvider = MockValidatorProvider;
     type TaskAbandonmentSlash = TaskAbandonmentSlash;
     type TreasuryAccount = TreasuryAccount;
     type WeightInfo = ();

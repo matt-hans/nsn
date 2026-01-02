@@ -27,7 +27,9 @@ pub trait WeightInfo {
     fn create_task_intent() -> Weight;
     fn accept_assignment() -> Weight;
     fn start_task() -> Weight;
-    fn complete_task() -> Weight;
+    fn submit_result() -> Weight;
+    fn submit_attestation() -> Weight;
+    fn finalize_task() -> Weight;
     fn fail_task() -> Weight;
     fn register_renderer() -> Weight;
     fn deregister_renderer() -> Weight;
@@ -69,10 +71,26 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 
     /// Storage: NsnTaskMarket Tasks (r:1 w:1)
     /// Proof: NsnTaskMarket Tasks (max_values: None, max_size: Some(200), added: 2675, mode: MaxEncodedLen)
-    fn complete_task() -> Weight {
-        Weight::from_parts(60_000_000, 3500)
-            .saturating_add(T::DbWeight::get().reads(2))
-            .saturating_add(T::DbWeight::get().writes(2))
+    fn submit_result() -> Weight {
+        Weight::from_parts(65_000_000, 4000)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(5))
+    }
+
+    /// Storage: NsnTaskMarket Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket Attestations (r:1 w:1)
+    fn submit_attestation() -> Weight {
+        Weight::from_parts(55_000_000, 3000)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(3))
+    }
+
+    /// Storage: NsnTaskMarket Tasks (r:1 w:1)
+    /// Storage: NsnTaskMarket Attestations (r:1 w:1)
+    fn finalize_task() -> Weight {
+        Weight::from_parts(70_000_000, 4500)
+            .saturating_add(T::DbWeight::get().reads(3))
+            .saturating_add(T::DbWeight::get().writes(4))
     }
 
     /// Storage: NsnTaskMarket Tasks (r:1 w:1)
@@ -112,8 +130,14 @@ impl WeightInfo for () {
     fn start_task() -> Weight {
         Weight::from_parts(35_000_000, 2500)
     }
-    fn complete_task() -> Weight {
-        Weight::from_parts(60_000_000, 3500)
+    fn submit_result() -> Weight {
+        Weight::from_parts(65_000_000, 4000)
+    }
+    fn submit_attestation() -> Weight {
+        Weight::from_parts(55_000_000, 3000)
+    }
+    fn finalize_task() -> Weight {
+        Weight::from_parts(70_000_000, 4500)
     }
     fn fail_task() -> Weight {
         Weight::from_parts(50_000_000, 4000)

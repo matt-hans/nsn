@@ -15,7 +15,7 @@
 //! This pallet implements:
 //! - Task intent creation with escrow deposit
 //! - Task assignment to executors
-//! - Task completion with payment release
+//! - Task result submission with verification gating
 //! - Task failure handling with escrow return
 //!
 //! ## Interface
@@ -24,7 +24,9 @@
 //!
 //! - `create_task_intent`: Create a new task with escrow deposit
 //! - `accept_assignment`: Executor claims an open task
-//! - `complete_task`: Mark task as completed and release payment
+//! - `submit_result`: Submit task output for verification (no payout)
+//! - `submit_attestation`: Validators submit verification attestations
+//! - `finalize_task`: Finalize task after quorum or deadline
 //! - `fail_task`: Mark task as failed and return escrow
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -37,7 +39,9 @@ use alloc::vec::Vec;
 use frame_support::pallet_prelude::DispatchResult;
 
 mod types;
-pub use types::{FailReason, RendererInfo, TaskIntent, TaskLane, TaskPriority, TaskStatus};
+pub use types::{
+    FailReason, RendererInfo, TaskAttestation, TaskIntent, TaskLane, TaskPriority, TaskStatus,
+};
 
 #[cfg(test)]
 mod mock;
@@ -69,6 +73,12 @@ pub trait TaskSlashHandler<AccountId, Balance> {
     fn slash_for_abandonment(account: &AccountId, amount: Balance) -> DispatchResult;
 }
 
+/// Trait for verifying validator eligibility for attestations.
+pub trait ValidatorProvider<AccountId> {
+    /// Returns true if the account is an eligible validator.
+    fn is_validator(account: &AccountId) -> bool;
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -97,6 +107,10 @@ pub mod pallet {
 
     /// Renderer info type alias
     pub type RendererInfoOf<T> = RendererInfo<BlockNumberFor<T>>;
+
+    /// Task attestation type alias
+    pub type TaskAttestationOf<T> =
+        TaskAttestation<<T as frame_system::Config>::AccountId, <T as Config>::MaxCidLen>;
 
     /// The in-code storage version.
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
@@ -159,6 +173,30 @@ pub mod pallet {
         #[pallet::constant]
         type MinEscrow: Get<BalanceOf<Self>>;
 
+        /// Maximum number of attestations stored per task
+        #[pallet::constant]
+        type MaxAttestations: Get<u32>;
+
+        /// Maximum number of pending verification tasks tracked
+        #[pallet::constant]
+        type MaxPendingVerifications: Get<u32>;
+
+        /// Verification quorum required to finalize a task
+        #[pallet::constant]
+        type VerificationQuorum: Get<u32>;
+
+        /// Verification period (in blocks) after result submission
+        #[pallet::constant]
+        type VerificationPeriod: Get<BlockNumberFor<Self>>;
+
+        /// Minimum average attestation score required for verification
+        #[pallet::constant]
+        type MinAttestationScore: Get<u8>;
+
+        /// Slash amount for failed verification
+        #[pallet::constant]
+        type VerificationFailureSlash: Get<BalanceOf<Self>>;
+
         /// Treasury account for fee distribution
         type TreasuryAccount: Get<Self::AccountId>;
 
@@ -174,6 +212,9 @@ pub mod pallet {
 
         /// Slash handler for task abandonment (loose coupling to stake pallet)
         type TaskSlashHandler: TaskSlashHandler<Self::AccountId, BalanceOf<Self>>;
+
+        /// Validator provider for result attestations
+        type ValidatorProvider: ValidatorProvider<Self::AccountId>;
 
         /// Weight information
         type WeightInfo: WeightInfo;
@@ -201,6 +242,34 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn tasks)]
     pub type Tasks<T: Config> = StorageMap<_, Twox64Concat, u64, TaskIntentOf<T>, OptionQuery>;
+
+    /// Attestations submitted for a task
+    #[pallet::storage]
+    #[pallet::getter(fn attestations)]
+    pub type Attestations<T: Config> = StorageMap<
+        _,
+        Twox64Concat,
+        u64,
+        BoundedVec<TaskAttestationOf<T>, T::MaxAttestations>,
+        ValueQuery,
+    >;
+
+    /// Required quorum for task verification
+    #[pallet::storage]
+    #[pallet::getter(fn required_quorum)]
+    pub type RequiredQuorum<T: Config> = StorageMap<_, Twox64Concat, u64, u32, OptionQuery>;
+
+    /// Verification deadline per task
+    #[pallet::storage]
+    #[pallet::getter(fn verification_deadline)]
+    pub type VerificationDeadline<T: Config> =
+        StorageMap<_, Twox64Concat, u64, BlockNumberFor<T>, OptionQuery>;
+
+    /// Queue of tasks pending verification
+    #[pallet::storage]
+    #[pallet::getter(fn pending_verifications)]
+    pub type PendingVerificationTasks<T: Config> =
+        StorageValue<_, BoundedVec<u64, T::MaxPendingVerifications>, ValueQuery>;
 
     /// Queue of Lane 0 open task IDs (priority ordered)
     #[pallet::storage]
@@ -257,13 +326,34 @@ pub mod pallet {
             task_id: u64,
             executor: T::AccountId,
         },
-        /// A task was completed successfully
-        TaskCompleted {
+        /// A task result was submitted for verification
+        TaskSubmitted {
+            task_id: u64,
+            executor: T::AccountId,
+            output_cid: BoundedVec<u8, T::MaxCidLen>,
+            attestation_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            verification_deadline: BlockNumberFor<T>,
+            required_quorum: u32,
+        },
+        /// A validator submitted an attestation
+        AttestationSubmitted {
+            task_id: u64,
+            validator: T::AccountId,
+            score: u8,
+        },
+        /// A task was verified successfully
+        TaskVerified {
             task_id: u64,
             executor: T::AccountId,
             payment: BalanceOf<T>,
-            output_cid: BoundedVec<u8, T::MaxCidLen>,
-            attestation_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+            average_score: u8,
+        },
+        /// A task was rejected after verification or deadline
+        TaskRejected {
+            task_id: u64,
+            executor: Option<T::AccountId>,
+            average_score: Option<u8>,
+            deadline_exceeded: bool,
         },
         /// A task failed
         TaskFailed { task_id: u64, reason: FailReason },
@@ -294,14 +384,32 @@ pub mod pallet {
         TaskNotAssigned,
         /// Task is not in Executing status
         TaskNotExecuting,
-        /// Only the assigned executor can complete/fail the task
+        /// Task is not in Submitted/PendingVerification status
+        TaskNotSubmitted,
+        /// Only the assigned executor can submit/fail the task
         NotExecutor,
+        /// Only validators may submit attestations
+        NotValidator,
+        /// Duplicate attestation from the same validator
+        DuplicateAttestation,
+        /// Too many attestations submitted
+        TooManyAttestations,
+        /// Attestation score must be between 0 and 100
+        InvalidAttestationScore,
+        /// Verification quorum configuration is invalid
+        InvalidVerificationQuorum,
+        /// Verification deadline has passed
+        VerificationDeadlinePassed,
+        /// Verification quorum not yet met
+        VerificationPending,
         /// Only the requester can cancel an open task
         NotRequester,
         /// Too many pending tasks in the queue
         TooManyPendingTasks,
         /// Too many assigned Lane 1 tasks
         TooManyAssignedLane1Tasks,
+        /// Too many pending verification tasks
+        TooManyPendingVerifications,
         /// Arithmetic overflow
         Overflow,
         /// Insufficient balance for escrow
@@ -346,6 +454,7 @@ pub mod pallet {
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
             let mut total_weight = Weight::zero();
             total_weight = total_weight.saturating_add(Self::expire_open_tasks(n));
+            total_weight = total_weight.saturating_add(Self::expire_pending_verifications(n));
             total_weight = total_weight.saturating_add(Self::preempt_lane1_if_needed());
             total_weight
         }
@@ -547,22 +656,22 @@ pub mod pallet {
             })
         }
 
-        /// Complete a task and release payment to executor
+        /// Submit a task result for verification (escrow remains reserved)
         ///
-        /// Only the assigned executor can complete a task.
+        /// Only the assigned executor can submit a result.
         ///
         /// # Arguments
-        /// * `task_id` - ID of the task to complete
+        /// * `task_id` - ID of the task to submit
         /// * `output_cid` - Content identifier for the output data
         /// * `attestation_cid` - Optional attestation CID for result verification
         ///
         /// # Errors
         /// * `TaskNotFound` - Task does not exist
-        /// * `TaskNotAssigned` - Task is not in Assigned status
+        /// * `TaskNotAssigned` - Task is not in Assigned/Executing status
         /// * `NotExecutor` - Caller is not the assigned executor
         #[pallet::call_index(3)]
-        #[pallet::weight(T::WeightInfo::complete_task())]
-        pub fn complete_task(
+        #[pallet::weight(T::WeightInfo::submit_result())]
+        pub fn submit_result(
             origin: OriginFor<T>,
             task_id: u64,
             output_cid: BoundedVec<u8, T::MaxCidLen>,
@@ -591,37 +700,35 @@ pub mod pallet {
                     ensure!(!cid.is_empty(), Error::<T>::InvalidAttestationCid);
                 }
 
-                // Unreserve escrow
-                let escrow = task.escrow;
-                T::Currency::unreserve(&task.requester, escrow);
+                let required_quorum = T::VerificationQuorum::get();
+                ensure!(required_quorum > 0, Error::<T>::InvalidVerificationQuorum);
+                ensure!(
+                    required_quorum <= T::MaxAttestations::get(),
+                    Error::<T>::InvalidVerificationQuorum
+                );
 
-                // Fee split: Node 70%, Treasury 20%, Burn 10%
-                let node_share = escrow.saturating_mul(70u32.into()) / 100u32.into();
-                let treasury_share = escrow.saturating_mul(20u32.into()) / 100u32.into();
-                let burn_share = escrow
-                    .saturating_sub(node_share)
-                    .saturating_sub(treasury_share);
+                let now = <frame_system::Pallet<T>>::block_number();
+                let verification_deadline = now
+                    .checked_add(&T::VerificationPeriod::get())
+                    .ok_or(Error::<T>::Overflow)?;
 
-                // Transfer node and treasury shares
-                T::Currency::transfer(
-                    &task.requester,
-                    executor,
-                    node_share,
-                    ExistenceRequirement::AllowDeath,
-                )?;
-                T::Currency::transfer(
-                    &task.requester,
-                    &T::TreasuryAccount::get(),
-                    treasury_share,
-                    ExistenceRequirement::AllowDeath,
-                )?;
+                // Store verification metadata
+                RequiredQuorum::<T>::insert(task_id, required_quorum);
+                VerificationDeadline::<T>::insert(task_id, verification_deadline);
+                Attestations::<T>::insert(task_id, BoundedVec::default());
 
-                // Burn remainder (must fully burn or revert)
-                let (_imbalance, remaining) = T::Currency::slash(&task.requester, burn_share);
-                ensure!(remaining.is_zero(), Error::<T>::BurnFailed);
+                PendingVerificationTasks::<T>::try_mutate(|queue| {
+                    if queue.contains(&task_id) {
+                        return Ok::<(), DispatchError>(());
+                    }
+                    queue
+                        .try_push(task_id)
+                        .map_err(|_| Error::<T>::TooManyPendingVerifications)?;
+                    Ok::<(), DispatchError>(())
+                })?;
 
                 // Update status and store output
-                task.status = TaskStatus::Completed;
+                task.status = TaskStatus::Submitted;
                 task.output_cid = Some(output_cid.clone());
                 task.attestation_cid = attestation_cid.clone();
 
@@ -634,16 +741,14 @@ pub mod pallet {
                     });
                 }
 
-                Self::deposit_event(Event::TaskCompleted {
+                Self::deposit_event(Event::TaskSubmitted {
                     task_id,
                     executor: caller,
-                    payment: node_share,
                     output_cid,
                     attestation_cid,
+                    verification_deadline,
+                    required_quorum,
                 });
-
-                // Reputation boost for successful completion
-                T::ReputationUpdater::record_task_result(executor, true);
 
                 Ok(())
             })
@@ -688,7 +793,19 @@ pub mod pallet {
                             Error::<T>::NotExecutor
                         );
                     }
-                    TaskStatus::Completed | TaskStatus::Failed | TaskStatus::Expired => {
+                    TaskStatus::Submitted | TaskStatus::PendingVerification => {
+                        let executor = task.executor.as_ref().ok_or(Error::<T>::TaskNotAssigned)?;
+                        ensure!(
+                            &caller == executor || caller == task.requester,
+                            Error::<T>::NotExecutor
+                        );
+                        Self::clear_verification_state(task_id);
+                    }
+                    TaskStatus::Completed
+                    | TaskStatus::Verified
+                    | TaskStatus::Rejected
+                    | TaskStatus::Failed
+                    | TaskStatus::Expired => {
                         // Cannot fail a completed, already failed, or expired task
                         return Err(Error::<T>::TaskNotAssigned.into());
                     }
@@ -810,6 +927,125 @@ pub mod pallet {
             Self::deposit_event(Event::RendererDeregistered { renderer_id });
             Ok(())
         }
+
+        /// Submit a verification attestation for a task result
+        ///
+        /// Only validators can submit attestations.
+        #[pallet::call_index(7)]
+        #[pallet::weight(T::WeightInfo::submit_attestation())]
+        pub fn submit_attestation(
+            origin: OriginFor<T>,
+            task_id: u64,
+            score: u8,
+            attestation_cid: Option<BoundedVec<u8, T::MaxCidLen>>,
+        ) -> DispatchResult {
+            let caller = ensure_signed(origin)?;
+
+            ensure!(
+                T::ValidatorProvider::is_validator(&caller),
+                Error::<T>::NotValidator
+            );
+            ensure!(score <= 100, Error::<T>::InvalidAttestationScore);
+            if let Some(ref cid) = attestation_cid {
+                ensure!(!cid.is_empty(), Error::<T>::InvalidAttestationCid);
+            }
+
+            let now = <frame_system::Pallet<T>>::block_number();
+
+            Tasks::<T>::try_mutate(task_id, |maybe_task| -> DispatchResult {
+                let task = maybe_task.as_mut().ok_or(Error::<T>::TaskNotFound)?;
+                ensure!(
+                    matches!(task.status, TaskStatus::Submitted | TaskStatus::PendingVerification),
+                    Error::<T>::TaskNotSubmitted
+                );
+
+                let deadline =
+                    VerificationDeadline::<T>::get(task_id).ok_or(Error::<T>::TaskNotSubmitted)?;
+                ensure!(now <= deadline, Error::<T>::VerificationDeadlinePassed);
+
+                Attestations::<T>::try_mutate(task_id, |attestations| -> DispatchResult {
+                    if attestations.iter().any(|a| a.validator == caller) {
+                        return Err(Error::<T>::DuplicateAttestation.into());
+                    }
+
+                    let entry = TaskAttestation {
+                        validator: caller.clone(),
+                        score,
+                        attestation_cid: attestation_cid.clone(),
+                    };
+                    attestations
+                        .try_push(entry)
+                        .map_err(|_| Error::<T>::TooManyAttestations)?;
+                    Ok(())
+                })?;
+
+                if task.status == TaskStatus::Submitted {
+                    task.status = TaskStatus::PendingVerification;
+                }
+
+                Self::deposit_event(Event::AttestationSubmitted {
+                    task_id,
+                    validator: caller.clone(),
+                    score,
+                });
+
+                let required =
+                    RequiredQuorum::<T>::get(task_id).ok_or(Error::<T>::TaskNotSubmitted)?;
+                let attestations = Attestations::<T>::get(task_id);
+
+                if attestations.len() as u32 >= required {
+                    let average = Self::average_attestation_score(&attestations);
+                    if average >= T::MinAttestationScore::get() {
+                        Self::finalize_verified(task_id, task, average)?;
+                    } else {
+                        Self::finalize_rejected(task_id, task, Some(average), false)?;
+                    }
+                }
+
+                Ok(())
+            })
+        }
+
+        /// Finalize a task once verification quorum is met or deadline exceeded
+        #[pallet::call_index(8)]
+        #[pallet::weight(T::WeightInfo::finalize_task())]
+        pub fn finalize_task(origin: OriginFor<T>, task_id: u64) -> DispatchResult {
+            let _caller = ensure_signed(origin)?;
+            let now = <frame_system::Pallet<T>>::block_number();
+
+            Tasks::<T>::try_mutate(task_id, |maybe_task| -> DispatchResult {
+                let task = maybe_task.as_mut().ok_or(Error::<T>::TaskNotFound)?;
+                ensure!(
+                    matches!(task.status, TaskStatus::Submitted | TaskStatus::PendingVerification),
+                    Error::<T>::TaskNotSubmitted
+                );
+
+                let deadline =
+                    VerificationDeadline::<T>::get(task_id).ok_or(Error::<T>::TaskNotSubmitted)?;
+                let required =
+                    RequiredQuorum::<T>::get(task_id).ok_or(Error::<T>::TaskNotSubmitted)?;
+                let attestations = Attestations::<T>::get(task_id);
+
+                if now > deadline {
+                    Self::finalize_rejected(task_id, task, None, true)?;
+                    return Ok(());
+                }
+
+                ensure!(
+                    attestations.len() as u32 >= required,
+                    Error::<T>::VerificationPending
+                );
+
+                let average = Self::average_attestation_score(&attestations);
+                if average >= T::MinAttestationScore::get() {
+                    Self::finalize_verified(task_id, task, average)?;
+                } else {
+                    Self::finalize_rejected(task_id, task, Some(average), false)?;
+                }
+
+                Ok(())
+            })
+        }
     }
 
     // Helper functions
@@ -822,6 +1058,112 @@ pub mod pallet {
         /// Check if a task exists
         pub fn task_exists(task_id: u64) -> bool {
             Tasks::<T>::contains_key(task_id)
+        }
+
+        fn average_attestation_score(
+            attestations: &BoundedVec<TaskAttestationOf<T>, T::MaxAttestations>,
+        ) -> u8 {
+            if attestations.is_empty() {
+                return 0;
+            }
+            let total: u32 = attestations.iter().map(|a| a.score as u32).sum();
+            (total / attestations.len() as u32) as u8
+        }
+
+        fn clear_verification_state(task_id: u64) {
+            Attestations::<T>::remove(task_id);
+            RequiredQuorum::<T>::remove(task_id);
+            VerificationDeadline::<T>::remove(task_id);
+            PendingVerificationTasks::<T>::mutate(|queue| {
+                if let Some(pos) = queue.iter().position(|&id| id == task_id) {
+                    queue.remove(pos);
+                }
+            });
+        }
+
+        fn finalize_verified(
+            task_id: u64,
+            task: &mut TaskIntentOf<T>,
+            average_score: u8,
+        ) -> DispatchResult {
+            let executor = task.executor.as_ref().ok_or(Error::<T>::TaskNotAssigned)?;
+
+            // Unreserve escrow
+            let escrow = task.escrow;
+            T::Currency::unreserve(&task.requester, escrow);
+
+            // Fee split: Node 70%, Treasury 20%, Burn 10%
+            let node_share = escrow.saturating_mul(70u32.into()) / 100u32.into();
+            let treasury_share = escrow.saturating_mul(20u32.into()) / 100u32.into();
+            let burn_share = escrow
+                .saturating_sub(node_share)
+                .saturating_sub(treasury_share);
+
+            // Transfer node and treasury shares
+            T::Currency::transfer(
+                &task.requester,
+                executor,
+                node_share,
+                ExistenceRequirement::AllowDeath,
+            )?;
+            T::Currency::transfer(
+                &task.requester,
+                &T::TreasuryAccount::get(),
+                treasury_share,
+                ExistenceRequirement::AllowDeath,
+            )?;
+
+            // Burn remainder (must fully burn or revert)
+            let (_imbalance, remaining) = T::Currency::slash(&task.requester, burn_share);
+            ensure!(remaining.is_zero(), Error::<T>::BurnFailed);
+
+            task.status = TaskStatus::Verified;
+
+            Self::clear_verification_state(task_id);
+
+            Self::deposit_event(Event::TaskVerified {
+                task_id,
+                executor: executor.clone(),
+                payment: node_share,
+                average_score,
+            });
+
+            T::ReputationUpdater::record_task_result(executor, true);
+
+            Ok(())
+        }
+
+        fn finalize_rejected(
+            task_id: u64,
+            task: &mut TaskIntentOf<T>,
+            average_score: Option<u8>,
+            deadline_exceeded: bool,
+        ) -> DispatchResult {
+            let executor = task.executor.clone();
+
+            // Return escrow to requester
+            T::Currency::unreserve(&task.requester, task.escrow);
+
+            if let Some(ref account) = executor {
+                let _ = T::TaskSlashHandler::slash_for_abandonment(
+                    account,
+                    T::VerificationFailureSlash::get(),
+                );
+                T::ReputationUpdater::record_task_result(account, false);
+            }
+
+            task.status = TaskStatus::Rejected;
+
+            Self::clear_verification_state(task_id);
+
+            Self::deposit_event(Event::TaskRejected {
+                task_id,
+                executor,
+                average_score,
+                deadline_exceeded,
+            });
+
+            Ok(())
         }
 
         fn ensure_renderer_allowed(
@@ -980,6 +1322,43 @@ pub mod pallet {
 
             OpenLane0Tasks::<T>::mutate(|queue| process_queue(queue));
             OpenLane1Tasks::<T>::mutate(|queue| process_queue(queue));
+
+            total_weight
+        }
+
+        fn expire_pending_verifications(now: BlockNumberFor<T>) -> Weight {
+            let mut total_weight = Weight::zero();
+            let max_expired = T::MaxExpiredPerBlock::get() as usize;
+            let mut expired_ids: Vec<u64> = Vec::new();
+
+            PendingVerificationTasks::<T>::mutate(|queue| {
+                let mut idx = 0usize;
+                while idx < queue.len() && expired_ids.len() < max_expired {
+                    let task_id = queue[idx];
+                    if let Some(deadline) = VerificationDeadline::<T>::get(task_id) {
+                        if deadline <= now {
+                            queue.remove(idx);
+                            expired_ids.push(task_id);
+                            continue;
+                        }
+                    }
+                    idx += 1;
+                }
+            });
+
+            for task_id in expired_ids {
+                if let Some(mut task) = Tasks::<T>::get(task_id) {
+                    if matches!(
+                        task.status,
+                        TaskStatus::Submitted | TaskStatus::PendingVerification
+                    ) {
+                        let _ = Self::finalize_rejected(task_id, &mut task, None, true);
+                        Tasks::<T>::insert(task_id, task);
+                        total_weight =
+                            total_weight.saturating_add(T::DbWeight::get().reads_writes(2, 2));
+                    }
+                }
+            }
 
             total_weight
         }

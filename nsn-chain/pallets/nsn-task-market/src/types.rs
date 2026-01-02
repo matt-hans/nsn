@@ -37,6 +37,40 @@ pub enum TaskStatus {
     Failed,
     /// Task has expired (deadline passed without completion)
     Expired,
+    /// Executor submitted output awaiting verification
+    Submitted,
+    /// Task is in active verification window
+    PendingVerification,
+    /// Task verified successfully
+    Verified,
+    /// Task rejected after failed verification or deadline
+    Rejected,
+}
+
+/// Attestation from a validator for a task result.
+#[derive(
+    Clone,
+    Encode,
+    Decode,
+    DecodeWithMemTracking,
+    Eq,
+    PartialEq,
+    RuntimeDebug,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[scale_info(skip_type_params(AccountId, MaxCidLen))]
+pub struct TaskAttestation<AccountId, MaxCidLen>
+where
+    AccountId: Encode + Decode + Clone + PartialEq + Eq + core::fmt::Debug + TypeInfo,
+    MaxCidLen: Get<u32>,
+{
+    /// Validator account submitting attestation (signed origin).
+    pub validator: AccountId,
+    /// Verification score in range [0, 100].
+    pub score: u8,
+    /// Optional CID for attestation proof.
+    pub attestation_cid: Option<BoundedVec<u8, MaxCidLen>>,
 }
 
 /// Reason for task failure
