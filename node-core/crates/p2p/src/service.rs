@@ -13,6 +13,10 @@ use super::kademlia::KademliaError;
 use super::kademlia_helpers::build_kademlia;
 use super::metrics::P2pMetrics;
 use super::reputation_oracle::{OracleError, ReputationOracle};
+use super::security::{
+    BandwidthLimiter, DosDetector, Graylist, RateLimitError, RateLimiter, SecureP2pConfig,
+    SecurityMetrics,
+};
 use super::topics::TopicCategory;
 use futures::StreamExt;
 use hyper::service::{make_service_fn, service_fn};
@@ -58,6 +62,16 @@ pub enum ServiceError {
 
     #[error("Oracle error: {0}")]
     Oracle(#[from] OracleError),
+}
+
+struct SecurityState {
+    rate_limiter: RateLimiter,
+    bandwidth_limiter: BandwidthLimiter,
+    graylist: Graylist,
+    dos_detector: DosDetector,
+    metrics: Arc<SecurityMetrics>,
+    violation_counts: HashMap<PeerId, u32>,
+    graylist_threshold: u32,
 }
 
 /// Commands that can be sent to the P2P service
@@ -157,6 +171,9 @@ pub struct P2pService {
     /// Local shards being provided (for republish)
     local_provided_shards: Vec<[u8; 32]>,
 
+    /// Security state (rate limiting, DoS detection, graylist)
+    security: SecurityState,
+
     /// Shutdown flag
     shutdown: bool,
 }
@@ -196,6 +213,12 @@ impl P2pService {
         // Create metrics
         let metrics = Arc::new(P2pMetrics::new().expect("Failed to create metrics"));
         metrics.connection_limit.set(config.max_connections as f64);
+
+        // Create security metrics (registered on the same registry)
+        let security_metrics = Arc::new(
+            SecurityMetrics::new(&metrics.registry)
+                .expect("Failed to create security metrics"),
+        );
 
         // Create reputation oracle with metrics registry (before spawning metrics server)
         let reputation_oracle = Arc::new(
@@ -255,6 +278,28 @@ impl P2pService {
         // Create connection manager
         let connection_manager = ConnectionManager::new(config.clone(), metrics.clone());
 
+        let security_config: SecureP2pConfig = config.security.clone();
+        let rate_limiter = RateLimiter::new(
+            security_config.rate_limiter.clone(),
+            Some(reputation_oracle.clone()),
+            security_metrics.clone(),
+        );
+        let bandwidth_limiter =
+            BandwidthLimiter::new(security_config.bandwidth_limiter.clone(), security_metrics.clone());
+        let graylist = Graylist::new(security_config.graylist.clone(), security_metrics.clone());
+        let dos_detector =
+            DosDetector::new(security_config.dos_detector.clone(), security_metrics.clone());
+
+        let security = SecurityState {
+            rate_limiter,
+            bandwidth_limiter,
+            graylist,
+            dos_detector,
+            metrics: security_metrics,
+            violation_counts: HashMap::new(),
+            graylist_threshold: security_config.graylist.threshold_violations,
+        };
+
         Ok((
             Self {
                 swarm,
@@ -269,6 +314,7 @@ impl P2pService {
                 pending_get_providers: HashMap::new(),
                 pending_start_providing: HashMap::new(),
                 local_provided_shards: Vec::new(),
+                security,
                 shutdown: false,
             },
             command_tx,
@@ -312,30 +358,51 @@ impl P2pService {
             tokio::select! {
                 // Handle swarm events
                 event = self.swarm.select_next_some() => {
-                    // Handle specific events for Kademlia
-                    match &event {
+                    match event {
                         SwarmEvent::Behaviour(super::behaviour::NsnBehaviourEvent::Kademlia(kad_event)) => {
-                            self.handle_kademlia_event(kad_event.clone());
+                            self.handle_kademlia_event(kad_event);
                         }
-                        // Add peers to Kademlia on connection established
-                        SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                        SwarmEvent::Behaviour(super::behaviour::NsnBehaviourEvent::Gossipsub(gossipsub_event)) => {
+                            self.handle_gossipsub_event(gossipsub_event).await;
+                        }
+                        SwarmEvent::ConnectionEstablished { peer_id, endpoint, connection_id, num_established, .. } => {
                             let addr = endpoint.get_remote_address().clone();
                             self.swarm
                                 .behaviour_mut()
                                 .kademlia
-                                .add_address(peer_id, addr.clone());
+                                .add_address(&peer_id, addr.clone());
                             debug!("Added connected peer {} at {} to Kademlia routing table", peer_id, addr);
+
+                            self.handle_connection_security(&peer_id).await;
+
+                            if let Err(e) = event_handler::handle_connection_established(
+                                peer_id,
+                                connection_id,
+                                num_established,
+                                &mut self.connection_manager,
+                                &mut self.swarm,
+                            ) {
+                                error!("Error handling connection established: {}", e);
+                            }
+                        }
+                        SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                            event_handler::handle_connection_closed(peer_id, cause, &mut self.connection_manager);
+                        }
+                        SwarmEvent::NewListenAddr { address, .. } => {
+                            event_handler::handle_new_listen_addr(&address);
+                        }
+                        SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
+                            event_handler::handle_outgoing_connection_error(peer_id, &error, &self.connection_manager);
+                        }
+                        SwarmEvent::IncomingConnectionError { error, .. } => {
+                            self.security.dos_detector.record_connection_attempt().await;
+                            if self.security.dos_detector.detect_connection_flood().await {
+                                debug!("Connection flood detected during inbound error");
+                            }
+
+                            event_handler::handle_incoming_connection_error(&error, &self.connection_manager);
                         }
                         _ => {}
-                    }
-
-                    // Then dispatch to general event handler
-                    if let Err(e) = event_handler::dispatch_swarm_event(
-                        event,
-                        &mut self.connection_manager,
-                        &mut self.swarm,
-                    ) {
-                        error!("Error handling swarm event: {}", e);
                     }
                 }
 
@@ -417,6 +484,96 @@ impl P2pService {
             .dial(addr.clone())
             .map_err(|e| ServiceError::Swarm(format!("Failed to dial {}: {}", addr, e)))?;
         Ok(())
+    }
+
+    async fn handle_connection_security(&mut self, peer_id: &PeerId) {
+        self.security.dos_detector.record_connection_attempt().await;
+
+        if self.security.dos_detector.detect_connection_flood().await {
+            self.graylist_peer(peer_id, "Connection flood detected").await;
+            return;
+        }
+
+        if self.security.graylist.is_graylisted(peer_id).await {
+            debug!("Disconnecting graylisted peer {}", peer_id);
+            let _ = self.swarm.disconnect_peer_id(peer_id.clone());
+        }
+    }
+
+    async fn handle_gossipsub_event(&mut self, event: libp2p::gossipsub::Event) {
+        if let libp2p::gossipsub::Event::Message {
+            propagation_source,
+            message,
+            ..
+        } = event
+        {
+            let peer_id = propagation_source;
+            let message_len = message.data.len();
+
+            if self.enforce_inbound_limits(&peer_id, message_len).await {
+                self.metrics.gossipsub_messages_received_total.inc();
+            } else {
+                debug!("Dropped GossipSub message from {}", peer_id);
+            }
+        }
+    }
+
+    async fn enforce_inbound_limits(&mut self, peer_id: &PeerId, message_len: usize) -> bool {
+        let _timer = self.security.metrics.security_check_duration.start_timer();
+
+        self.security.dos_detector.record_message_attempt().await;
+        if self.security.dos_detector.detect_message_spam().await {
+            self.graylist_peer(peer_id, "Message spam detected").await;
+            return false;
+        }
+
+        if self.security.graylist.is_graylisted(peer_id).await {
+            return false;
+        }
+
+        let bandwidth_ok = self
+            .security
+            .bandwidth_limiter
+            .record_transfer(peer_id, message_len as u64)
+            .await;
+        if !bandwidth_ok {
+            self.record_violation(peer_id, "Bandwidth limit exceeded")
+                .await;
+            return false;
+        }
+
+        match self.security.rate_limiter.check_rate_limit(peer_id).await {
+            Ok(()) => true,
+            Err(RateLimitError::LimitExceeded { .. }) => {
+                self.record_violation(peer_id, "Rate limit exceeded")
+                    .await;
+                false
+            }
+        }
+    }
+
+    async fn record_violation(&mut self, peer_id: &PeerId, reason: &str) {
+        let should_graylist = {
+            let count = self
+                .security
+                .violation_counts
+                .entry(peer_id.clone())
+                .or_insert(0);
+            *count += 1;
+            *count >= self.security.graylist_threshold
+        };
+
+        if should_graylist {
+            self.graylist_peer(peer_id, reason).await;
+        }
+    }
+
+    async fn graylist_peer(&mut self, peer_id: &PeerId, reason: &str) {
+        self.security
+            .graylist
+            .add(peer_id.clone(), reason.to_string())
+            .await;
+        let _ = self.swarm.disconnect_peer_id(peer_id.clone());
     }
 
     /// Handle GetPeerCount command
@@ -744,6 +901,7 @@ async fn serve_metrics(
 mod tests {
     use super::*;
     use crate::test_helpers::*;
+    use libp2p::PeerId;
 
     #[tokio::test]
     async fn test_service_creation() {
@@ -884,5 +1042,21 @@ mod tests {
     async fn test_connection_metrics_updated() {
         let (service, _cmd_tx) = create_test_service().await;
         assert_metrics_initial_state(&service.metrics());
+    }
+
+    #[tokio::test]
+    async fn test_inbound_rate_limit_triggers_graylist() {
+        let mut config = P2pConfig::default();
+        config.security.rate_limiter.max_requests_per_minute = 1;
+        config.security.graylist.threshold_violations = 2;
+
+        let (mut service, _cmd_tx) = create_test_service_with_config(config).await;
+        let peer_id = PeerId::random();
+
+        assert!(service.enforce_inbound_limits(&peer_id, 128).await);
+        assert!(!service.enforce_inbound_limits(&peer_id, 128).await);
+        assert!(!service.enforce_inbound_limits(&peer_id, 128).await);
+
+        assert!(service.security.graylist.is_graylisted(&peer_id).await);
     }
 }

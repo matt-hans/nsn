@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
+use crate::security::SecureP2pConfig;
 
 /// P2P network configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +42,10 @@ pub struct P2pConfig {
 
     /// Enable AutoNat for NAT status detection
     pub enable_autonat: bool,
+
+    /// Security configuration (rate limiting, graylist, DoS detection)
+    #[serde(default)]
+    pub security: SecureP2pConfig,
 }
 
 impl Default for P2pConfig {
@@ -60,6 +65,7 @@ impl Default for P2pConfig {
                 "stun2.l.google.com:19302".to_string(),
             ],
             enable_autonat: true,
+            security: SecureP2pConfig::default(),
         }
     }
 }
@@ -97,6 +103,7 @@ mod tests {
             enable_relay: true,
             stun_servers: vec!["stun.example.com:19302".to_string()],
             enable_autonat: true,
+            security: SecureP2pConfig::default(),
         };
 
         // Serialize to JSON

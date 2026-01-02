@@ -9,7 +9,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use nsn_p2p::{P2pConfig, P2pService};
+use nsn_storage::StorageManager;
 use nsn_types::NodeCapability;
+use std::path::PathBuf;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -134,6 +136,8 @@ async fn main() -> Result<()> {
         Mode::SuperNode { gpu_device } => {
             info!("SuperNode mode: GPU device {}", gpu_device);
             // TODO: Initialize scheduler, sidecar, storage
+            let storage_root = PathBuf::from("/var/lib/nsn/storage");
+            let _storage = StorageManager::local(storage_root)?;
         }
         Mode::DirectorOnly { gpu_device } => {
             info!("DirectorOnly mode: GPU device {}", gpu_device);
@@ -146,6 +150,7 @@ async fn main() -> Result<()> {
         Mode::StorageOnly { storage_path } => {
             info!("StorageOnly mode: storage path {}", storage_path);
             // TODO: Initialize storage
+            let _storage = StorageManager::local(PathBuf::from(storage_path))?;
         }
     }
 

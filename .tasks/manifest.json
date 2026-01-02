@@ -1140,8 +1140,16 @@
       "file": "tasks/T045-dht-walk-implementation.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T024"],
-      "tags": ["p2p", "dht", "decentralization", "critical-path", "phase-a"],
+      "depends_on": [
+        "T024"
+      ],
+      "tags": [
+        "p2p",
+        "dht",
+        "decentralization",
+        "critical-path",
+        "phase-a"
+      ],
       "estimated_tokens": 12000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1153,8 +1161,16 @@
       "file": "tasks/T046-bootstrap-diversification.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T025"],
-      "tags": ["p2p", "bootstrap", "decentralization", "censorship-resistance", "phase-a"],
+      "depends_on": [
+        "T025"
+      ],
+      "tags": [
+        "p2p",
+        "bootstrap",
+        "decentralization",
+        "censorship-resistance",
+        "phase-a"
+      ],
       "estimated_tokens": 8000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1166,8 +1182,15 @@
       "file": "tasks/T047-role-based-peer-discovery.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T045"],
-      "tags": ["p2p", "dht", "discovery", "phase-a"],
+      "depends_on": [
+        "T045"
+      ],
+      "tags": [
+        "p2p",
+        "dht",
+        "discovery",
+        "phase-a"
+      ],
       "estimated_tokens": 9000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1179,8 +1202,15 @@
       "file": "tasks/T048-multi-registrar-dns.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T046"],
-      "tags": ["infrastructure", "dns", "decentralization", "phase-a"],
+      "depends_on": [
+        "T046"
+      ],
+      "tags": [
+        "infrastructure",
+        "dns",
+        "decentralization",
+        "phase-a"
+      ],
       "estimated_tokens": 5000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1192,8 +1222,16 @@
       "file": "tasks/T049-docker-container-manager.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T009"],
-      "tags": ["compute", "docker", "isolation", "security", "phase-a"],
+      "depends_on": [
+        "T009"
+      ],
+      "tags": [
+        "compute",
+        "docker",
+        "isolation",
+        "security",
+        "phase-a"
+      ],
       "estimated_tokens": 15000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1205,8 +1243,16 @@
       "file": "tasks/T050-clip-verification-integration.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T018"],
-      "tags": ["verification", "clip", "lane0", "task-market", "phase-a"],
+      "depends_on": [
+        "T018"
+      ],
+      "tags": [
+        "verification",
+        "clip",
+        "lane0",
+        "task-market",
+        "phase-a"
+      ],
       "estimated_tokens": 10000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1218,8 +1264,15 @@
       "file": "tasks/T051-ipfs-storage-backend.md",
       "status": "pending",
       "priority": 2,
-      "depends_on": ["T005"],
-      "tags": ["storage", "ipfs", "decentralization", "phase-a"],
+      "depends_on": [
+        "T005"
+      ],
+      "tags": [
+        "storage",
+        "ipfs",
+        "decentralization",
+        "phase-a"
+      ],
       "estimated_tokens": 14000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1231,8 +1284,15 @@
       "file": "tasks/T052-lane1-attestation-verification.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T050"],
-      "tags": ["verification", "lane1", "task-market", "phase-a"],
+      "depends_on": [
+        "T050"
+      ],
+      "tags": [
+        "verification",
+        "lane1",
+        "task-market",
+        "phase-a"
+      ],
       "estimated_tokens": 7000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1244,8 +1304,17 @@
       "file": "tasks/T053-pallet-nsn-agent.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T002"],
-      "tags": ["pallets", "agent", "delegation", "autonomy", "critical-path", "phase-a"],
+      "depends_on": [
+        "T002"
+      ],
+      "tags": [
+        "pallets",
+        "agent",
+        "delegation",
+        "autonomy",
+        "critical-path",
+        "phase-a"
+      ],
       "estimated_tokens": 18000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1257,8 +1326,15 @@
       "file": "tasks/T054-agent-budget-controls.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T053"],
-      "tags": ["pallets", "agent", "budget", "phase-a"],
+      "depends_on": [
+        "T053"
+      ],
+      "tags": [
+        "pallets",
+        "agent",
+        "budget",
+        "phase-a"
+      ],
       "estimated_tokens": 10000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1270,8 +1346,17 @@
       "file": "tasks/T055-agent-task-market-integration.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T053", "T052"],
-      "tags": ["pallets", "agent", "task-market", "integration", "phase-a"],
+      "depends_on": [
+        "T053",
+        "T052"
+      ],
+      "tags": [
+        "pallets",
+        "agent",
+        "task-market",
+        "integration",
+        "phase-a"
+      ],
       "estimated_tokens": 10000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1283,8 +1368,17 @@
       "file": "tasks/T056-agent-director-integration.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T053", "T004"],
-      "tags": ["pallets", "agent", "director", "integration", "phase-a"],
+      "depends_on": [
+        "T053",
+        "T004"
+      ],
+      "tags": [
+        "pallets",
+        "agent",
+        "director",
+        "integration",
+        "phase-a"
+      ],
       "estimated_tokens": 8000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1296,8 +1390,15 @@
       "file": "tasks/T057-operator-observability.md",
       "status": "pending",
       "priority": 2,
-      "depends_on": ["T053"],
-      "tags": ["observability", "events", "operator", "phase-a"],
+      "depends_on": [
+        "T053"
+      ],
+      "tags": [
+        "observability",
+        "events",
+        "operator",
+        "phase-a"
+      ],
       "estimated_tokens": 9000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1310,7 +1411,12 @@
       "status": "complete",
       "priority": 0,
       "depends_on": [],
-      "tags": ["security", "config", "quick-win", "phase-a"],
+      "tags": [
+        "security",
+        "config",
+        "quick-win",
+        "phase-a"
+      ],
       "estimated_tokens": 1000,
       "actual_tokens": 800,
       "created_at": "2025-12-31T00:00:00Z",
@@ -1320,15 +1426,23 @@
     {
       "id": "T059",
       "title": "DoS Protection Integration Verification",
-      "file": "tasks/T059-dos-protection-verification.md",
-      "status": "pending",
+      "file": "completed/T059-dos-protection-verification.md",
+      "status": "complete",
       "priority": 2,
-      "depends_on": ["T027"],
-      "tags": ["security", "dos", "verification", "phase-a"],
+      "depends_on": [
+        "T027"
+      ],
+      "tags": [
+        "security",
+        "dos",
+        "verification",
+        "phase-a"
+      ],
       "estimated_tokens": 6000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
-      "updated_at": "2025-12-31T00:00:00Z"
+      "updated_at": "2026-01-02T00:00:00Z",
+      "completed_at": "2026-01-02T00:00:00Z"
     },
     {
       "id": "T060",
@@ -1336,12 +1450,109 @@
       "file": "tasks/T060-network-resilience-tests.md",
       "status": "pending",
       "priority": 1,
-      "depends_on": ["T046"],
-      "tags": ["testing", "resilience", "decentralization", "phase-a"],
+      "depends_on": [
+        "T046"
+      ],
+      "tags": [
+        "testing",
+        "resilience",
+        "decentralization",
+        "phase-a"
+      ],
       "estimated_tokens": 8000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
       "updated_at": "2025-12-31T00:00:00Z"
+    },
+    {
+      "id": "T061",
+      "title": "Sandboxed Plugin Execution for Vortex",
+      "file": "tasks/T061-sandboxed-plugin-execution.md",
+      "status": "pending",
+      "priority": 0,
+      "depends_on": [
+        "T049",
+        "T058"
+      ],
+      "tags": [
+        "security",
+        "sandbox",
+        "vortex",
+        "plugins",
+        "phase-a"
+      ],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2026-01-02T00:00:00Z",
+      "updated_at": "2026-01-02T00:00:00Z"
+    },
+    {
+      "id": "T062",
+      "title": "Task-Market Verification Gate and Escrow Release",
+      "file": "tasks/T062-task-market-verification-gate.md",
+      "status": "pending",
+      "priority": 0,
+      "depends_on": [
+        "T010",
+        "T018",
+        "T050"
+      ],
+      "tags": [
+        "pallets",
+        "task-market",
+        "verification",
+        "security",
+        "phase-a"
+      ],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2026-01-02T00:00:00Z",
+      "updated_at": "2026-01-02T00:00:00Z"
+    },
+    {
+      "id": "T063",
+      "title": "Redundant Execution and Result Consensus Service",
+      "file": "tasks/T063-redundant-execution-consensus.md",
+      "status": "pending",
+      "priority": 0,
+      "depends_on": [
+        "T062",
+        "T049",
+        "T018"
+      ],
+      "tags": [
+        "node-core",
+        "scheduler",
+        "verification",
+        "security",
+        "phase-a"
+      ],
+      "estimated_tokens": 14000,
+      "actual_tokens": 0,
+      "created_at": "2026-01-02T00:00:00Z",
+      "updated_at": "2026-01-02T00:00:00Z"
+    },
+    {
+      "id": "T064",
+      "title": "Storage Crate Pluggable Backends",
+      "file": "completed/T064-storage-crate-backends.md",
+      "status": "complete",
+      "priority": 2,
+      "depends_on": [
+        "T005",
+        "T011"
+      ],
+      "tags": [
+        "storage",
+        "super-node",
+        "backend",
+        "phase-b"
+      ],
+      "estimated_tokens": 12000,
+      "actual_tokens": 0,
+      "created_at": "2026-01-02T00:00:00Z",
+      "updated_at": "2026-01-02T00:00:00Z",
+      "completed_at": "2026-01-02T00:00:00Z"
     }
   ],
   "stats": {
@@ -1842,55 +2053,97 @@
       "blocks": []
     },
     "T045": {
-      "depends_on": ["T024"],
-      "blocks": ["T047"]
+      "depends_on": [
+        "T024"
+      ],
+      "blocks": [
+        "T047"
+      ]
     },
     "T046": {
-      "depends_on": ["T025"],
-      "blocks": ["T048", "T060"]
+      "depends_on": [
+        "T025"
+      ],
+      "blocks": [
+        "T048",
+        "T060"
+      ]
     },
     "T047": {
-      "depends_on": ["T045"],
+      "depends_on": [
+        "T045"
+      ],
       "blocks": []
     },
     "T048": {
-      "depends_on": ["T046"],
+      "depends_on": [
+        "T046"
+      ],
       "blocks": []
     },
     "T049": {
-      "depends_on": ["T009"],
+      "depends_on": [
+        "T009"
+      ],
       "blocks": []
     },
     "T050": {
-      "depends_on": ["T018"],
-      "blocks": ["T052"]
+      "depends_on": [
+        "T018"
+      ],
+      "blocks": [
+        "T052"
+      ]
     },
     "T051": {
-      "depends_on": ["T005"],
+      "depends_on": [
+        "T005"
+      ],
       "blocks": []
     },
     "T052": {
-      "depends_on": ["T050"],
-      "blocks": ["T055"]
+      "depends_on": [
+        "T050"
+      ],
+      "blocks": [
+        "T055"
+      ]
     },
     "T053": {
-      "depends_on": ["T002"],
-      "blocks": ["T054", "T055", "T056", "T057"]
+      "depends_on": [
+        "T002"
+      ],
+      "blocks": [
+        "T054",
+        "T055",
+        "T056",
+        "T057"
+      ]
     },
     "T054": {
-      "depends_on": ["T053"],
+      "depends_on": [
+        "T053"
+      ],
       "blocks": []
     },
     "T055": {
-      "depends_on": ["T053", "T052"],
+      "depends_on": [
+        "T053",
+        "T052"
+      ],
       "blocks": []
     },
     "T056": {
-      "depends_on": ["T053", "T004"],
+      "depends_on": [
+        "T053",
+        "T004"
+      ],
       "blocks": []
     },
     "T057": {
-      "depends_on": ["T053"],
+      "depends_on": [
+        "T053"
+      ],
       "blocks": []
     },
     "T058": {
@@ -1898,11 +2151,15 @@
       "blocks": []
     },
     "T059": {
-      "depends_on": ["T027"],
+      "depends_on": [
+        "T027"
+      ],
       "blocks": []
     },
     "T060": {
-      "depends_on": ["T046"],
+      "depends_on": [
+        "T046"
+      ],
       "blocks": []
     }
   },

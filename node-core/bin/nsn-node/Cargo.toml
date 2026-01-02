@@ -16,3 +16,5 @@ serde_json = { workspace = true }
 
 # Internal dependencies
 nsn-types = { workspace = true }
+nsn-p2p = { workspace = true }
+nsn-storage = { workspace = true }
