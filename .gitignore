@@ -57,3 +57,6 @@ repomix-output.xml
 *.pem
 *.key
 secrets/
+
+# Git worktrees
+.worktrees/
