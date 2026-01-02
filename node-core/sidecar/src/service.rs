@@ -495,7 +495,7 @@ impl Sidecar for SidecarService {
         &self,
         request: Request<proto::StopContainerRequest>,
     ) -> Result<Response<proto::StopContainerResponse>, Status> {
-        let req = request.into_inner();
+        let mut req = request.into_inner();
 
         info!(
             container_id = %req.container_id,
@@ -792,7 +792,7 @@ impl Sidecar for SidecarService {
         &self,
         request: Request<proto::ExecuteTaskRequest>,
     ) -> Result<Response<proto::ExecuteTaskResponse>, Status> {
-        let req = request.into_inner();
+        let mut req = request.into_inner();
 
         info!(
             task_id = %req.task_id,
@@ -1088,16 +1088,106 @@ fn estimate_model_vram(model_id: &str) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use bollard::Docker;
+
+    async fn docker_available() -> bool {
+        if env::var("NSN_DOCKER_TESTS").ok().as_deref() != Some("1") {
+            return false;
+        }
+
+        match Docker::connect_with_local_defaults() {
+            Ok(client) => client.ping().await.is_ok(),
+            Err(_) => false,
+        }
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let mut path = env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        path.push(format!("nsn-{}-{}", prefix, nanos));
+        fs::create_dir_all(&path).expect("create temp dir");
+        path
+    }
+
+    fn write_plugin_manifest(plugins_dir: &PathBuf) {
+        let plugin_dir = plugins_dir.join("flux-schnell");
+        fs::create_dir_all(&plugin_dir).expect("create plugin dir");
+        let manifest = r#"
+schema_version: "1"
+name: "flux-schnell"
+version: "0.1.0"
+entrypoint: "runner"
+description: "test plugin"
+supported_lanes:
+  - lane0
+  - lane1
+deterministic: true
+resources:
+  vram_gb: 6.0
+  max_latency_ms: 1000
+  max_concurrency: 1
+io:
+  input_schema: {}
+  output_schema: {}
+"#;
+        fs::write(plugin_dir.join("manifest.yaml"), manifest).expect("write manifest");
+    }
+
+    fn write_runner_script(base_dir: &PathBuf) -> PathBuf {
+        let script_path = base_dir.join("runner.sh");
+        let script = r#"#!/bin/sh
+echo '{"output":{"output_cid":"ipfs://QmTest"},"duration_ms":1}'
+"#;
+        fs::write(&script_path, script).expect("write runner script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&script_path)
+                .expect("script metadata")
+                .permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&script_path, perms).expect("set script permissions");
+        }
+        script_path
+    }
+
+    fn test_service_config() -> SidecarServiceConfig {
+        let base_dir = unique_temp_dir("sidecar-tests");
+        let plugins_dir = base_dir.join("plugins");
+        fs::create_dir_all(&plugins_dir).expect("create plugins dir");
+        write_plugin_manifest(&plugins_dir);
+        let runner_path = write_runner_script(&base_dir);
+
+        let mut policy = PluginPolicy::default();
+        policy.allowlist.insert("flux-schnell".to_string());
+
+        SidecarServiceConfig {
+            plugins_enabled: true,
+            plugins_dir: Some(plugins_dir),
+            plugin_policy: policy,
+            plugin_exec_command: Some(vec![runner_path.to_string_lossy().to_string()]),
+            ..SidecarServiceConfig::default()
+        }
+    }
 
     #[tokio::test]
     async fn test_execute_task() {
-        let service = SidecarService::new();
+        if !docker_available().await {
+            return;
+        }
+        let service = SidecarService::with_config(test_service_config());
 
         // Start a container first
         let start_req = Request::new(proto::StartContainerRequest {
             container_id: "test-container".to_string(),
-            image_cid: "test-image".to_string(),
-            gpu_ids: vec!["0".to_string()],
+            image_cid: "alpine:latest".to_string(),
+            gpu_ids: vec![],
             env_vars: HashMap::new(),
             resource_limits: None,
         });
@@ -1133,12 +1223,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_vram_tracking() {
-        let service = SidecarService::new();
+        if !docker_available().await {
+            return;
+        }
+        let service = SidecarService::with_config(test_service_config());
 
         // Start container
         let start_req = Request::new(proto::StartContainerRequest {
             container_id: "vram-test".to_string(),
-            image_cid: "test-image".to_string(),
+            image_cid: "alpine:latest".to_string(),
             gpu_ids: vec![],
             env_vars: HashMap::new(),
             resource_limits: None,
@@ -1179,12 +1272,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_cancel_task() {
-        let service = SidecarService::new();
+        if !docker_available().await {
+            return;
+        }
+        let service = SidecarService::with_config(test_service_config());
 
         // Setup
         let start_req = Request::new(proto::StartContainerRequest {
             container_id: "cancel-test".to_string(),
-            image_cid: "test-image".to_string(),
+            image_cid: "alpine:latest".to_string(),
             gpu_ids: vec![],
             env_vars: HashMap::new(),
             resource_limits: None,

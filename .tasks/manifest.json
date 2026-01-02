@@ -1219,8 +1219,8 @@
     {
       "id": "T049",
       "title": "Docker Container Manager Implementation",
-      "file": "tasks/T049-docker-container-manager.md",
-      "status": "pending",
+      "file": "completed/T049-docker-container-manager.md",
+      "status": "complete",
       "priority": 1,
       "depends_on": [
         "T009"
@@ -1235,7 +1235,8 @@
       "estimated_tokens": 15000,
       "actual_tokens": 0,
       "created_at": "2025-12-31T00:00:00Z",
-      "updated_at": "2025-12-31T00:00:00Z"
+      "updated_at": "2026-01-02T01:21:51Z",
+      "completed_at": "2026-01-02T01:21:51Z"
     },
     {
       "id": "T050",
@@ -1556,8 +1557,8 @@
     }
   ],
   "stats": {
-    "total_tasks": 60,
-    "completed": 33,
+    "total_tasks": 64,
+    "completed": 37,
     "in_progress": 0,
     "pending": 27,
     "blocked": 0

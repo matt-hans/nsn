@@ -5,14 +5,20 @@
 //! - Health checking containers
 //! - Managing container state and metadata
 //!
-//! Note: For MVP, Docker/containerd integration is stubbed. The focus is on
-//! the data structures and interfaces that will be used when real container
-//! integration is implemented.
+//! Note: Docker integration is required for lane execution and resource limits.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use bollard::container::{
+    Config, CreateContainerOptions, InspectContainerOptions, RemoveContainerOptions, StartContainerOptions,
+    StatsOptions, StopContainerOptions,
+};
+use bollard::image::CreateImageOptions;
+use bollard::models::{ContainerStateStatusEnum, DeviceRequest, HostConfig, PortBinding};
+use bollard::Docker;
+use futures::TryStreamExt;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
@@ -97,6 +103,8 @@ impl ModelLoadState {
 pub struct ContainerInfo {
     /// Unique container identifier
     pub id: String,
+    /// Docker container ID (runtime identifier)
+    pub docker_id: String,
     /// Container image CID (IPFS or registry reference)
     pub image_cid: String,
     /// gRPC endpoint for communicating with the container
@@ -150,13 +158,16 @@ pub struct ContainerMetrics {
 /// Manages container lifecycle operations.
 ///
 /// This struct handles starting, stopping, and monitoring Docker containers
-/// that run the Python AI models. For MVP, Docker integration is stubbed.
-#[derive(Debug)]
+/// that run the Python AI models.
 pub struct ContainerManager {
     /// Active containers indexed by ID
     containers: Arc<RwLock<HashMap<String, ContainerInfo>>>,
     /// Default container configuration
     config: ContainerManagerConfig,
+    /// Docker client (if available)
+    docker: Option<Docker>,
+    /// Cached Docker connection error (if any)
+    docker_error: Option<String>,
 }
 
 /// Configuration for the container manager
@@ -164,6 +175,10 @@ pub struct ContainerManager {
 pub struct ContainerManagerConfig {
     /// Default gRPC port for containers
     pub default_grpc_port: u16,
+    /// Network mode (e.g. "bridge", "host", "none")
+    pub network_mode: String,
+    /// Host bind address for exposed ports
+    pub bind_address: String,
     /// Health check interval
     pub health_check_interval: Duration,
     /// Graceful shutdown timeout
@@ -176,6 +191,8 @@ impl Default for ContainerManagerConfig {
     fn default() -> Self {
         Self {
             default_grpc_port: 50051,
+            network_mode: "none".to_string(),
+            bind_address: "127.0.0.1".to_string(),
             health_check_interval: Duration::from_secs(10),
             shutdown_timeout: Duration::from_secs(30),
             max_containers: 10,
@@ -184,6 +201,45 @@ impl Default for ContainerManagerConfig {
 }
 
 impl ContainerManager {
+    fn docker(&self) -> SidecarResult<&Docker> {
+        if let Some(docker) = &self.docker {
+            Ok(docker)
+        } else {
+            Err(SidecarError::Internal(format!(
+                "Docker unavailable: {}",
+                self.docker_error
+                    .clone()
+                    .unwrap_or_else(|| "unknown error".to_string())
+            )))
+        }
+    }
+
+    async fn ensure_image(&self, image: &str) -> SidecarResult<()> {
+        let docker = self.docker()?;
+        if docker.inspect_image(image).await.is_ok() {
+            return Ok(());
+        }
+
+        let options = Some(CreateImageOptions {
+            from_image: image.to_string(),
+            ..Default::default()
+        });
+        let mut stream = docker.create_image(options, None, None);
+        while let Some(_progress) = stream
+            .try_next()
+            .await
+            .map_err(|err| SidecarError::Internal(err.to_string()))?
+        {}
+        Ok(())
+    }
+
+    fn runtime_id(container: &ContainerInfo) -> &str {
+        if container.docker_id.is_empty() {
+            &container.id
+        } else {
+            &container.docker_id
+        }
+    }
     /// Create a new container manager with default configuration
     pub fn new() -> Self {
         Self::with_config(ContainerManagerConfig::default())
@@ -191,9 +247,16 @@ impl ContainerManager {
 
     /// Create a new container manager with custom configuration
     pub fn with_config(config: ContainerManagerConfig) -> Self {
+        let (docker, docker_error) = match Docker::connect_with_local_defaults() {
+            Ok(client) => (Some(client), None),
+            Err(err) => (None, Some(err.to_string())),
+        };
+
         Self {
             containers: Arc::new(RwLock::new(HashMap::new())),
             config,
+            docker,
+            docker_error,
         }
     }
 
@@ -214,19 +277,40 @@ impl ContainerManager {
         gpu_ids: Vec<String>,
         resource_limits: Option<ResourceLimits>,
     ) -> SidecarResult<String> {
-        let mut containers = self.containers.write().await;
+        let docker = self.docker()?;
+        let limits = resource_limits.unwrap_or_default();
 
-        // Check if container already exists
-        if containers.contains_key(&container_id) {
-            return Err(SidecarError::ContainerAlreadyExists(container_id));
-        }
+        let (endpoint, port) = {
+            let mut containers = self.containers.write().await;
 
-        // Check container limit
-        if containers.len() >= self.config.max_containers {
-            return Err(SidecarError::ContainerLimitReached(
-                self.config.max_containers,
-            ));
-        }
+            if containers.contains_key(&container_id) {
+                return Err(SidecarError::ContainerAlreadyExists(container_id));
+            }
+
+            if containers.len() >= self.config.max_containers {
+                return Err(SidecarError::ContainerLimitReached(
+                    self.config.max_containers,
+                ));
+            }
+
+            let port = self.config.default_grpc_port + containers.len() as u16;
+            let endpoint = format!("{}:{}", self.config.bind_address, port);
+
+            let container_info = ContainerInfo {
+                id: container_id.clone(),
+                docker_id: String::new(),
+                image_cid: image_cid.clone(),
+                endpoint: endpoint.clone(),
+                status: ContainerStatus::Starting,
+                gpu_ids: gpu_ids.clone(),
+                loaded_models: Vec::new(),
+                started_at: Instant::now(),
+                resource_limits: limits.clone(),
+            };
+
+            containers.insert(container_id.clone(), container_info);
+            (endpoint, port)
+        };
 
         info!(
             container_id = %container_id,
@@ -235,29 +319,98 @@ impl ContainerManager {
             "Starting container"
         );
 
-        // MVP: Stub Docker integration
-        // In production, this would:
-        // 1. Pull image if not present
-        // 2. Create container with GPU runtime
-        // 3. Start container
-        // 4. Wait for gRPC endpoint to be ready
+        if let Err(err) = self.ensure_image(&image_cid).await {
+            self.containers.write().await.remove(&container_id);
+            return Err(err);
+        }
 
-        // Generate endpoint (in production, this comes from Docker)
-        let port = self.config.default_grpc_port + containers.len() as u16;
-        let endpoint = format!("127.0.0.1:{}", port);
-
-        let container_info = ContainerInfo {
-            id: container_id.clone(),
-            image_cid,
-            endpoint: endpoint.clone(),
-            status: ContainerStatus::Running,
-            gpu_ids,
-            loaded_models: Vec::new(),
-            started_at: Instant::now(),
-            resource_limits: resource_limits.unwrap_or_default(),
+        let device_requests = if gpu_ids.is_empty() {
+            None
+        } else {
+            Some(vec![DeviceRequest {
+                driver: Some("nvidia".to_string()),
+                device_ids: Some(gpu_ids.clone()),
+                capabilities: Some(vec![vec!["gpu".to_string()]]),
+                ..Default::default()
+            }])
         };
 
-        containers.insert(container_id.clone(), container_info);
+        let mut port_bindings = HashMap::new();
+        let container_grpc_port = self.config.default_grpc_port;
+        port_bindings.insert(
+            format!("{}/tcp", container_grpc_port),
+            Some(vec![PortBinding {
+                host_ip: Some(self.config.bind_address.clone()),
+                host_port: Some(port.to_string()),
+            }]),
+        );
+
+        let host_config = HostConfig {
+            memory: if limits.memory_bytes > 0 {
+                Some(limits.memory_bytes as i64)
+            } else {
+                None
+            },
+            cpu_shares: if limits.cpu_shares > 0 {
+                Some(limits.cpu_shares as i64)
+            } else {
+                None
+            },
+            device_requests,
+            network_mode: Some(self.config.network_mode.clone()),
+            readonly_rootfs: Some(true),
+            security_opt: Some(vec!["no-new-privileges".to_string()]),
+            port_bindings: Some(port_bindings),
+            ..Default::default()
+        };
+
+        let config = Config {
+            image: Some(image_cid.clone()),
+            host_config: Some(host_config),
+            exposed_ports: Some(HashMap::from([(format!("{}/tcp", container_grpc_port), HashMap::new())])),
+            ..Default::default()
+        };
+
+        let create = match docker
+            .create_container(
+                Some(CreateContainerOptions {
+                    name: container_id.clone(),
+                    platform: None,
+                }),
+                config,
+            )
+            .await
+        {
+            Ok(create) => create,
+            Err(err) => {
+                self.containers.write().await.remove(&container_id);
+                return Err(SidecarError::Internal(err.to_string()));
+            }
+        };
+
+        if let Err(err) = docker
+            .start_container(&create.id, None::<StartContainerOptions<String>>)
+            .await
+        {
+            let _ = docker
+                .remove_container(
+                    &create.id,
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        v: true,
+                        ..Default::default()
+                    }),
+                )
+                .await;
+            self.containers.write().await.remove(&container_id);
+            return Err(SidecarError::Internal(err.to_string()));
+        }
+
+        let mut containers = self.containers.write().await;
+        if let Some(container) = containers.get_mut(&container_id) {
+            container.docker_id = create.id.clone();
+            container.status = ContainerStatus::Running;
+        }
 
         debug!(container_id = %container_id, endpoint = %endpoint, "Container started");
 
@@ -276,11 +429,17 @@ impl ContainerManager {
         force: bool,
         timeout: Option<Duration>,
     ) -> SidecarResult<()> {
-        let mut containers = self.containers.write().await;
+        let docker = self.docker()?;
+        let timeout = timeout.unwrap_or(self.config.shutdown_timeout);
 
-        let container = containers
-            .get_mut(container_id)
-            .ok_or_else(|| SidecarError::ContainerNotFound(container_id.to_string()))?;
+        let container = {
+            let mut containers = self.containers.write().await;
+            let container = containers
+                .get_mut(container_id)
+                .ok_or_else(|| SidecarError::ContainerNotFound(container_id.to_string()))?;
+            container.status = ContainerStatus::Stopping;
+            container.clone()
+        };
 
         info!(
             container_id = %container_id,
@@ -288,19 +447,36 @@ impl ContainerManager {
             "Stopping container"
         );
 
-        // Update status to stopping
-        container.status = ContainerStatus::Stopping;
+        let runtime_id = Self::runtime_id(&container).to_string();
 
-        // MVP: Stub Docker integration
-        // In production, this would:
-        // 1. Send SIGTERM to container
-        // 2. Wait for graceful shutdown or timeout
-        // 3. Send SIGKILL if force or timeout exceeded
-        // 4. Remove container
+        if force {
+            let _ = docker
+                .kill_container::<String>(&runtime_id, None)
+                .await;
+        } else {
+            let _ = docker
+                .stop_container(
+                    &runtime_id,
+                    Some(StopContainerOptions {
+                        t: timeout.as_secs() as i64,
+                    }),
+                )
+                .await;
+        }
 
-        let _timeout = timeout.unwrap_or(self.config.shutdown_timeout);
+        docker
+            .remove_container(
+                &runtime_id,
+                Some(RemoveContainerOptions {
+                    force: true,
+                    v: true,
+                    ..Default::default()
+                }),
+            )
+            .await
+            .map_err(|err| SidecarError::Internal(err.to_string()))?;
 
-        // Remove from active containers
+        let mut containers = self.containers.write().await;
         containers.remove(container_id);
 
         debug!(container_id = %container_id, "Container stopped");
@@ -321,29 +497,84 @@ impl ContainerManager {
         container_id: &str,
         include_metrics: bool,
     ) -> SidecarResult<(bool, String, u64, Option<ContainerMetrics>)> {
-        let containers = self.containers.read().await;
+        let docker = self.docker()?;
+        let container = {
+            let containers = self.containers.read().await;
+            containers
+                .get(container_id)
+                .cloned()
+                .ok_or_else(|| SidecarError::ContainerNotFound(container_id.to_string()))?
+        };
 
-        let container = containers
-            .get(container_id)
-            .ok_or_else(|| SidecarError::ContainerNotFound(container_id.to_string()))?;
+        let runtime_id = Self::runtime_id(&container);
+        let inspect = docker
+            .inspect_container(runtime_id, None::<InspectContainerOptions>)
+            .await
+            .map_err(|err| SidecarError::Internal(err.to_string()))?;
 
-        let healthy = container.status.is_healthy();
-        let status = container.status.as_str().to_string();
+        let status = inspect
+            .state
+            .and_then(|state| state.status)
+            .unwrap_or(ContainerStateStatusEnum::EMPTY);
+        let status_str = match status {
+            ContainerStateStatusEnum::RUNNING => "running",
+            ContainerStateStatusEnum::CREATED => "created",
+            ContainerStateStatusEnum::PAUSED => "paused",
+            ContainerStateStatusEnum::RESTARTING => "restarting",
+            ContainerStateStatusEnum::REMOVING => "removing",
+            ContainerStateStatusEnum::EXITED => "exited",
+            ContainerStateStatusEnum::DEAD => "dead",
+            _ => "unknown",
+        }
+        .to_string();
+        let healthy = matches!(status, ContainerStateStatusEnum::RUNNING);
         let uptime_seconds = container.started_at.elapsed().as_secs();
 
-        // MVP: Return stubbed metrics
         let metrics = if include_metrics {
-            Some(ContainerMetrics {
-                cpu_usage_percent: 15.0,
-                memory_used_bytes: 2 * 1024 * 1024 * 1024, // 2 GB
-                memory_limit_bytes: 8 * 1024 * 1024 * 1024, // 8 GB
-                gpu_utilization_percent: 45.0,
-            })
+            let mut stats_stream = docker.stats(
+                runtime_id,
+                Some(StatsOptions {
+                    stream: false,
+                    ..Default::default()
+                }),
+            );
+            let stats = stats_stream
+                .try_next()
+                .await
+                .map_err(|err| SidecarError::Internal(err.to_string()))?;
+
+            let mut metrics = ContainerMetrics::default();
+            if let Some(stats) = stats {
+                let cpu = stats.cpu_stats;
+                let precpu = stats.precpu_stats;
+                let cpu_total = cpu.cpu_usage.total_usage;
+                let pre_total = precpu.cpu_usage.total_usage;
+                let system_total = cpu.system_cpu_usage.unwrap_or(0);
+                let pre_system = precpu.system_cpu_usage.unwrap_or(0);
+
+                let cpu_delta = cpu_total.saturating_sub(pre_total) as f64;
+                let system_delta = system_total.saturating_sub(pre_system) as f64;
+                let online_cpus = cpu.online_cpus.unwrap_or(1) as f64;
+                if system_delta > 0.0 {
+                    metrics.cpu_usage_percent =
+                        ((cpu_delta / system_delta) * online_cpus * 100.0) as f32;
+                }
+
+                let memory = stats.memory_stats;
+                if let Some(usage) = memory.usage {
+                    metrics.memory_used_bytes = usage;
+                }
+                if let Some(limit) = memory.limit {
+                    metrics.memory_limit_bytes = limit;
+                }
+            }
+
+            Some(metrics)
         } else {
             None
         };
 
-        Ok((healthy, status, uptime_seconds, metrics))
+        Ok((healthy, status_str, uptime_seconds, metrics))
     }
 
     /// Get information about a container.
@@ -488,17 +719,32 @@ impl Default for ContainerManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+
+    async fn docker_available() -> bool {
+        if env::var("NSN_DOCKER_TESTS").ok().as_deref() != Some("1") {
+            return false;
+        }
+
+        match Docker::connect_with_local_defaults() {
+            Ok(client) => client.ping().await.is_ok(),
+            Err(_) => false,
+        }
+    }
 
     #[tokio::test]
     async fn test_start_stop_container() {
+        if !docker_available().await {
+            return;
+        }
         let manager = ContainerManager::new();
 
         // Start container
         let endpoint = manager
             .start_container(
                 "test-container-1".to_string(),
-                "ipfs://QmTest".to_string(),
-                vec!["0".to_string()],
+                "alpine:latest".to_string(),
+                vec![],
                 None,
             )
             .await
@@ -526,12 +772,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_health_check() {
+        if !docker_available().await {
+            return;
+        }
         let manager = ContainerManager::new();
 
         manager
             .start_container(
                 "health-test".to_string(),
-                "ipfs://QmTest".to_string(),
+                "alpine:latest".to_string(),
                 vec![],
                 None,
             )
@@ -551,13 +800,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_unload_model() {
+        if !docker_available().await {
+            return;
+        }
         let manager = ContainerManager::new();
 
         manager
             .start_container(
                 "model-test".to_string(),
-                "ipfs://QmTest".to_string(),
-                vec!["0".to_string()],
+                "alpine:latest".to_string(),
+                vec![],
                 None,
             )
             .await
@@ -589,6 +841,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_container_limit() {
+        if !docker_available().await {
+            return;
+        }
         let config = ContainerManagerConfig {
             max_containers: 2,
             ..Default::default()
@@ -597,19 +852,19 @@ mod tests {
 
         // Start first container
         manager
-            .start_container("c1".to_string(), "img".to_string(), vec![], None)
+            .start_container("c1".to_string(), "alpine:latest".to_string(), vec![], None)
             .await
             .expect("Failed to start c1");
 
         // Start second container
         manager
-            .start_container("c2".to_string(), "img".to_string(), vec![], None)
+            .start_container("c2".to_string(), "alpine:latest".to_string(), vec![], None)
             .await
             .expect("Failed to start c2");
 
         // Third should fail
         let result = manager
-            .start_container("c3".to_string(), "img".to_string(), vec![], None)
+            .start_container("c3".to_string(), "alpine:latest".to_string(), vec![], None)
             .await;
         assert!(matches!(
             result,
@@ -619,15 +874,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_duplicate_container() {
+        if !docker_available().await {
+            return;
+        }
         let manager = ContainerManager::new();
 
         manager
-            .start_container("dup".to_string(), "img".to_string(), vec![], None)
+            .start_container("dup".to_string(), "alpine:latest".to_string(), vec![], None)
             .await
             .expect("Failed to start container");
 
         let result = manager
-            .start_container("dup".to_string(), "img".to_string(), vec![], None)
+            .start_container("dup".to_string(), "alpine:latest".to_string(), vec![], None)
             .await;
 
         assert!(matches!(

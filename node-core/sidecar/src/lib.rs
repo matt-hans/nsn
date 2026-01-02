@@ -53,7 +53,7 @@
 //!     "task-001",
 //!     "flux-schnell",
 //!     "ipfs://QmInput",
-//!     b\"{}\".to_vec(),
+//!     b"{}".to_vec(),
 //!     1,
 //!     None,
 //! ).await?;
