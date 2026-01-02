@@ -77,6 +77,20 @@ Enable plugins via `vortex/config.yaml`:
 plugins:
   enabled: true
   directory: "plugins"
+  sandbox:
+    # Enable sandboxed execution (required for allow_untrusted)
+    enabled: true
+    # Sandbox engine: "docker" (recommended) or "process" (dev only)
+    engine: "docker"
+    docker_image: "nsn-vortex:latest"
+    docker_bin: "docker"
+    network: "none"
+    memory_mb: 4096
+    cpu_cores: 2.0
+    pids_limit: 256
+    tmpfs_mb: 64
+    gpus: null
+    timeout_grace_ms: 5000
   policy:
     max_vram_gb: 11.5
     lane0_max_latency_ms: 15000
@@ -103,6 +117,9 @@ Run a plugin locally via CLI (used by the Rust sidecar fallback executor):
 python3 -m vortex.plugins.runner --plugin example-renderer --payload '{"prompt":"hi"}'
 ```
 
+When sandboxing is enabled, the runner dispatches execution into the sandbox
+backend instead of running in-process.
+
 ## Notes
 
 - Lane 0 plugins must be deterministic and meet the tighter latency budget.
@@ -110,3 +127,7 @@ python3 -m vortex.plugins.runner --plugin example-renderer --payload '{"prompt":
   based on declared manifest values.
 - For production, set `allow_untrusted: false` and populate `allowlist` with
   approved plugin names.
+- When `sandbox.enabled: true`, plugin code executes inside the sandbox (Docker
+  by default) and never runs in-process on the host.
+- Ensure the sandbox image is available (e.g., build `nsn-vortex:latest` via
+  `docker/Dockerfile.vortex`).

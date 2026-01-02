@@ -1,12 +1,17 @@
 # Vortex AI Engine with GPU support
 FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 
+ARG TARGETARCH
+ARG TORCH_INDEX_URL
+ARG TORCH_FALLBACK
+
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH="${CUDA_HOME}/bin:${PATH}"
 ENV LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}"
+ENV VORTEX_ALLOW_CPU=${TARGETARCH}
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -30,12 +35,30 @@ WORKDIR /app
 COPY vortex/pyproject.toml vortex/README.md ./
 RUN pip3 install --no-cache-dir --upgrade pip setuptools wheel
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir \
-    torch==2.1.0 \
-    torchvision==0.16.0 \
-    torchaudio==2.1.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+# Install Python dependencies (select CUDA wheels for amd64, CPU wheels for arm64)
+RUN set -e; \
+    ARCH="${TARGETARCH:-$(uname -m)}"; \
+    if [ -z "${TORCH_INDEX_URL}" ]; then \
+      if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then \
+        TORCH_INDEX_URL="https://download.pytorch.org/whl/cpu"; \
+      else \
+        TORCH_INDEX_URL="https://download.pytorch.org/whl/cu121"; \
+      fi; \
+    fi; \
+    TORCH_FALLBACK="${TORCH_FALLBACK:-1}"; \
+    pip3 install --no-cache-dir \
+      torch==2.1.0 \
+      torchvision==0.16.0 \
+      torchaudio==2.1.0 \
+      --index-url "${TORCH_INDEX_URL}" \
+    || ( \
+      if [ "${TORCH_FALLBACK}" = "1" ]; then \
+        echo "Pinned torch install failed; falling back to default index."; \
+        pip3 install --no-cache-dir torch torchvision torchaudio; \
+      else \
+        exit 1; \
+      fi \
+    )
 
 # Install vortex package
 COPY vortex/ ./vortex/
@@ -58,7 +81,7 @@ EXPOSE 50051 9100
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python3 -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'" || exit 1
+    CMD python3 -c "import os, torch, sys; allow=os.getenv('VORTEX_ALLOW_CPU','').lower() in ('1','true','arm64'); sys.exit(0 if (torch.cuda.is_available() or allow) else 1)" || exit 1
 
 # Default command - starts the Vortex gRPC server
 CMD ["python3", "-m", "vortex.server", "--models-path", "/models", "--output-path", "/output"]

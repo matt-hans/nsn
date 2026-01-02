@@ -1468,8 +1468,8 @@
     {
       "id": "T061",
       "title": "Sandboxed Plugin Execution for Vortex",
-      "file": "tasks/T061-sandboxed-plugin-execution.md",
-      "status": "pending",
+      "file": "completed/T061-sandboxed-plugin-execution.md",
+      "status": "complete",
       "priority": 0,
       "depends_on": [
         "T049",
@@ -1485,7 +1485,8 @@
       "estimated_tokens": 12000,
       "actual_tokens": 0,
       "created_at": "2026-01-02T00:00:00Z",
-      "updated_at": "2026-01-02T00:00:00Z"
+      "updated_at": "2026-01-02T01:38:43Z",
+      "completed_at": "2026-01-02T01:38:43Z"
     },
     {
       "id": "T062",
@@ -1558,9 +1559,9 @@
   ],
   "stats": {
     "total_tasks": 64,
-    "completed": 37,
+    "completed": 38,
     "in_progress": 0,
-    "pending": 27,
+    "pending": 26,
     "blocked": 0
   },
   "dependency_graph": {

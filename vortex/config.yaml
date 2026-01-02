@@ -53,6 +53,27 @@ plugins:
   enabled: true
   # Directory containing plugin folders with manifest.yaml
   directory: "plugins"
+  # Sandbox execution settings (required for untrusted plugins)
+  sandbox:
+    # Enable sandboxed execution (Docker by default)
+    enabled: true
+    # Sandbox engine: "docker" (recommended) or "process" (dev only)
+    engine: "docker"
+    # Docker image containing Vortex runtime + sandbox runner
+    docker_image: "nsn-vortex:latest"
+    # Docker CLI binary name/path
+    docker_bin: "docker"
+    # Network mode for plugin containers (default denies outbound network)
+    network: "none"
+    # Resource limits (host-side cgroup caps)
+    memory_mb: 4096
+    cpu_cores: 2.0
+    pids_limit: 256
+    tmpfs_mb: 64
+    # Optional GPU request (e.g., "all" or "device=0")
+    gpus: null
+    # Grace period added to timeout before killing container
+    timeout_grace_ms: 5000
   # Plugin policy limits (defaults favor Lane 0 latency protection)
   policy:
     # Maximum VRAM any plugin can declare (GB)

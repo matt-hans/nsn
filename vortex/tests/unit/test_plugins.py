@@ -7,10 +7,16 @@ from pathlib import Path
 import pytest
 
 from vortex.plugins.executor import PluginExecutor
-from vortex.plugins.errors import ManifestError, PolicyViolationError, SchemaValidationError
+from vortex.plugins.errors import (
+    ManifestError,
+    PluginExecutionError,
+    PolicyViolationError,
+    SchemaValidationError,
+)
 from vortex.plugins.loader import load_manifest
 from vortex.plugins.policy import PluginPolicy
 from vortex.plugins.registry import PluginRegistry
+from vortex.plugins.sandbox import ProcessSandboxRunner
 from vortex.plugins.types import PluginManifest
 
 
@@ -83,7 +89,7 @@ def test_policy_rejects_excess_vram(tmp_path: Path) -> None:
     )
 
     with pytest.raises(PolicyViolationError, match="exceeds policy max"):
-        PluginRegistry.from_directory(tmp_path, policy)
+        PluginRegistry.from_directory(tmp_path, policy, load_plugins=False)
 
 
 @pytest.mark.asyncio
@@ -98,14 +104,32 @@ async def test_registry_and_executor_round_trip(tmp_path: Path) -> None:
         allowlist=frozenset(),
     )
 
-    registry = PluginRegistry.from_directory(tmp_path, policy)
-    executor = PluginExecutor(registry)
+    registry = PluginRegistry.from_directory(tmp_path, policy, load_plugins=False)
+    executor = PluginExecutor(registry, sandbox_runner=ProcessSandboxRunner())
 
     result = await executor.execute("example-renderer", {"prompt": "hello"})
     assert result.output["output_cid"] == "cid://hello"
 
     with pytest.raises(SchemaValidationError, match="missing required field"):
         await executor.execute("example-renderer", {})
+
+
+@pytest.mark.asyncio
+async def test_untrusted_requires_sandbox(tmp_path: Path) -> None:
+    """Untrusted plugins require a sandbox runner."""
+    _write_plugin(tmp_path)
+    policy = PluginPolicy(
+        max_vram_gb=10.0,
+        lane0_max_latency_ms=15000,
+        lane1_max_latency_ms=120000,
+        allow_untrusted=True,
+        allowlist=frozenset(),
+    )
+    registry = PluginRegistry.from_directory(tmp_path, policy, load_plugins=False)
+    executor = PluginExecutor(registry, sandbox_runner=None)
+
+    with pytest.raises(PluginExecutionError, match="Sandbox runner is required"):
+        await executor.execute("example-renderer", {"prompt": "hello"})
 
 
 def test_manifest_round_trip_from_dict() -> None:
