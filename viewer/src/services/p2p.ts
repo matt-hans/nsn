@@ -34,24 +34,8 @@ export async function discoverRelays(): Promise<RelayInfo[]> {
 		const relays = await invoke<RelayInfo[]>("get_relays");
 		return relays;
 	} catch (error) {
-		console.warn("Tauri invoke failed, using mock relays:", error);
-		// Fallback to mock relays for E2E tests and development
-		return [
-			{
-				peer_id: "mock-relay-us-east-1",
-				multiaddr: "/ip4/127.0.0.1/udp/4001/quic-v1",
-				region: "US East",
-				latency_ms: 45,
-				is_fallback: true,
-			},
-			{
-				peer_id: "mock-relay-eu-west-1",
-				multiaddr: "/ip4/127.0.0.1/udp/4002/quic-v1",
-				region: "EU West",
-				latency_ms: 120,
-				is_fallback: true,
-			},
-		];
+		console.warn("Tauri invoke failed, no relays available:", error);
+		return [];
 	}
 }
 

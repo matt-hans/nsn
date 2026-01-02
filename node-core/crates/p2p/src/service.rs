@@ -4,6 +4,7 @@
 //! connection lifecycle, reputation oracle, and event handling.
 
 use super::behaviour::NsnBehaviour;
+use super::bootstrap::{resolve_trusted_signers, BootstrapProtocol, PeerInfo, TrustedSignerSet};
 use super::config::P2pConfig;
 use super::connection_manager::ConnectionManager;
 use super::event_handler;
@@ -27,15 +28,16 @@ use libp2p::kad::{
     QueryResult, RecordKey,
 };
 use libp2p::swarm::SwarmEvent;
-use libp2p::{Multiaddr, PeerId, Swarm, SwarmBuilder};
+use libp2p::{identity::Keypair, Multiaddr, PeerId, Swarm, SwarmBuilder};
 use prometheus::{Encoder, TextEncoder};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, error, info};
+use tokio::time::{interval, MissedTickBehavior};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Error)]
 pub enum ServiceError {
@@ -62,6 +64,9 @@ pub enum ServiceError {
 
     #[error("Oracle error: {0}")]
     Oracle(#[from] OracleError),
+
+    #[error("Bootstrap error: {0}")]
+    Bootstrap(String),
 }
 
 struct SecurityState {
@@ -72,6 +77,13 @@ struct SecurityState {
     metrics: Arc<SecurityMetrics>,
     violation_counts: HashMap<PeerId, u32>,
     graylist_threshold: u32,
+}
+
+#[derive(Debug, Clone)]
+struct BootstrapTarget {
+    peer_id: PeerId,
+    base_addr: Multiaddr,
+    dial_addr: Multiaddr,
 }
 
 /// Commands that can be sent to the P2P service
@@ -220,6 +232,8 @@ impl P2pService {
                 .expect("Failed to create security metrics"),
         );
 
+        let rpc_url_for_signers = rpc_url.clone();
+
         // Create reputation oracle with metrics registry (before spawning metrics server)
         let reputation_oracle = Arc::new(
             ReputationOracle::new(rpc_url, &metrics.registry)
@@ -227,19 +241,50 @@ impl P2pService {
         );
 
         // Spawn Prometheus metrics server (after oracle creation)
-        let metrics_registry = metrics.registry.clone();
-        let metrics_addr: SocketAddr = ([0, 0, 0, 0], config.metrics_port).into();
-        tokio::spawn(async move {
-            if let Err(err) = serve_metrics(metrics_registry, metrics_addr).await {
-                error!("Metrics server failed: {}", err);
-            }
-        });
+        if config.metrics_port != 0 {
+            let metrics_registry = metrics.registry.clone();
+            let metrics_addr: SocketAddr = ([127, 0, 0, 1], config.metrics_port).into();
+            tokio::spawn(async move {
+                if let Err(err) = serve_metrics(metrics_registry, metrics_addr).await {
+                    error!("Metrics server failed: {}", err);
+                }
+            });
+        } else {
+            info!("Metrics server disabled (metrics_port=0)");
+        }
 
         // Spawn reputation oracle sync loop
         let oracle_clone = reputation_oracle.clone();
         tokio::spawn(async move {
             oracle_clone.sync_loop().await;
         });
+
+        // Resolve trusted bootstrap signers
+        let trusted_signers = if config.bootstrap.require_signed_manifests
+            || !config.bootstrap.signer_config.trusted_signers_hex.is_empty()
+        {
+            resolve_trusted_signers(&config.bootstrap.signer_config, &rpc_url_for_signers)
+                .await
+                .map_err(|e| ServiceError::Bootstrap(e.to_string()))?
+        } else {
+            let temp_keypair = Keypair::generate_ed25519();
+            let mut active = HashSet::new();
+            active.insert(temp_keypair.public());
+            TrustedSignerSet::new(active, HashSet::new(), 1)
+                .map_err(|e| ServiceError::Bootstrap(e.to_string()))?
+        };
+
+        // Discover bootstrap peers
+        let bootstrap_protocol =
+            BootstrapProtocol::new(config.bootstrap.clone(), trusted_signers, Some(metrics.clone()));
+        let bootstrap_peers = match bootstrap_protocol.discover_peers().await {
+            Ok(peers) => peers,
+            Err(err) => {
+                warn!("Bootstrap discovery failed: {}", err);
+                Vec::new()
+            }
+        };
+        let bootstrap_targets = collect_bootstrap_targets(&bootstrap_peers);
 
         // Create GossipSub behavior
         let mut gossipsub = create_gossipsub_behaviour(&keypair, reputation_oracle.clone())?;
@@ -249,7 +294,11 @@ impl P2pService {
         info!("Subscribed to {} topics", sub_count);
 
         // Create Kademlia behavior with NSN configuration
-        let kademlia = build_kademlia(local_peer_id);
+        let bootstrap_addrs: Vec<(PeerId, Multiaddr)> = bootstrap_targets
+            .iter()
+            .map(|target| (target.peer_id, target.base_addr.clone()))
+            .collect();
+        let kademlia = build_kademlia(local_peer_id, &bootstrap_addrs);
 
         // Create NSN behaviour with GossipSub and Kademlia
         let behaviour = NsnBehaviour::new(gossipsub, kademlia);
@@ -262,6 +311,16 @@ impl P2pService {
             .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
             .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
             .build();
+
+        // Dial bootstrap peers
+        for target in &bootstrap_targets {
+            if let Err(err) = swarm.dial(target.dial_addr.clone()) {
+                warn!(
+                    "Failed to dial bootstrap peer {}: {}",
+                    target.peer_id, err
+                );
+            }
+        }
 
         // Bootstrap Kademlia DHT via swarm behaviour
         match swarm.behaviour_mut().kademlia.bootstrap() {
@@ -353,9 +412,25 @@ impl P2pService {
 
         info!("P2P service listening on {}", listen_addr);
 
+        // Advertise external addresses (STUN/UPnP)
+        if let Err(err) = self.configure_nat().await {
+            warn!("NAT configuration failed: {}", err);
+        }
+
+        let mut refresh_interval = interval(super::kademlia::ROUTING_TABLE_REFRESH_INTERVAL);
+        refresh_interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
         // Event loop
         loop {
             tokio::select! {
+                _ = refresh_interval.tick() => {
+                    let random_peer = PeerId::random();
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .get_closest_peers(random_peer);
+                    debug!("Triggered periodic DHT refresh");
+                }
                 // Handle swarm events
                 event = self.swarm.select_next_some() => {
                     match event {
@@ -862,6 +937,97 @@ impl P2pService {
             let _ = tx.send(Ok(true));
         }
     }
+
+    async fn configure_nat(&mut self) -> Result<(), ServiceError> {
+        if !self.config.stun_servers.is_empty() {
+            let servers = self.config.stun_servers.clone();
+            match tokio::task::spawn_blocking(move || {
+                super::stun::discover_external_with_fallback(&servers)
+            })
+            .await
+            {
+                Ok(Ok(addr)) => {
+                    let addr_str = format!("/ip4/{}/udp/{}/quic-v1", addr.ip(), addr.port());
+                    if let Ok(multiaddr) = addr_str.parse() {
+                        self.swarm.add_external_address(multiaddr);
+                        info!("Advertised external address via STUN: {}", addr_str);
+                    }
+                }
+                Ok(Err(err)) => {
+                    warn!("STUN discovery failed: {}", err);
+                }
+                Err(err) => {
+                    warn!("STUN discovery task failed: {}", err);
+                }
+            }
+        }
+
+        if self.config.enable_upnp {
+            let port = self.config.listen_port;
+            match tokio::task::spawn_blocking(move || super::upnp::setup_p2p_port_mapping(port))
+                .await
+            {
+                Ok(Ok((ip, _tcp_port, udp_port))) => {
+                    let addr_str = format!("/ip4/{}/udp/{}/quic-v1", ip, udp_port);
+                    if let Ok(multiaddr) = addr_str.parse() {
+                        self.swarm.add_external_address(multiaddr);
+                        info!("Advertised external address via UPnP: {}", addr_str);
+                    }
+                }
+                Ok(Err(err)) => {
+                    warn!("UPnP mapping failed: {}", err);
+                }
+                Err(err) => {
+                    warn!("UPnP mapping task failed: {}", err);
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn collect_bootstrap_targets(peers: &[PeerInfo]) -> Vec<BootstrapTarget> {
+    let mut targets = Vec::new();
+    let mut seen = HashSet::new();
+
+    for peer in peers {
+        for addr in &peer.addrs {
+            let base_addr = strip_peer_id(addr);
+            let dial_addr = ensure_peer_id(addr, peer.peer_id);
+            let key = format!("{}|{}", peer.peer_id, base_addr);
+
+            if seen.insert(key) {
+                targets.push(BootstrapTarget {
+                    peer_id: peer.peer_id,
+                    base_addr,
+                    dial_addr,
+                });
+            }
+        }
+    }
+
+    targets
+}
+
+fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
+    addr.iter()
+        .filter(|proto| !matches!(proto, libp2p::multiaddr::Protocol::P2p(_)))
+        .collect()
+}
+
+fn ensure_peer_id(addr: &Multiaddr, peer_id: PeerId) -> Multiaddr {
+    let has_peer = addr
+        .iter()
+        .any(|proto| matches!(proto, libp2p::multiaddr::Protocol::P2p(_)));
+
+    if has_peer {
+        addr.clone()
+    } else {
+        let mut updated = addr.clone();
+        updated.push(libp2p::multiaddr::Protocol::P2p(peer_id));
+        updated
+    }
 }
 
 async fn serve_metrics(
@@ -925,6 +1091,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_handles_get_peer_count_command() {
+        if !network_allowed() {
+            return;
+        }
         let (service, cmd_tx) = create_test_service_with_port(9100).await;
         let handle = spawn_service(service);
         wait_for_startup().await;
@@ -937,6 +1106,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_handles_get_connection_count_command() {
+        if !network_allowed() {
+            return;
+        }
         let (service, cmd_tx) = create_test_service_with_port(9101).await;
         let handle = spawn_service(service);
         wait_for_startup().await;
@@ -949,6 +1121,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_shutdown_command() {
+        if !network_allowed() {
+            return;
+        }
         let (service, cmd_tx) = create_test_service().await;
         let handle = spawn_service(service);
         wait_for_startup().await;
@@ -980,6 +1155,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_command_sender_clonable() {
+        if !network_allowed() {
+            return;
+        }
         let (service, cmd_tx) = create_test_service_with_port(9103).await;
         let handle = spawn_service(service);
         wait_for_startup().await;
@@ -1023,10 +1201,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_service_ephemeral_keypair() {
-        let config = P2pConfig {
+        let mut config = P2pConfig {
             keypair_path: None,
             ..Default::default()
         };
+        config.bootstrap.require_signed_manifests = false;
+        config.bootstrap.signer_config.source = crate::SignerSource::Static;
 
         let (service1, _) = create_test_service_with_config(config.clone()).await;
         let (service2, _) = create_test_service_with_config(config).await;
@@ -1049,6 +1229,8 @@ mod tests {
         let mut config = P2pConfig::default();
         config.security.rate_limiter.max_requests_per_minute = 1;
         config.security.graylist.threshold_violations = 2;
+        config.bootstrap.require_signed_manifests = false;
+        config.bootstrap.signer_config.source = crate::SignerSource::Static;
 
         let (mut service, _cmd_tx) = create_test_service_with_config(config).await;
         let peer_id = PeerId::random();

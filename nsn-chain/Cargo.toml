@@ -14,6 +14,7 @@ members = [
     "pallets/nsn-reputation",
     "pallets/nsn-director",
     "pallets/nsn-bft",
+    "pallets/nsn-bootstrap",
     "pallets/nsn-storage",
     "pallets/nsn-treasury",
     "pallets/nsn-task-market",
@@ -28,6 +29,7 @@ pallet-nsn-stake = { path = "./pallets/nsn-stake", default-features = false }
 pallet-nsn-reputation = { path = "./pallets/nsn-reputation", default-features = false }
 pallet-nsn-director = { path = "./pallets/nsn-director", default-features = false }
 pallet-nsn-bft = { path = "./pallets/nsn-bft", default-features = false }
+pallet-nsn-bootstrap = { path = "./pallets/nsn-bootstrap", default-features = false }
 pallet-nsn-storage = { path = "./pallets/nsn-storage", default-features = false }
 pallet-nsn-treasury = { path = "./pallets/nsn-treasury", default-features = false }
 pallet-nsn-task-market = { path = "./pallets/nsn-task-market", default-features = false }

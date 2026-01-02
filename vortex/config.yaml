@@ -74,6 +74,10 @@ plugins:
     gpus: null
     # Grace period added to timeout before killing container
     timeout_grace_ms: 5000
+    # Seccomp profile ("default" uses Docker default, or provide a profile path)
+    seccomp_profile: "default"
+    # Allow unsafe sandbox engines (process) - requires VORTEX_ALLOW_UNSAFE_SANDBOX=1
+    allow_insecure: false
   # Plugin policy limits (defaults favor Lane 0 latency protection)
   policy:
     # Maximum VRAM any plugin can declare (GB)

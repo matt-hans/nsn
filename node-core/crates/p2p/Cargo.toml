@@ -27,6 +27,7 @@ tracing = { workspace = true }
 
 # Crypto (for identity)
 sp-core = "28.0"
+parity-scale-codec = { workspace = true }
 
 # Metrics
 prometheus = { version = "0.13", default-features = false }
@@ -46,6 +47,7 @@ rand = "0.8"
 
 # Utilities
 hex = "0.4"
+blake3 = { workspace = true }
 
 # Bootstrap protocol
 trust-dns-resolver = "0.23"

@@ -9,6 +9,10 @@ use serial_test::serial;
 use std::time::Duration;
 use tokio::time::{sleep, timeout};
 
+fn network_allowed() -> bool {
+    std::net::UdpSocket::bind("127.0.0.1:0").is_ok()
+}
+
 /// Helper to create test service with Kademlia enabled
 async fn create_test_service_with_port(
     port: u16,
@@ -19,10 +23,13 @@ async fn create_test_service_with_port(
 ) {
     let config = P2pConfig {
         listen_port: port,
-        metrics_port: 9000 + port, // Offset to avoid conflicts
+        metrics_port: 0, // Disable metrics for sandboxed tests
         keypair_path: None,
         ..Default::default()
     };
+    let mut config = config;
+    config.bootstrap.require_signed_manifests = false;
+    config.bootstrap.signer_config.source = nsn_p2p::SignerSource::Static;
 
     let rpc_url = "ws://127.0.0.1:9944".to_string();
     let (service, cmd_tx) = P2pService::new(config, rpc_url)
@@ -61,6 +68,9 @@ fn get_listen_addr(port: u16) -> Multiaddr {
 #[tokio::test]
 #[serial]
 async fn test_peer_discovery_three_nodes() {
+    if !network_allowed() {
+        return;
+    }
     // Given: Three nodes (A, B, C) bootstrapped to DHT
     let (service_a, cmd_tx_a, port_a) = create_test_service_with_port(10001).await;
     let (service_b, cmd_tx_b, _port_b) = create_test_service_with_port(10002).await;
@@ -155,6 +165,9 @@ async fn test_peer_discovery_three_nodes() {
 #[tokio::test]
 #[serial]
 async fn test_provider_record_publication() {
+    if !network_allowed() {
+        return;
+    }
     // Given: Super-Node A has shard with hash 0xABCD
     let (service_a, cmd_tx_a, _port_a) = create_test_service_with_port(10004).await;
     let _metrics = service_a.metrics();
@@ -195,6 +208,9 @@ async fn test_provider_record_publication() {
 #[tokio::test]
 #[serial]
 async fn test_provider_record_lookup() {
+    if !network_allowed() {
+        return;
+    }
     // Given: Node A published provider record for shard 0xABCD
     let (service_a, cmd_tx_a, port_a) = create_test_service_with_port(10005).await;
     let (service_b, cmd_tx_b, _port_b) = create_test_service_with_port(10006).await;
@@ -288,6 +304,9 @@ async fn test_provider_record_lookup() {
 #[tokio::test]
 #[serial]
 async fn test_dht_bootstrap_from_peers() {
+    if !network_allowed() {
+        return;
+    }
     // Given: New node with bootstrap list of 3 peers
     let (service_a, cmd_tx_a, port_a) = create_test_service_with_port(10007).await;
     let (service_b, cmd_tx_b, port_b) = create_test_service_with_port(10008).await;
@@ -374,6 +393,9 @@ async fn test_dht_bootstrap_from_peers() {
 #[tokio::test]
 #[serial]
 async fn test_routing_table_refresh() {
+    if !network_allowed() {
+        return;
+    }
     // Given: Node with routing table of peers
     let (service_a, cmd_tx_a, _port_a) = create_test_service_with_port(10011).await;
     let _metrics = service_a.metrics();
@@ -424,6 +446,9 @@ async fn test_provider_record_expiry() {
 #[tokio::test]
 #[serial]
 async fn test_query_timeout_enforcement() {
+    if !network_allowed() {
+        return;
+    }
     // Given: DHT query to unreachable target
     let (service_a, cmd_tx_a, _port_a) = create_test_service_with_port(10012).await;
     let _metrics = service_a.metrics();

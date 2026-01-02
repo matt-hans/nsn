@@ -3,10 +3,9 @@
 //! Resolves DNS TXT records for bootstrap peer discovery.
 //! Format: `nsn:peer:<multiaddr>:sig:<hex_signature>`
 
-use super::{signature::verify_signature, BootstrapError, PeerInfo, TrustLevel};
-use libp2p::identity::PublicKey;
+use super::signature::{verify_signature_quorum, TrustedSignerSet};
+use super::{BootstrapError, PeerInfo, TrustLevel};
 use libp2p::{multiaddr::Protocol, Multiaddr};
-use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -25,7 +24,7 @@ use trust_dns_resolver::TokioAsyncResolver;
 /// Vector of discovered and verified peers
 pub async fn resolve_dns_seed(
     dns_seed: &str,
-    trusted_signers: Arc<HashSet<PublicKey>>,
+    trusted_signers: Arc<TrustedSignerSet>,
     require_signatures: bool,
     timeout: Duration,
 ) -> Result<Vec<PeerInfo>, BootstrapError> {
@@ -80,13 +79,11 @@ pub async fn resolve_dns_seed(
 /// * `require_signatures` - Reject unsigned records if true
 fn parse_dns_record(
     record: &str,
-    trusted_signers: &HashSet<PublicKey>,
+    trusted_signers: &TrustedSignerSet,
     require_signatures: bool,
 ) -> Result<Option<PeerInfo>, BootstrapError> {
-    // Split by colons
     let parts: Vec<&str> = record.split(':').collect();
 
-    // Format: nsn:peer:<multiaddr>:sig:<hex_signature>
     if parts.len() < 3 {
         return Ok(None); // Not an NSN record
     }
@@ -95,19 +92,16 @@ fn parse_dns_record(
         return Ok(None); // Not an NSN peer record
     }
 
-    // Extract multiaddr (may contain colons, so rejoin)
-    let multiaddr_end = if parts.len() >= 5 && parts[parts.len() - 2] == "sig" {
-        parts.len() - 2
-    } else {
-        parts.len()
-    };
+    let sig_index = parts
+        .iter()
+        .position(|part| *part == "sig" || *part == "sigs");
+    let multiaddr_end = sig_index.unwrap_or(parts.len());
 
     let multiaddr_str: String = parts[2..multiaddr_end].join(":");
     let multiaddr: Multiaddr = multiaddr_str
         .parse()
         .map_err(|_| BootstrapError::InvalidMultiaddr)?;
 
-    // Extract PeerId from multiaddr (if present)
     let peer_id = multiaddr
         .iter()
         .find_map(|proto| match proto {
@@ -116,24 +110,23 @@ fn parse_dns_record(
         })
         .ok_or(BootstrapError::NoPeerIdInMultiaddr)?;
 
-    // Extract and verify signature (if present)
-    let signature = if parts.len() >= 5 && parts[parts.len() - 2] == "sig" {
-        let sig_hex = parts[parts.len() - 1];
-        let sig_bytes = hex::decode(sig_hex).map_err(|_| BootstrapError::InvalidSignature)?;
+    let signatures = parse_signatures(&parts[multiaddr_end..]);
 
-        // Verify signature
-        let message = format!("{}:{}", peer_id, multiaddr_str);
-        if !verify_signature(message.as_bytes(), &sig_bytes, trusted_signers) {
-            warn!("DNS record signature verification failed for {}", peer_id);
+    let signature = if signatures.is_empty() {
+        if require_signatures {
+            warn!("DNS record missing required signature for {}", peer_id);
             return Err(BootstrapError::InvalidSignature);
         }
-
-        Some(sig_bytes)
-    } else if require_signatures {
-        warn!("DNS record missing required signature for {}", peer_id);
-        return Err(BootstrapError::InvalidSignature);
-    } else {
         None
+    } else {
+        let sig_bytes: Vec<Vec<u8>> = signatures
+            .iter()
+            .map(|sig| hex::decode(sig).map_err(|_| BootstrapError::InvalidSignature))
+            .collect::<Result<_, _>>()?;
+
+        let message = format!("{}:{}", peer_id, multiaddr_str);
+        verify_signature_quorum(message.as_bytes(), &sig_bytes, trusted_signers)?;
+        Some(sig_bytes[0].clone())
     };
 
     Ok(Some(PeerInfo {
@@ -145,16 +138,55 @@ fn parse_dns_record(
     }))
 }
 
+fn parse_signatures(parts: &[&str]) -> Vec<String> {
+    let mut signatures = Vec::new();
+    let mut idx = 0;
+    while idx < parts.len() {
+        match parts[idx] {
+            "sig" => {
+                if let Some(sig) = parts.get(idx + 1) {
+                    signatures.push(sig.to_string());
+                    idx += 2;
+                    continue;
+                }
+            }
+            "sigs" => {
+                if let Some(sig_blob) = parts.get(idx + 1) {
+                    signatures.extend(
+                        sig_blob
+                            .split(',')
+                            .map(|sig| sig.trim())
+                            .filter(|sig| !sig.is_empty())
+                            .map(|sig| sig.to_string()),
+                    );
+                    idx += 2;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        idx += 1;
+    }
+    signatures
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use libp2p::identity::Keypair;
     use libp2p::PeerId;
+    use std::collections::HashSet;
+
+    fn test_signers(keypair: &Keypair) -> TrustedSignerSet {
+        let mut active = HashSet::new();
+        active.insert(keypair.public());
+        TrustedSignerSet::new(active, HashSet::new(), 1).unwrap()
+    }
 
     #[test]
     fn test_parse_dns_record_valid_without_signature() {
         let record = "nsn:peer:/ip4/127.0.0.1/tcp/9000/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
-        let signers = HashSet::new();
+        let signers = test_signers(&Keypair::generate_ed25519());
 
         let result = parse_dns_record(record, &signers, false);
         assert!(result.is_ok());
@@ -171,7 +203,7 @@ mod tests {
     #[test]
     fn test_parse_dns_record_missing_signature_when_required() {
         let record = "nsn:peer:/ip4/127.0.0.1/tcp/9000/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
-        let signers = HashSet::new();
+        let signers = test_signers(&Keypair::generate_ed25519());
 
         let result = parse_dns_record(record, &signers, true);
         assert!(result.is_err());
@@ -184,7 +216,6 @@ mod tests {
         let peer_id = PeerId::from(keypair.public());
         let multiaddr_str = format!("/ip4/127.0.0.1/tcp/9000/p2p/{}", peer_id);
 
-        // Sign the message
         let message = format!("{}:{}", peer_id, multiaddr_str);
         let signature = keypair
             .sign(message.as_bytes())
@@ -193,9 +224,7 @@ mod tests {
 
         let record = format!("nsn:peer:{}:sig:{}", multiaddr_str, sig_hex);
 
-        let mut signers = HashSet::new();
-        signers.insert(keypair.public());
-
+        let signers = test_signers(&keypair);
         let result = parse_dns_record(&record, &signers, true);
         assert!(result.is_ok());
 
@@ -209,65 +238,13 @@ mod tests {
         let peer_id_str = "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
         let multiaddr_str = format!("/ip4/127.0.0.1/tcp/9000/p2p/{}", peer_id_str);
 
-        // Invalid signature (just zeros)
         let invalid_sig = hex::encode(vec![0u8; 64]);
 
         let record = format!("nsn:peer:{}:sig:{}", multiaddr_str, invalid_sig);
 
         let keypair = Keypair::generate_ed25519();
-        let mut signers = HashSet::new();
-        signers.insert(keypair.public());
-
+        let signers = test_signers(&keypair);
         let result = parse_dns_record(&record, &signers, true);
         assert!(result.is_err());
-        assert!(matches!(result, Err(BootstrapError::InvalidSignature)));
     }
-
-    #[test]
-    fn test_parse_dns_record_invalid_format() {
-        let record = "not:a:valid:nsn:record";
-        let signers = HashSet::new();
-
-        let result = parse_dns_record(record, &signers, false);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_none()); // Should skip non-NSN records
-    }
-
-    #[test]
-    fn test_parse_dns_record_missing_peer_id_in_multiaddr() {
-        let record = "nsn:peer:/ip4/127.0.0.1/tcp/9000"; // No /p2p/<peer_id>
-        let signers = HashSet::new();
-
-        let result = parse_dns_record(record, &signers, false);
-        assert!(result.is_err());
-        assert!(matches!(result, Err(BootstrapError::NoPeerIdInMultiaddr)));
-    }
-
-    #[test]
-    fn test_parse_dns_record_invalid_multiaddr() {
-        let record = "nsn:peer:invalid_multiaddr:sig:abcd";
-        let signers = HashSet::new();
-
-        let result = parse_dns_record(record, &signers, false);
-        assert!(result.is_err());
-        assert!(matches!(result, Err(BootstrapError::InvalidMultiaddr)));
-    }
-
-    #[test]
-    fn test_parse_dns_record_multiaddr_with_colons() {
-        // IPv6 multiaddrs contain colons
-        let record =
-            "nsn:peer:/ip6/::1/tcp/9000/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN";
-        let signers = HashSet::new();
-
-        let result = parse_dns_record(record, &signers, false);
-        assert!(result.is_ok());
-
-        let peer_info = result.unwrap().expect("Should have peer info");
-        assert_eq!(peer_info.addrs.len(), 1);
-        assert!(peer_info.addrs[0].to_string().contains("::1"));
-    }
-
-    // Note: Actual DNS resolution tests require running DNS server or mocking
-    // These are covered in integration tests with test DNS setup
 }

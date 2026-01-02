@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 use crate::security::SecureP2pConfig;
+use crate::bootstrap::BootstrapConfig;
 
 /// P2P network configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,6 +47,10 @@ pub struct P2pConfig {
     /// Security configuration (rate limiting, graylist, DoS detection)
     #[serde(default)]
     pub security: SecureP2pConfig,
+
+    /// Bootstrap configuration (DNS/HTTP/DHT)
+    #[serde(default)]
+    pub bootstrap: BootstrapConfig,
 }
 
 impl Default for P2pConfig {
@@ -66,6 +71,7 @@ impl Default for P2pConfig {
             ],
             enable_autonat: true,
             security: SecureP2pConfig::default(),
+            bootstrap: BootstrapConfig::default(),
         }
     }
 }
@@ -88,6 +94,7 @@ mod tests {
         assert!(config.enable_relay);
         assert_eq!(config.stun_servers.len(), 3);
         assert!(config.enable_autonat);
+        assert!(!config.bootstrap.dns_seeds.is_empty());
     }
 
     #[test]
@@ -104,6 +111,7 @@ mod tests {
             stun_servers: vec!["stun.example.com:19302".to_string()],
             enable_autonat: true,
             security: SecureP2pConfig::default(),
+            bootstrap: BootstrapConfig::default(),
         };
 
         // Serialize to JSON

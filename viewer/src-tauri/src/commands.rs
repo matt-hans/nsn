@@ -37,24 +37,7 @@ impl Default for ViewerSettings {
 /// Get list of available relays (mocked for now, will integrate libp2p-js DHT)
 #[tauri::command]
 pub async fn get_relays() -> Result<Vec<RelayInfo>, String> {
-    // MOCK: In production, this would query DHT via libp2p-js
-    // For now, return hardcoded fallback relays
-    Ok(vec![
-        RelayInfo {
-            peer_id: "12D3KooWFakeRelay1".to_string(),
-            multiaddr: "/ip4/127.0.0.1/udp/9003/quic/webtransport".to_string(),
-            region: "NA-WEST".to_string(),
-            latency_ms: Some(35),
-            is_fallback: true,
-        },
-        RelayInfo {
-            peer_id: "12D3KooWFakeRelay2".to_string(),
-            multiaddr: "/ip4/127.0.0.1/udp/9004/quic/webtransport".to_string(),
-            region: "EU-CENTRAL".to_string(),
-            latency_ms: Some(120),
-            is_fallback: true,
-        },
-    ])
+    storage::load_relays().map_err(|e| format!("Failed to load relays: {}", e))
 }
 
 /// Save user settings to local storage
@@ -84,8 +67,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_relays() {
         let relays = get_relays().await.unwrap();
-        assert!(!relays.is_empty());
-        assert_eq!(relays[0].region, "NA-WEST");
+        assert!(relays.is_empty() || relays.iter().all(|relay| !relay.peer_id.is_empty()));
     }
 
     #[test]

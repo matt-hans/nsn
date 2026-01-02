@@ -91,6 +91,8 @@ class SandboxConfig:
     tmpfs_mb: int
     gpus: str | None
     timeout_grace_ms: int
+    allow_insecure: bool
+    seccomp_profile: str | None
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, object] | None) -> "SandboxConfig":
@@ -107,6 +109,14 @@ class SandboxConfig:
         gpus = data.get("gpus")
         gpus_value = str(gpus) if isinstance(gpus, (str, int, float)) else None
         timeout_grace_ms = int(data.get("timeout_grace_ms", 5000))
+        allow_insecure = bool(data.get("allow_insecure", False)) or bool(
+            os.getenv("VORTEX_ALLOW_UNSAFE_SANDBOX")
+        )
+        seccomp_profile = data.get("seccomp_profile")
+        seccomp_value = str(seccomp_profile) if isinstance(seccomp_profile, str) else "default"
+
+        if memory_mb <= 0 or cpu_cores <= 0 or pids_limit <= 0:
+            raise PluginExecutionError("Sandbox resource limits must be > 0")
         return cls(
             enabled=enabled,
             engine=engine,
@@ -119,6 +129,8 @@ class SandboxConfig:
             tmpfs_mb=tmpfs_mb,
             gpus=gpus_value,
             timeout_grace_ms=timeout_grace_ms,
+            allow_insecure=allow_insecure,
+            seccomp_profile=seccomp_value,
         )
 
 
@@ -131,6 +143,10 @@ def sandbox_from_config(config: Mapping[str, object] | None) -> SandboxRunner | 
     if cfg.engine == "docker":
         return DockerSandboxRunner(cfg)
     if cfg.engine == "process":
+        if not cfg.allow_insecure:
+            raise PluginExecutionError(
+                "process sandbox is disabled; set VORTEX_ALLOW_UNSAFE_SANDBOX=1 to override"
+            )
         return ProcessSandboxRunner.from_config(config)
     raise PluginExecutionError(f"Unsupported sandbox engine '{cfg.engine}'")
 
@@ -314,6 +330,9 @@ class DockerSandboxRunner:
             "-w",
             "/plugin",
         ]
+
+        if self._config.seccomp_profile:
+            cmd.extend(["--security-opt", f"seccomp={self._config.seccomp_profile}"])
 
         if self._config.gpus:
             cmd.extend(["--gpus", self._config.gpus])

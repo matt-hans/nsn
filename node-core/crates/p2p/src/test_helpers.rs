@@ -21,9 +21,18 @@ pub const TEST_TIMEOUT_SECS: u64 = 2;
 /// Service startup delay (allows event loop to initialize)
 pub const TEST_STARTUP_DELAY_MS: u64 = 100;
 
+/// Returns true if network sockets can be opened in this environment.
+pub fn network_allowed() -> bool {
+    std::net::UdpSocket::bind("127.0.0.1:0").is_ok()
+}
+
 /// Create default test config
 pub fn test_config() -> P2pConfig {
-    P2pConfig::default()
+    let mut config = P2pConfig::default();
+    config.bootstrap.require_signed_manifests = false;
+    config.bootstrap.signer_config.source = super::bootstrap::SignerSource::Static;
+    config.metrics_port = 0;
+    config
 }
 
 /// Create test config with custom listen port
@@ -52,6 +61,10 @@ pub async fn create_test_service() -> (P2pService, mpsc::UnboundedSender<Service
 pub async fn create_test_service_with_config(
     config: P2pConfig,
 ) -> (P2pService, mpsc::UnboundedSender<ServiceCommand>) {
+    let mut config = config;
+    config.bootstrap.require_signed_manifests = false;
+    config.bootstrap.signer_config.source = super::bootstrap::SignerSource::Static;
+    config.metrics_port = 0;
     P2pService::new(config, TEST_RPC_URL.to_string())
         .await
         .expect("Failed to create test service")

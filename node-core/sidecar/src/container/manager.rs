@@ -122,14 +122,107 @@ pub struct ContainerInfo {
 }
 
 /// Resource limits for a container
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ResourceLimits {
     /// Memory limit in bytes (0 = unlimited)
     pub memory_bytes: u64,
     /// CPU shares (relative weight)
     pub cpu_shares: u32,
+    /// CPU quota (microseconds of CPU time per period)
+    pub cpu_quota: u64,
+    /// CPU period in microseconds
+    pub cpu_period: u64,
+    /// Maximum number of process IDs
+    pub pids_limit: u64,
+    /// Swap limit in bytes (0 = default to memory limit)
+    pub memory_swap_bytes: u64,
     /// VRAM limit in GB (informational)
     pub vram_limit_gb: f32,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self {
+            memory_bytes: 0,
+            cpu_shares: 0,
+            cpu_quota: 0,
+            cpu_period: 0,
+            pids_limit: 0,
+            memory_swap_bytes: 0,
+            vram_limit_gb: 0.0,
+        }
+    }
+}
+
+impl ResourceLimits {
+    fn with_defaults(&self, defaults: &ResourceLimits) -> ResourceLimits {
+        let memory_bytes = if self.memory_bytes > 0 {
+            self.memory_bytes
+        } else {
+            defaults.memory_bytes
+        };
+        let memory_swap_bytes = if self.memory_swap_bytes > 0 {
+            self.memory_swap_bytes
+        } else if defaults.memory_swap_bytes > 0 {
+            defaults.memory_swap_bytes
+        } else {
+            memory_bytes
+        };
+
+        ResourceLimits {
+            memory_bytes,
+            cpu_shares: if self.cpu_shares > 0 {
+                self.cpu_shares
+            } else {
+                defaults.cpu_shares
+            },
+            cpu_quota: if self.cpu_quota > 0 {
+                self.cpu_quota
+            } else {
+                defaults.cpu_quota
+            },
+            cpu_period: if self.cpu_period > 0 {
+                self.cpu_period
+            } else {
+                defaults.cpu_period
+            },
+            pids_limit: if self.pids_limit > 0 {
+                self.pids_limit
+            } else {
+                defaults.pids_limit
+            },
+            memory_swap_bytes,
+            vram_limit_gb: if self.vram_limit_gb > 0.0 {
+                self.vram_limit_gb
+            } else {
+                defaults.vram_limit_gb
+            },
+        }
+    }
+
+    fn validate(&self) -> SidecarResult<()> {
+        if self.memory_bytes == 0 {
+            return Err(SidecarError::InvalidRequest(
+                "memory limit must be > 0".to_string(),
+            ));
+        }
+        if self.cpu_shares == 0 {
+            return Err(SidecarError::InvalidRequest(
+                "cpu shares must be > 0".to_string(),
+            ));
+        }
+        if self.cpu_quota == 0 || self.cpu_period == 0 {
+            return Err(SidecarError::InvalidRequest(
+                "cpu quota/period must be > 0".to_string(),
+            ));
+        }
+        if self.pids_limit == 0 {
+            return Err(SidecarError::InvalidRequest(
+                "pids limit must be > 0".to_string(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl From<proto::ResourceLimits> for ResourceLimits {
@@ -137,6 +230,10 @@ impl From<proto::ResourceLimits> for ResourceLimits {
         Self {
             memory_bytes: limits.memory_bytes,
             cpu_shares: limits.cpu_shares,
+            cpu_quota: 0,
+            cpu_period: 0,
+            pids_limit: 0,
+            memory_swap_bytes: 0,
             vram_limit_gb: limits.vram_limit_gb,
         }
     }
@@ -185,6 +282,12 @@ pub struct ContainerManagerConfig {
     pub shutdown_timeout: Duration,
     /// Maximum containers allowed
     pub max_containers: usize,
+    /// Default resource limits applied when request omits limits
+    pub default_limits: ResourceLimits,
+    /// Seccomp profile name or path (\"default\" to use Docker default)
+    pub seccomp_profile: Option<String>,
+    /// Drop all Linux capabilities
+    pub drop_all_caps: bool,
 }
 
 impl Default for ContainerManagerConfig {
@@ -196,6 +299,17 @@ impl Default for ContainerManagerConfig {
             health_check_interval: Duration::from_secs(10),
             shutdown_timeout: Duration::from_secs(30),
             max_containers: 10,
+            default_limits: ResourceLimits {
+                memory_bytes: 4 * 1024 * 1024 * 1024, // 4 GiB
+                cpu_shares: 1024,
+                cpu_quota: 200_000, // 2 cores @ 100ms period
+                cpu_period: 100_000,
+                pids_limit: 256,
+                memory_swap_bytes: 4 * 1024 * 1024 * 1024,
+                vram_limit_gb: 0.0,
+            },
+            seccomp_profile: Some("default".to_string()),
+            drop_all_caps: true,
         }
     }
 }
@@ -278,7 +392,10 @@ impl ContainerManager {
         resource_limits: Option<ResourceLimits>,
     ) -> SidecarResult<String> {
         let docker = self.docker()?;
-        let limits = resource_limits.unwrap_or_default();
+        let limits = resource_limits
+            .unwrap_or_default()
+            .with_defaults(&self.config.default_limits);
+        limits.validate()?;
 
         let (endpoint, port) = {
             let mut containers = self.containers.write().await;
@@ -345,21 +462,27 @@ impl ContainerManager {
             }]),
         );
 
+        let mut security_opt = vec!["no-new-privileges".to_string()];
+        if let Some(profile) = &self.config.seccomp_profile {
+            security_opt.push(format!("seccomp={}", profile));
+        }
+
         let host_config = HostConfig {
-            memory: if limits.memory_bytes > 0 {
-                Some(limits.memory_bytes as i64)
-            } else {
-                None
-            },
-            cpu_shares: if limits.cpu_shares > 0 {
-                Some(limits.cpu_shares as i64)
+            memory: Some(limits.memory_bytes as i64),
+            memory_swap: Some(limits.memory_swap_bytes as i64),
+            cpu_shares: Some(limits.cpu_shares as i64),
+            cpu_quota: Some(limits.cpu_quota as i64),
+            cpu_period: Some(limits.cpu_period as i64),
+            pids_limit: Some(limits.pids_limit as i64),
+            cap_drop: if self.config.drop_all_caps {
+                Some(vec!["ALL".to_string()])
             } else {
                 None
             },
             device_requests,
             network_mode: Some(self.config.network_mode.clone()),
             readonly_rootfs: Some(true),
-            security_opt: Some(vec!["no-new-privileges".to_string()]),
+            security_opt: Some(security_opt),
             port_bindings: Some(port_bindings),
             ..Default::default()
         };

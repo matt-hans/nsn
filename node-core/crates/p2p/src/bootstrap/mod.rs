@@ -29,7 +29,8 @@ pub use ranking::*;
 pub use signature::*;
 
 use libp2p::{Multiaddr, PeerId};
-use std::collections::HashSet;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -111,10 +112,19 @@ pub enum BootstrapError {
 
     #[error("All bootstrap sources failed")]
     AllSourcesFailed,
+
+    #[error("No trusted signers configured")]
+    NoTrustedSigners,
+
+    #[error("Invalid signer quorum")]
+    InvalidSignerQuorum,
+
+    #[error("Chain signer fetch failed: {0}")]
+    ChainSignerFetchFailed(String),
 }
 
 /// Bootstrap protocol configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BootstrapConfig {
     /// DNS seeds (e.g., "_nsn-bootstrap._tcp.nsn.network")
     pub dns_seeds: Vec<String>,
@@ -129,10 +139,20 @@ pub struct BootstrapConfig {
     pub min_peers_for_dht: usize,
 
     /// HTTP request timeout
+    #[serde(with = "humantime_serde")]
     pub http_timeout: Duration,
 
     /// DNS query timeout
+    #[serde(with = "humantime_serde")]
     pub dns_timeout: Duration,
+
+    /// Trusted signer configuration
+    #[serde(default)]
+    pub signer_config: SignerConfig,
+
+    /// Optional transparency log for HTTP manifests
+    #[serde(default)]
+    pub transparency_log_path: Option<PathBuf>,
 }
 
 impl Default for BootstrapConfig {
@@ -147,6 +167,10 @@ impl Default for BootstrapConfig {
             min_peers_for_dht: 3,
             http_timeout: Duration::from_secs(10),
             dns_timeout: Duration::from_secs(5),
+            signer_config: SignerConfig::default(),
+            transparency_log_path: std::env::var("NSN_BOOTSTRAP_TRANSPARENCY_LOG")
+                .ok()
+                .map(PathBuf::from),
         }
     }
 }
@@ -157,7 +181,7 @@ pub struct BootstrapProtocol {
     config: BootstrapConfig,
 
     /// Trusted signer public keys
-    trusted_signers: Arc<HashSet<libp2p::identity::PublicKey>>,
+    trusted_signers: Arc<TrustedSignerSet>,
 
     /// Bootstrap metrics (optional)
     #[allow(dead_code)] // Reserved for future metrics integration
@@ -165,9 +189,13 @@ pub struct BootstrapProtocol {
 }
 
 impl BootstrapProtocol {
-    /// Create new bootstrap protocol with default configuration
-    pub fn new(config: BootstrapConfig, metrics: Option<Arc<super::metrics::P2pMetrics>>) -> Self {
-        let trusted_signers = Arc::new(get_trusted_signers());
+    /// Create new bootstrap protocol with explicit signer set
+    pub fn new(
+        config: BootstrapConfig,
+        trusted_signers: TrustedSignerSet,
+        metrics: Option<Arc<super::metrics::P2pMetrics>>,
+    ) -> Self {
+        let trusted_signers = Arc::new(trusted_signers);
 
         Self {
             config,
@@ -226,6 +254,7 @@ impl BootstrapProtocol {
                 self.trusted_signers.clone(),
                 self.config.require_signed_manifests,
                 self.config.http_timeout,
+                self.config.transparency_log_path.as_deref(),
             )
             .await
             {
@@ -279,11 +308,20 @@ impl BootstrapProtocol {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use libp2p::identity::Keypair;
+    use std::collections::HashSet;
+
+    fn test_signers() -> TrustedSignerSet {
+        let keypair = Keypair::generate_ed25519();
+        let mut active = HashSet::new();
+        active.insert(keypair.public());
+        TrustedSignerSet::new(active, HashSet::new(), 1).expect("valid test signers")
+    }
 
     #[tokio::test]
     async fn test_bootstrap_protocol_creation() {
         let config = BootstrapConfig::default();
-        let protocol = BootstrapProtocol::new(config, None);
+        let protocol = BootstrapProtocol::new(config, test_signers(), None);
 
         assert!(!protocol.config.dns_seeds.is_empty());
         assert!(!protocol.config.http_endpoints.is_empty());
@@ -298,7 +336,7 @@ mod tests {
             ..Default::default()
         };
 
-        let protocol = BootstrapProtocol::new(config, None);
+        let protocol = BootstrapProtocol::new(config, test_signers(), None);
         let peers = protocol
             .discover_peers()
             .await

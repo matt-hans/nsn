@@ -338,6 +338,8 @@ mod runtime {
     pub type NsnTaskMarket = pallet_nsn_task_market;
     #[runtime::pallet_index(57)]
     pub type NsnModelRegistry = pallet_nsn_model_registry;
+    #[runtime::pallet_index(58)]
+    pub type NsnBootstrap = pallet_nsn_bootstrap;
 }
 
 #[docify::export(register_validate_block)]

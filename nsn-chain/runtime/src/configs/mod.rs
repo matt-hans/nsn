@@ -387,6 +387,12 @@ parameter_types! {
 }
 
 parameter_types! {
+    // Bootstrap signer registry parameters
+    pub const BootstrapMaxSigners: u32 = 8;
+    pub const BootstrapMaxSignerBytes: u32 = 256;
+}
+
+parameter_types! {
     // Storage parameters
     pub const StorageAuditSlashAmount: Balance = 10 * UNIT;
     pub const StorageMaxShardsPerDeal: u32 = 20;
@@ -570,6 +576,13 @@ impl pallet_nsn_director::Config for Runtime {
 impl pallet_nsn_bft::Config for Runtime {
     type DefaultRetentionPeriod = BftDefaultRetentionPeriod;
     type WeightInfo = pallet_nsn_bft::weights::SubstrateWeight<Runtime>;
+}
+
+impl pallet_nsn_bootstrap::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type MaxSigners = BootstrapMaxSigners;
+    type MaxSignerBytes = BootstrapMaxSignerBytes;
+    type WeightInfo = ();
 }
 
 impl pallet_nsn_storage::Config for Runtime {

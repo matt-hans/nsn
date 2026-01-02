@@ -3,7 +3,7 @@
 //! Helper functions for building and configuring Kademlia DHT.
 
 use libp2p::kad::{store::MemoryStore, Behaviour as KademliaBehaviour, Config as KademliaConfig};
-use libp2p::{PeerId, StreamProtocol};
+use libp2p::{Multiaddr, PeerId, StreamProtocol};
 
 use super::kademlia::{
     K_VALUE, NSN_KAD_PROTOCOL_ID, PROVIDER_RECORD_TTL, PROVIDER_REPUBLISH_INTERVAL, QUERY_TIMEOUT,
@@ -16,7 +16,10 @@ use super::kademlia::{
 ///
 /// # Returns
 /// Configured Kademlia behaviour
-pub fn build_kademlia(local_peer_id: PeerId) -> KademliaBehaviour<MemoryStore> {
+pub fn build_kademlia(
+    local_peer_id: PeerId,
+    bootstrap_peers: &[(PeerId, Multiaddr)],
+) -> KademliaBehaviour<MemoryStore> {
     let mut config = KademliaConfig::default();
 
     // Set NSN protocol ID
@@ -45,5 +48,11 @@ pub fn build_kademlia(local_peer_id: PeerId) -> KademliaBehaviour<MemoryStore> {
     let store = MemoryStore::new(local_peer_id);
 
     // Create Kademlia behavior
-    KademliaBehaviour::with_config(local_peer_id, store, config)
+    let mut kademlia = KademliaBehaviour::with_config(local_peer_id, store, config);
+
+    for (peer_id, addr) in bootstrap_peers {
+        kademlia.add_address(peer_id, addr.clone());
+    }
+
+    kademlia
 }

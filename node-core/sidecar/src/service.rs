@@ -336,6 +336,14 @@ impl SidecarService {
         &self,
         req: &proto::ExecuteTaskRequest,
     ) -> Result<(String, Vec<u8>, u64), SidecarError> {
+        if self.plugins.policy().allow_untrusted
+            && std::env::var("NSN_ALLOW_UNSANDBOXED_PLUGINS").is_err()
+        {
+            return Err(SidecarError::PluginPolicyViolation(
+                "untrusted plugins require sandboxed execution".to_string(),
+            ));
+        }
+
         let command = self
             .config
             .plugin_exec_command
