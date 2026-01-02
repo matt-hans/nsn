@@ -6,12 +6,20 @@
 //! - ValidatorOnly: CLIP verification only
 //! - StorageOnly: Pinning and distribution only
 
-use anyhow::Result;
-use clap::{Parser, Subcommand};
+use anyhow::{anyhow, Result};
+use clap::{Parser, Subcommand, ValueEnum};
+use nsn_chain_client::{ChainAttestationSubmitter, ChainExecutorRegistry};
 use nsn_p2p::{P2pConfig, P2pService};
+use nsn_scheduler::{
+    AttestationSubmitter, DualAttestationSubmitter, NoopAttestationSubmitter,
+    P2pAttestationSubmitter, RedundancyConfig, RedundantScheduler,
+};
 use nsn_storage::StorageManager;
 use nsn_types::NodeCapability;
+use sp_core::{sr25519, Pair};
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -46,6 +54,18 @@ struct Cli {
     /// P2P metrics port
     #[arg(long, default_value = "9100")]
     p2p_metrics_port: u16,
+
+    /// Executor registry refresh interval (seconds)
+    #[arg(long, default_value = "30")]
+    executor_registry_refresh_secs: u64,
+
+    /// Attestation submission mode (p2p, chain, dual, none)
+    #[arg(long, value_enum, default_value = "p2p")]
+    attestation_submit_mode: AttestationSubmitMode,
+
+    /// Attestation signer SURI (required for chain/dual modes)
+    #[arg(long)]
+    attestation_suri: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -74,6 +94,14 @@ enum Mode {
         #[arg(long, default_value = "/var/lib/nsn/storage")]
         storage_path: String,
     },
+}
+
+#[derive(Clone, Debug, ValueEnum)]
+enum AttestationSubmitMode {
+    P2p,
+    Chain,
+    Dual,
+    None,
 }
 
 impl Mode {
@@ -125,23 +153,51 @@ async fn main() -> Result<()> {
     p2p_config.listen_port = cli.p2p_listen_port;
     p2p_config.metrics_port = cli.p2p_metrics_port;
 
-    let (mut p2p_service, _p2p_cmd_tx) = P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
+    let (mut p2p_service, p2p_cmd_tx) =
+        P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
     tokio::spawn(async move {
         if let Err(err) = p2p_service.start().await {
             tracing::error!("P2P service failed: {}", err);
         }
     });
 
+    let mut attestation_submitter =
+        Some(build_attestation_submitter(&cli, p2p_cmd_tx).await?);
+    info!(
+        "Attestation submit mode: {:?}",
+        cli.attestation_submit_mode
+    );
+
+    let registry_refresh = Duration::from_secs(cli.executor_registry_refresh_secs);
+
     match cli.mode {
         Mode::SuperNode { gpu_device } => {
             info!("SuperNode mode: GPU device {}", gpu_device);
             // TODO: Initialize scheduler, sidecar, storage
+            let executor_registry = Arc::new(
+                ChainExecutorRegistry::new(cli.rpc_url.clone(), registry_refresh).await?,
+            );
+            let _executor_registry_task = executor_registry.clone().start_refresh();
+            let submitter = attestation_submitter
+                .take()
+                .ok_or_else(|| anyhow!("attestation submitter already consumed"))?;
+            let _redundant_scheduler =
+                RedundantScheduler::new(RedundancyConfig::default(), submitter);
             let storage_root = PathBuf::from("/var/lib/nsn/storage");
             let _storage = StorageManager::local(storage_root)?;
         }
         Mode::DirectorOnly { gpu_device } => {
             info!("DirectorOnly mode: GPU device {}", gpu_device);
             // TODO: Initialize scheduler, sidecar
+            let executor_registry = Arc::new(
+                ChainExecutorRegistry::new(cli.rpc_url.clone(), registry_refresh).await?,
+            );
+            let _executor_registry_task = executor_registry.clone().start_refresh();
+            let submitter = attestation_submitter
+                .take()
+                .ok_or_else(|| anyhow!("attestation submitter already consumed"))?;
+            let _redundant_scheduler =
+                RedundantScheduler::new(RedundancyConfig::default(), submitter);
         }
         Mode::ValidatorOnly { gpu_device } => {
             info!("ValidatorOnly mode: GPU device {}", gpu_device);
@@ -163,6 +219,42 @@ async fn main() -> Result<()> {
     info!("Shutting down NSN Node");
 
     Ok(())
+}
+
+async fn build_attestation_submitter(
+    cli: &Cli,
+    p2p_cmd_tx: tokio::sync::mpsc::UnboundedSender<nsn_p2p::ServiceCommand>,
+) -> Result<Box<dyn AttestationSubmitter>> {
+    match cli.attestation_submit_mode {
+        AttestationSubmitMode::P2p => {
+            Ok(Box::new(P2pAttestationSubmitter::new(p2p_cmd_tx)))
+        }
+        AttestationSubmitMode::Chain => {
+            let signer = parse_attestation_signer(&cli.attestation_suri)?;
+            let submitter =
+                ChainAttestationSubmitter::new(cli.rpc_url.clone(), signer).await?;
+            Ok(Box::new(submitter))
+        }
+        AttestationSubmitMode::Dual => {
+            let signer = parse_attestation_signer(&cli.attestation_suri)?;
+            let chain_submitter =
+                ChainAttestationSubmitter::new(cli.rpc_url.clone(), signer).await?;
+            let p2p_submitter = P2pAttestationSubmitter::new(p2p_cmd_tx);
+            Ok(Box::new(DualAttestationSubmitter::new(
+                p2p_submitter,
+                chain_submitter,
+            )))
+        }
+        AttestationSubmitMode::None => Ok(Box::new(NoopAttestationSubmitter)),
+    }
+}
+
+fn parse_attestation_signer(suri: &Option<String>) -> Result<sr25519::Pair> {
+    let suri = suri
+        .as_deref()
+        .ok_or_else(|| anyhow!("attestation_suri is required for chain submission"))?;
+    sr25519::Pair::from_string(suri, None)
+        .map_err(|err| anyhow!("invalid attestation signer SURI: {err}"))
 }
 
 #[cfg(test)]

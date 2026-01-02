@@ -39,6 +39,7 @@
 //! ```
 
 pub mod epoch;
+pub mod redundancy;
 pub mod state_machine;
 pub mod task_queue;
 
@@ -47,5 +48,13 @@ mod tests;
 
 // Re-export main types for convenience
 pub use epoch::{EpochEvent, EpochTracker, ON_DECK_LEAD_TIME_SECS};
+pub use redundancy::{
+    AttestationBundle, AttestationError, AttestationSubmitter, ConsensusFailureReason,
+    ConsensusMode, ConsensusOutcome, ConsensusPolicy, ConsensusRecord, ExecutionResult,
+    ExecutorInfo, ExecutorRegistry, NoopAttestationSubmitter, P2pAttestationSubmitter,
+    DualAttestationSubmitter, RedundancyConfig, RedundancyError, RedundancyMetrics,
+    RedundantAssignment, RedundantScheduler, RedundantTask, RedundantTaskStatus,
+    StaticExecutorRegistry,
+};
 pub use state_machine::{SchedulerError, SchedulerState, SchedulerStats, TaskHandle};
 pub use task_queue::{Lane, Priority, QueueError, Task, TaskId, TaskQueue, TaskResult};

@@ -7,8 +7,12 @@ repository.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
-subxt = { workspace = true }
+subxt = { workspace = true, features = ["substrate-compat"] }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+thiserror = { workspace = true }
+parity-scale-codec = { workspace = true }
+sp-core = { workspace = true }
 
 nsn-types = { workspace = true }
+nsn-scheduler = { workspace = true }
