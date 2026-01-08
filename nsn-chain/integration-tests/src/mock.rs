@@ -13,9 +13,10 @@ use pallet_nsn_stake::Region;
 use sp_core::H256;
 use sp_runtime::{
     traits::{BlakeTwo256, IdentityLookup},
-    BuildStorage, Perbill,
+    BuildStorage,
 };
-use sp_std::vec::Vec;
+use sp_runtime::sp_std::vec::Vec;
+use sp_runtime::traits::Hash;
 
 pub type AccountId = u64;
 pub type Balance = u128;
@@ -449,24 +450,6 @@ impl ExtBuilder {
         pallet_balances::GenesisConfig::<Test> {
             balances: self.balances,
             dev_accounts: None,
-        }
-        .assimilate_storage(&mut storage)
-        .unwrap();
-
-        // Initialize treasury emission schedule
-        pallet_nsn_treasury::GenesisConfig::<Test> {
-            emission_schedule: pallet_nsn_treasury::EmissionSchedule {
-                base_emission: 100_000_000 * NSN, // 100M NSN year 1
-                decay_rate: Perbill::from_percent(15),
-                current_year: 1,
-                launch_block: 1,
-            },
-            reward_distribution: pallet_nsn_treasury::RewardDistribution {
-                director_percent: Perbill::from_percent(40),
-                validator_percent: Perbill::from_percent(25),
-                pinner_percent: Perbill::from_percent(20),
-                treasury_percent: Perbill::from_percent(15),
-            },
         }
         .assimilate_storage(&mut storage)
         .unwrap();
