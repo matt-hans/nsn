@@ -14,7 +14,7 @@ None
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Pallet Integration Validation** - Cross-pallet integration tests for on-chain logic
+- [x] **Phase 1: Pallet Integration Validation** - Cross-pallet integration tests for on-chain logic
 - [ ] **Phase 2: Lane 0 Pipeline Stitching** - Wire video generation from prompt to playback
 - [ ] **Phase 3: Lane 1 Pipeline Stitching** - Wire task marketplace from submission to result
 - [ ] **Phase 4: Viewer Web Extraction** - Extract React frontend, add WebRTC P2P
@@ -27,7 +27,7 @@ None
 **Goal**: Validate on-chain pallet interactions work correctly together (stake→reputation→director→bft chain)
 **Depends on**: Nothing (first phase)
 **Research**: Unlikely (testing existing pallets with established FRAME patterns)
-**Plans**: TBD
+**Plans**: 1 (01-PLAN.md created 2026-01-08)
 
 Key integration points:
 - nsn-stake eligibility checks consumed by nsn-director
@@ -106,8 +106,8 @@ Deployment artifacts:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Pallet Integration Validation | 0/TBD | Not started | - |
-| 2. Lane 0 Pipeline Stitching | 0/TBD | Not started | - |
+| 1. Pallet Integration Validation | 1/1 | ✅ Complete | 2026-01-08 |
+| 2. Lane 0 Pipeline Stitching | 0/TBD | Ready | - |
 | 3. Lane 1 Pipeline Stitching | 0/TBD | Not started | - |
 | 4. Viewer Web Extraction | 0/TBD | Not started | - |
 | 5. Multi-Node E2E Simulation | 0/TBD | Not started | - |
