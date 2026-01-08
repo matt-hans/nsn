@@ -19,6 +19,7 @@ members = [
     "pallets/nsn-treasury",
     "pallets/nsn-task-market",
     "pallets/nsn-model-registry",
+    "integration-tests",
 ]
 resolver = "2"
 
