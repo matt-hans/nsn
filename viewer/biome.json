@@ -24,7 +24,8 @@
 			"**/coverage/**",
 			"**/test-results/**",
 			"**/playwright-report/**",
-			"**/*.min.js"
+			"**/*.min.js",
+			"**/src-tauri/gen/**"
 		]
 	}
 }

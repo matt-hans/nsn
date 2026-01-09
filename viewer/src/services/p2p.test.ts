@@ -5,18 +5,20 @@ import { connectToRelay, discoverRelays } from "./p2p";
 
 describe("P2P Service", () => {
 	describe("discoverRelays", () => {
-		it("should return relays from IPC", async () => {
+		it("should return fallback relays when signaling server unavailable", async () => {
+			// Without a signaling server, discoverRelays returns fallback relays
 			const relays = await discoverRelays();
-			expect(relays).toHaveLength(1);
-			expect(relays[0].peer_id).toBe("12D3KooWMockRelay1");
-			expect(relays[0].region).toBe("us-east-1");
+			expect(relays.length).toBeGreaterThan(0);
+			// Fallback relays have is_fallback: true
+			expect(relays[0].is_fallback).toBe(true);
+			expect(relays[0].region).toBeDefined();
 		});
 
-		it("should return empty array on error", async () => {
-			// This test validates the error handling path
-			// In the mock, it always succeeds, but real implementation handles errors
+		it("should return array of relays", async () => {
 			const relays = await discoverRelays();
 			expect(Array.isArray(relays)).toBe(true);
+			// Should have at least one fallback relay
+			expect(relays.length).toBeGreaterThanOrEqual(1);
 		});
 	});
 

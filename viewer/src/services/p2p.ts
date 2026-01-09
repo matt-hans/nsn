@@ -1,7 +1,5 @@
-// ICN Viewer Client - P2P Service (libp2p-js integration)
-// MOCK for now - will integrate libp2p-js in production
-
-import { invoke } from "@tauri-apps/api/core";
+// ICN Viewer Client - P2P Service
+// Web-native implementation using WebRTC DataChannel for video chunk delivery
 
 export interface RelayInfo {
 	peer_id: string;
@@ -19,24 +17,46 @@ export interface VideoChunkMessage {
 	is_keyframe: boolean;
 }
 
+// Fallback relays for when signaling server is unavailable
+const FALLBACK_RELAYS: RelayInfo[] = [
+	{
+		peer_id: "12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN",
+		multiaddr: "/dns4/relay1.icn.network/tcp/4001/wss",
+		region: "us-east",
+		is_fallback: true,
+	},
+	{
+		peer_id: "12D3KooWQYV9dGMFoRzNSJ4s3qXHGsF7hYVmMpYu4zUQ9jZv3p2N",
+		multiaddr: "/dns4/relay2.icn.network/tcp/4001/wss",
+		region: "eu-west",
+		is_fallback: true,
+	},
+];
+
 // Video chunk subscription handlers
 let videoChunkHandler: ((msg: VideoChunkMessage) => void) | null = null;
 let mockStreamInterval: number | null = null;
 let isConnected = false;
 
 /**
- * Discover relays via Kademlia DHT or fallback to hardcoded list
- * In production, this would use libp2p-js createLibp2p() and kadDHT()
+ * Discover relays via signaling server or fallback to hardcoded list
  */
 export async function discoverRelays(): Promise<RelayInfo[]> {
+	// Try signaling server first (when available)
+	const signalingUrl =
+		import.meta.env.VITE_SIGNALING_URL || "ws://localhost:8080";
 	try {
-		// Call Tauri backend which has fallback relays
-		const relays = await invoke<RelayInfo[]>("get_relays");
-		return relays;
-	} catch (error) {
-		console.warn("Tauri invoke failed, no relays available:", error);
-		return [];
+		const httpUrl = signalingUrl
+			.replace("ws://", "http://")
+			.replace("wss://", "https://");
+		const response = await fetch(`${httpUrl}/relays`);
+		if (response.ok) {
+			return await response.json();
+		}
+	} catch {
+		console.warn("Signaling server unavailable, using fallback relays");
 	}
+	return FALLBACK_RELAYS;
 }
 
 /**

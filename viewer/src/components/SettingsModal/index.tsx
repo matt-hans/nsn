@@ -1,32 +1,18 @@
 // ICN Viewer Client - Settings Modal
 
-import { invoke } from "@tauri-apps/api/core";
 import { useAppStore } from "../../store/appStore";
 
 export default function SettingsModal() {
 	const {
 		quality,
-		volume,
 		seedingEnabled,
 		toggleSettings,
 		setQuality,
 		setSeedingEnabled,
 	} = useAppStore();
 
-	const handleSave = async () => {
-		try {
-			await invoke("save_settings", {
-				settings: {
-					volume,
-					quality,
-					seeding_enabled: seedingEnabled,
-					last_slot: useAppStore.getState().currentSlot,
-				},
-			});
-		} catch (error) {
-			console.warn("Failed to save settings to backend:", error);
-			// Continue anyway - settings are persisted in localStorage via Zustand
-		}
+	// Settings are automatically persisted via Zustand persist middleware to localStorage
+	const handleSave = () => {
 		toggleSettings();
 	};
 
