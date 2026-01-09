@@ -1,36 +1,20 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "claude-mem@thedotmack": true,
+    "pyright-lsp@claude-plugins-official": true
+  },
   "hooks": {
-    "PreToolUse": [
+    "SubagentStop": [
       {
-        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "# Virtual Environment Auto-Activation Hook\\n# Automatically discovers and activates Python virtual environments.\\n# Portable across projects - silent pass-through when no venv exists.\\n\\n# Skip if already activated\\nif [ -n \\\"$VIRTUAL_ENV\\\" ] && [ -f \\\"$VIRTUAL_ENV/bin/activate\\\" ]; then\\n  exit 0\\nfi\\n\\n# Configuration\\n# NOTE: .env EXCLUDED - that's for dotenv files, not virtual environments\\nVENV_NAMES=\\\"venv .venv env virtualenv\\\"\\nSEARCH_SUBDIRS=\\\". backend server api src app\\\"\\nMAX_DEPTH=5\\n\\n# Find project root\\nfind_project_root() {\\n  dir=\\\"$1\\\"\\n  depth=0\\n  while [ $depth -lt $MAX_DEPTH ] && [ \\\"$dir\\\" != \\\"/\\\" ]; do\\n    if [ -f \\\"$dir/.git/config\\\" ] || [ -f \\\"$dir/pyproject.toml\\\" ] || \\n       [ -f \\\"$dir/setup.py\\\" ] || [ -f \\\"$dir/requirements.txt\\\" ] || \\n       [ -f \\\"$dir/Pipfile\\\" ] || [ -d \\\"$dir/.claude\\\" ]; then\\n      echo \\\"$dir\\\"\\n      return 0\\n    fi\\n    dir=$(dirname \\\"$dir\\\")\\n    depth=$((depth + 1))\\n  done\\n  echo \\\"$PWD\\\"\\n}\\n\\n# Check if valid venv (must have both activate script and python binary)\\nis_valid_venv() {\\n  [ -f \\\"$1/bin/activate\\\" ] && [ -f \\\"$1/bin/python\\\" ]\\n}\\n\\n# Find and activate venv\\nPROJECT_ROOT=$(find_project_root \\\"$PWD\\\")\\n\\nfor subdir in $SEARCH_SUBDIRS; do\\n  if [ \\\"$subdir\\\" = \\\".\\\" ]; then\\n    search_path=\\\"$PROJECT_ROOT\\\"\\n  else\\n    search_path=\\\"$PROJECT_ROOT/$subdir\\\"\\n  fi\\n  \\n  [ -d \\\"$search_path\\\" ] || continue\\n  \\n  for venv_name in $VENV_NAMES; do\\n    candidate=\\\"$search_path/$venv_name\\\"\\n    if is_valid_venv \\\"$candidate\\\"; then\\n      # Use . (dot) instead of source for POSIX compliance\\n      # Wrap in subshell with error handling - silent fail is better than breaking\\n      if . \\\"$candidate/bin/activate\\\" 2>/dev/null; then\\n        echo \\\"[venv-hook] Activated: $candidate\\\" >&2\\n        exit 0\\n      fi\\n    fi\\n  done\\ndone\\n\\n# Silent exit - no warning for missing venv (too noisy for non-Python projects)\\n# Projects that need venv will create one\\nexit 0"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/rust-compile-check.sh"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/traffic_controller.py",
+            "timeout": 60
           }
         ]
       }
     ]
-  },
-  "enabledPlugins": {
-    "rust-analyzer-lsp@claude-plugins-official": true,
-    "claude-mem@thedotmack": true,
-    "substrate-pallet-architect@codeplugins": true,
-    "icn-bft-prover@codeplugins": true,
-    "icn-vram-oracle@codeplugins": true,
-    "superpowers@superpowers-marketplace": true
-  },
-  "description": "Claude Code settings with portable virtual environment hook"
+  }
 }

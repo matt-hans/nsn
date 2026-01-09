@@ -53,7 +53,7 @@ Integration chain:
 **Goal**: Complete task marketplace flow: task submission → scheduler → sidecar execution → result delivery
 **Depends on**: Phase 1
 **Research**: Unlikely (existing scheduler, sidecar, task-market — integration only)
-**Plans**: TBD
+**Plans**: 1 (01-PLAN.md created 2026-01-08)
 
 Integration chain:
 - Task submitted via nsn-task-market pallet
@@ -108,7 +108,7 @@ Deployment artifacts:
 |-------|----------------|--------|-----------|
 | 1. Pallet Integration Validation | 1/1 | ✅ Complete | 2026-01-08 |
 | 2. Lane 0 Pipeline Stitching | 1/1 | ✅ Complete | 2026-01-08 |
-| 3. Lane 1 Pipeline Stitching | 0/TBD | Not started | - |
+| 3. Lane 1 Pipeline Stitching | 0/1 | Planned | - |
 | 4. Viewer Web Extraction | 0/TBD | Not started | - |
 | 5. Multi-Node E2E Simulation | 0/TBD | Not started | - |
 | 6. Testnet Deployment Config | 0/TBD | Not started | - |
