@@ -4,11 +4,46 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Lane 1 task marketplace orchestration for NSN nodes"
+
+[features]
+default = []
+test-utils = []
 
 [dependencies]
-tokio = { workspace = true }
+# Async runtime
+tokio = { workspace = true, features = ["sync", "time"] }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+parity-scale-codec = { workspace = true }
+
+# gRPC
 tonic = { workspace = true }
+
+# Substrate client
+subxt = { workspace = true }
+sp-core = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
 anyhow = { workspace = true }
+
+# Logging
 tracing = { workspace = true }
 
+# Async trait support
+async-trait = "0.1"
+
+# Internal crates
 nsn-types = { workspace = true }
+nsn-sidecar = { workspace = true }
+nsn-chain-client = { workspace = true }
+nsn-scheduler = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tracing-subscriber = { workspace = true }
+mockall = "0.12"
