@@ -15,7 +15,7 @@ None
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Pallet Integration Validation** - Cross-pallet integration tests for on-chain logic
-- [ ] **Phase 2: Lane 0 Pipeline Stitching** - Wire video generation from prompt to playback
+- [x] **Phase 2: Lane 0 Pipeline Stitching** - Wire video generation from prompt to playback
 - [ ] **Phase 3: Lane 1 Pipeline Stitching** - Wire task marketplace from submission to result
 - [ ] **Phase 4: Viewer Web Extraction** - Extract React frontend, add WebRTC P2P
 - [ ] **Phase 5: Multi-Node E2E Simulation** - Network simulation testing infrastructure
@@ -39,7 +39,7 @@ Key integration points:
 **Goal**: Complete video generation flow: prompt → vortex → BFT consensus → P2P delivery → viewer playback
 **Depends on**: Phase 1
 **Research**: Unlikely (components exist — wiring interfaces)
-**Plans**: TBD
+**Plans**: 1 (01-PLAN.md created 2026-01-08)
 
 Integration chain:
 - nsn-node receives prompt via RPC
@@ -107,7 +107,7 @@ Deployment artifacts:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Pallet Integration Validation | 1/1 | ✅ Complete | 2026-01-08 |
-| 2. Lane 0 Pipeline Stitching | 0/TBD | Ready | - |
+| 2. Lane 0 Pipeline Stitching | 1/1 | ✅ Complete | 2026-01-08 |
 | 3. Lane 1 Pipeline Stitching | 0/TBD | Not started | - |
 | 4. Viewer Web Extraction | 0/TBD | Not started | - |
 | 5. Multi-Node E2E Simulation | 0/TBD | Not started | - |
