@@ -5,21 +5,66 @@ import { defineConfig } from "vite";
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [react()],
+
+	// Clear screen on rebuild
 	clearScreen: false,
+
+	// Development server configuration
 	server: {
-		port: 1420,
+		port: 5173,
+		strictPort: true,
+		// Allow access from local network for mobile testing
+		host: true,
+	},
+
+	// Preview server configuration
+	preview: {
+		port: 4173,
 		strictPort: true,
 	},
-	envPrefix: ["VITE_", "TAURI_"],
+
+	// Environment variable prefix
+	envPrefix: "VITE_",
+
+	// Build configuration for standalone web deployment
 	build: {
-		target: ["es2021", "chrome100", "safari13"],
-		minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
-		sourcemap: !!process.env.TAURI_DEBUG,
+		target: "es2021",
+		outDir: "dist",
+		sourcemap: true,
+		// Chunk splitting for optimal caching
+		rollupOptions: {
+			output: {
+				manualChunks: {
+					vendor: ["react", "react-dom", "zustand"],
+					p2p: ["simple-peer"],
+				},
+			},
+		},
+		// Minimum chunk size for splitting
+		chunkSizeWarningLimit: 500,
 	},
+
+	// Base path for deployment (can be customized via VITE_BASE_PATH)
+	base: process.env.VITE_BASE_PATH || "/",
+
+	// Define environment variables
+	define: {
+		// Default signaling server URL (can be overridden via .env)
+		"import.meta.env.VITE_SIGNALING_URL": JSON.stringify(
+			process.env.VITE_SIGNALING_URL || "ws://localhost:8080",
+		),
+	},
+
+	// Test configuration
 	test: {
 		globals: true,
 		environment: "jsdom",
 		setupFiles: ["./src/test/setup.ts"],
+		include: ["src/**/*.{test,spec}.{js,ts,jsx,tsx}"],
 		exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
+		coverage: {
+			reporter: ["text", "json", "html"],
+			exclude: ["node_modules/", "src/test/", "**/*.d.ts"],
+		},
 	},
 });

@@ -20,10 +20,7 @@ class MockWebSocket {
 	onmessage: ((event: { data: string }) => void) | null = null;
 	onerror: ((error: Event) => void) | null = null;
 
-	private url: string;
-
-	constructor(url: string) {
-		this.url = url;
+	constructor(_url: string) {
 		// Simulate async connection - by default fail (no server)
 		setTimeout(() => {
 			this.readyState = MockWebSocket.CLOSED;
@@ -31,7 +28,7 @@ class MockWebSocket {
 		}, 0);
 	}
 
-	send(data: string): void {
+	send(_data: string): void {
 		if (this.readyState !== MockWebSocket.OPEN) {
 			throw new Error("WebSocket is not open");
 		}
