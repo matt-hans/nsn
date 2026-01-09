@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-08)
 
 **Core value:** End-to-end video generation flow works reliably: prompt in, verified video out, delivered to viewers.
-**Current focus:** Phase 3 planned — Ready for execution
+**Current focus:** Phase 3 complete — Ready for Phase 4 planning
 
 ## Current Position
 
 Phase: 3 of 6 (Lane 1 Pipeline Stitching)
-Plan: 01-PLAN.md created
-Status: Ready for execution
-Last activity: 2026-01-08 — Phase 3 plan created with 8 tasks
+Plan: 01-PLAN.md complete
+Status: Phase 3 complete
+Last activity: 2026-01-08 — Phase 3 executed with 29 tests
 
-Progress: ░░░░░░░░░░ 0% (Phase 3)
+Progress: ██████████ 100% (Phase 3)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
+- Total plans completed: 3
 - Average duration: ~1 session
-- Total execution time: 2 sessions
+- Total execution time: 3 sessions
 
 **By Phase:**
 
@@ -29,9 +29,10 @@ Progress: ░░░░░░░░░░ 0% (Phase 3)
 |-------|-------|-------|--------|
 | Phase 1 | 1 | 55 tests | ✅ Complete |
 | Phase 2 | 1 | 49 tests | ✅ Complete |
+| Phase 3 | 1 | 29 tests | ✅ Complete |
 
 **Recent Trend:**
-- Last 5 plans: 2 completed
+- Last 5 plans: 3 completed
 - Trend: On track
 
 ## Accumulated Context
@@ -47,6 +48,8 @@ Recent decisions affecting current work:
 - Lane 0 BFT timeout: 5000ms default, configurable
 - Lane 0 CLIP embedding: 512 dimensions (dual-CLIP ensemble)
 - Lane 0 consensus threshold: 3-of-5 directors, cosine similarity ≥ 0.85
+- Lane 1 execution timeout: 300,000ms (5 minutes) default
+- Lane 1 serial execution: 1 task at a time for MVP
 
 ### Deferred Issues
 
@@ -101,9 +104,32 @@ None yet.
 **Commits:**
 - `72c4200` feat(2-1): implement Lane 0 pipeline stitching crate
 
+## Phase 3 Summary
+
+**Completed:** 2026-01-08
+
+**Deliverables:**
+- `node-core/crates/lane1/` crate with 5 modules (~1,894 lines)
+- ChainListener for task-market event subscription
+- ExecutionRunner for sidecar gRPC wrapper
+- ResultSubmitter for chain extrinsic submission
+- TaskExecutorService with event-driven state machine
+- 29 tests (20 unit + 9 integration)
+
+**Components implemented:**
+1. ✅ ChainListener (TaskCreated, TaskAssigned, TaskVerified, TaskFailed)
+2. ✅ ExecutionRunner (execute, poll_status, cancel)
+3. ✅ ResultSubmitter (start_task, submit_result, fail_task)
+4. ✅ TaskExecutorService (Idle → Executing → Submitting → Idle)
+5. ✅ Error types (Lane1Error, ListenerError, ExecutionError, SubmissionError)
+6. ✅ Integration tests (task lifecycle, priority ordering)
+
+**Commits:**
+- `675f417` feat(3-1): implement Lane 1 pipeline stitching crate
+
 ## Session Continuity
 
 Last session: 2026-01-08
-Stopped at: Phase 2 complete
+Stopped at: Phase 3 complete
 Resume file: None
-Next step: Execute Phase 3 plan (01-PLAN.md)
+Next step: Plan Phase 4 (Viewer Web Extraction)
