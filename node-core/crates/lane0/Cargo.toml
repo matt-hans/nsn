@@ -4,11 +4,49 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Lane 0 video generation orchestration for NSN nodes"
 
 [dependencies]
-tokio = { workspace = true }
+# Async runtime
+tokio = { workspace = true, features = ["sync", "time"] }
+futures = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+parity-scale-codec = { workspace = true }
+
+# gRPC
 tonic = { workspace = true }
+
+# P2P identity
+libp2p = { workspace = true }
+
+# Hashing
+blake3 = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
 anyhow = { workspace = true }
+
+# Logging
 tracing = { workspace = true }
 
+# UUID for task IDs
+uuid = { version = "1.6", features = ["v4"] }
+
+# Base64 encoding for Vortex response parsing
+base64 = "0.21"
+
+# Bytemuck for casting float slices to bytes
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# Internal crates
 nsn-types = { workspace = true }
+nsn-p2p = { workspace = true }
+nsn-scheduler = { workspace = true }
+nsn-sidecar = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tracing-subscriber = { workspace = true }
