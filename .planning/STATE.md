@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-08)
 
 **Core value:** End-to-end video generation flow works reliably: prompt in, verified video out, delivered to viewers.
-**Current focus:** Phase 3 complete — Ready for Phase 4 planning
+**Current focus:** Phase 4 complete — Ready for Phase 5
 
 ## Current Position
 
-Phase: 3 of 6 (Lane 1 Pipeline Stitching)
-Plan: 01-PLAN.md complete
-Status: Phase 3 complete
-Last activity: 2026-01-08 — Phase 3 executed with 29 tests
+Phase: 4 of 6 (Viewer Web Extraction)
+Plan: 01-PLAN.md executed
+Status: Complete
+Last activity: 2026-01-09 — Phase 4 executed
 
-Progress: ██████████ 100% (Phase 3)
+Progress: ██████████ 100% (Phase 4)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: ~1 session
-- Total execution time: 3 sessions
+- Total execution time: 4 sessions
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: ██████████ 100% (Phase 3)
 | Phase 1 | 1 | 55 tests | ✅ Complete |
 | Phase 2 | 1 | 49 tests | ✅ Complete |
 | Phase 3 | 1 | 29 tests | ✅ Complete |
+| Phase 4 | 1 | 19 tests | ✅ Complete |
 
 **Recent Trend:**
-- Last 5 plans: 3 completed
+- Last 5 plans: 4 completed
 - Trend: On track
 
 ## Accumulated Context
@@ -127,9 +128,38 @@ None yet.
 **Commits:**
 - `675f417` feat(3-1): implement Lane 1 pipeline stitching crate
 
+## Phase 4 Summary
+
+**Completed:** 2026-01-09
+
+**Deliverables:**
+- Standalone React web application (extracted from Tauri)
+- WebRTC signaling client with WebSocket transport
+- P2P service using simple-peer for DataChannel video delivery
+- Development signaling server (Node.js)
+- Web-optimized Vite build configuration
+- 19 new integration tests for signaling/P2P
+
+**Components implemented:**
+1. ✅ SignalingClient (WebSocket state machine, peer discovery)
+2. ✅ P2PService (simple-peer, binary video chunk parsing)
+3. ✅ Signaling server (join/leave/offer/answer/ice-candidate)
+4. ✅ Test mocks (WebSocket, RTCPeerConnection, WebCodecs)
+5. ✅ Vite config (chunk splitting, web-only build)
+
+**Commits:**
+- `2c2653f` chore(4-1): remove Tauri dependencies, add simple-peer
+- `9d535c5` refactor(4-1): remove Tauri IPC, use browser APIs
+- `42f9feb` feat(4-1): add WebRTC signaling client
+- `da019f0` feat(4-1): implement WebRTC P2P service
+- `d1e802e` feat(4-1): add development signaling server
+- `cfde70b` test(4-1): update test mocks for web environment
+- `be6a8e4` chore(4-1): configure Vite for standalone web
+- `70f694b` test(4-1): add integration tests
+
 ## Session Continuity
 
-Last session: 2026-01-08
-Stopped at: Phase 3 complete
+Last session: 2026-01-09
+Stopped at: Phase 4 complete
 Resume file: None
-Next step: Plan Phase 4 (Viewer Web Extraction)
+Next step: Plan Phase 5 (Multi-Node E2E Simulation)
