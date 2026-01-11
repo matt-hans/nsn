@@ -1,0 +1,45 @@
+# =============================================================================
+# NSN WebRTC Signaling Server - Docker Build
+# =============================================================================
+# Minimal WebSocket signaling server for WebRTC peer discovery.
+#
+# Build:
+#   docker build -f docker/Dockerfile.signaling -t nsn-signaling:latest .
+#
+# Run:
+#   docker run --rm -p 8080:8080 nsn-signaling:latest
+# =============================================================================
+
+FROM node:20-alpine
+
+# Install wget for health checks
+RUN apk add --no-cache wget
+
+WORKDIR /app
+
+# Create package.json for signaling server dependencies
+RUN echo '{"name": "nsn-signaling", "version": "0.1.0", "type": "module", "dependencies": {"ws": "^8.18.0"}}' > package.json
+
+# Install dependencies
+RUN npm install --production && npm cache clean --force
+
+# Copy signaling server script
+COPY viewer/scripts/signaling-server.js ./signaling-server.js
+
+# Create non-root user
+RUN adduser -D -u 1000 signaling && \
+    chown -R signaling:signaling /app
+
+USER signaling
+
+# Expose WebSocket/HTTP port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q --spider http://localhost:8080/health || exit 1
+
+# Default port can be overridden
+ENV SIGNALING_PORT=8080
+
+CMD ["sh", "-c", "node signaling-server.js ${SIGNALING_PORT}"]
