@@ -1,0 +1,23 @@
+{
+  "name": "NSN Testnet",
+  "id": "nsn_testnet",
+  "chainType": "Live",
+  "bootNodes": [
+    "/dns/bootnode.nsn.network/tcp/30333/p2p/12D3KooWBootnodePlaceholder"
+  ],
+  "telemetryEndpoints": [
+    [
+      "wss://telemetry.nsn.network/submit",
+      0
+    ]
+  ],
+  "protocolId": "nsn-testnet",
+  "properties": {
+    "ss58Format": 42,
+    "tokenDecimals": 12,
+    "tokenSymbol": "NSN"
+  },
+  "codeSubstitutes": {},
+  "_comment": "PLACEHOLDER: This file should be regenerated using scripts/generate-testnet-chainspec.sh after building the NSN node binary. The genesis configuration including validator keys and initial allocations will be populated from nsn_testnet_chain_spec() preset.",
+  "_regenerate_command": "./scripts/generate-testnet-chainspec.sh"
+}
