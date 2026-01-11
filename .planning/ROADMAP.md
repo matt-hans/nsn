@@ -78,9 +78,9 @@ Extraction scope:
 ### Phase 5: Multi-Node E2E Simulation
 **Goal**: Network simulation harness for epoch elections, BFT consensus, chunk propagation
 **Depends on**: Phases 2, 3 (needs both lanes functional)
-**Research**: Likely (network simulation patterns, multi-node orchestration)
-**Research topics**: Rust test harness for multi-process orchestration, libp2p network simulation patterns, epoch/BFT timing simulation
-**Plans**: TBD
+**Research**: Completed (turmoil for deterministic simulation, libp2p-swarm-test for in-memory P2P)
+**Research findings**: Turmoil provides tokio-native deterministic simulation with network fault injection. libp2p-swarm-test enables in-memory P2P without real sockets. Existing mocks in lane0/lane1 tests can be extracted and reused.
+**Plans**: 1 (01-PLAN.md created 2026-01-09)
 
 Simulation scenarios:
 - Multi-node epoch transitions
@@ -88,6 +88,13 @@ Simulation scenarios:
 - BFT consensus with Byzantine nodes
 - Chunk propagation latency under load
 - Network partition recovery
+
+Implementation approach:
+- New `node-core/crates/simulation/` crate
+- SimulatedNetwork for in-memory message routing
+- TestHarness for multi-node orchestration
+- 8 reusable scenarios (baseline, byzantine, partition, etc.)
+- 15+ integration tests using harness
 
 ### Phase 6: Testnet Deployment Config
 **Goal**: Docker Compose manifests, environment configuration, genesis chain spec for testnet deployment
@@ -110,5 +117,5 @@ Deployment artifacts:
 | 2. Lane 0 Pipeline Stitching | 1/1 | ✅ Complete | 2026-01-08 |
 | 3. Lane 1 Pipeline Stitching | 1/1 | ✅ Complete | 2026-01-08 |
 | 4. Viewer Web Extraction | 1/1 | ✅ Complete | 2026-01-09 |
-| 5. Multi-Node E2E Simulation | 0/TBD | Not started | - |
+| 5. Multi-Node E2E Simulation | 0/1 | 📋 Planned | - |
 | 6. Testnet Deployment Config | 0/TBD | Not started | - |
