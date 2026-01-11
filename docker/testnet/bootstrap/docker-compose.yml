@@ -1,0 +1,82 @@
+# =============================================================================
+# NSN Bootstrap Node - Docker Compose
+# =============================================================================
+# Dedicated bootstrap node for NSN testnet network discovery.
+#
+# Bootstrap nodes provide:
+#   - Initial peer discovery for new nodes
+#   - Persistent peer ID for stable bootnode addresses
+#   - Public accessibility for network joining
+#
+# This configuration is designed to run independently of the main testnet
+# stack, typically on a public-facing server with stable DNS.
+#
+# Usage:
+#   cd docker/testnet/bootstrap
+#   cp ../.env.example .env  # Copy and customize
+#   ./setup-bootnode.sh      # Generate persistent keys
+#   docker compose up -d
+# =============================================================================
+
+services:
+  bootnode:
+    image: nsn-node:${NSN_VERSION:-latest}
+    container_name: nsn-bootnode
+    command: >
+      --chain=/chain-spec/testnet.json
+      --base-path=/data
+      --port=30333
+      --rpc-port=9944
+      --rpc-external
+      --rpc-cors=https://polkadot.js.org,https://nsn.network
+      --rpc-methods=Safe
+      --prometheus-external
+      --prometheus-port=9615
+      --telemetry-url=${NSN_TELEMETRY_URL:-wss://telemetry.nsn.network/submit} 0
+      --name=bootnode
+      --node-key-file=/secrets/bootnode-key
+      --no-private-ipv4
+      --listen-addr=/ip4/0.0.0.0/tcp/30333
+      --listen-addr=/ip6/::/tcp/30333
+      --public-addr=/dns/${BOOTNODE_DNS:-bootnode.nsn.network}/tcp/30333
+    volumes:
+      - bootnode-data:/data
+      - ../chain-spec:/chain-spec:ro
+      - ./secrets:/secrets:ro
+    ports:
+      # P2P - Must be publicly accessible
+      - "30333:30333"
+      # RPC - Optional, for monitoring
+      - "127.0.0.1:9944:9944"
+      # Prometheus - Optional, for monitoring
+      - "127.0.0.1:9615:9615"
+    networks:
+      - nsn-bootstrap
+    deploy:
+      resources:
+        limits:
+          memory: ${BOOTNODE_MEMORY_LIMIT:-2G}
+          cpus: '1'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9944/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+volumes:
+  bootnode-data:
+    driver: local
+
+networks:
+  nsn-bootstrap:
+    driver: bridge
