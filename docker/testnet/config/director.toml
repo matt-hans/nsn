@@ -1,0 +1,95 @@
+# =============================================================================
+# NSN Off-Chain Director Node Configuration
+# =============================================================================
+# Configuration for Lane 0 director nodes that orchestrate video generation.
+# =============================================================================
+
+[general]
+# Node identifier (used in logs and metrics)
+node_name = "director"
+
+# Log level: trace, debug, info, warn, error
+log_level = "info"
+
+# Enable JSON-structured logging
+json_logs = false
+
+# Data directory for local storage
+data_dir = "/data"
+
+[p2p]
+# P2P networking configuration
+listen_port = 9000
+metrics_port = 9100
+
+# Bootstrap peers (populated at runtime from chain spec)
+bootstrap_peers = []
+
+# Maximum number of peer connections
+max_peers = 50
+
+# Reputation oracle settings
+reputation_refresh_secs = 60
+
+[chain]
+# NSN chain RPC endpoint (set via CLI --rpc-url)
+# rpc_url = "ws://validator-alice:9944"
+
+# Executor registry refresh interval
+executor_registry_refresh_secs = 30
+
+[attestation]
+# Attestation submission mode: p2p, chain, dual, none
+submit_mode = "dual"
+
+# BFT consensus timeout (ms)
+bft_timeout_ms = 5000
+
+# CLIP embedding dimensions
+clip_dimensions = 512
+
+# Consensus threshold (must agree with chain config)
+consensus_threshold_num = 3
+consensus_threshold_den = 5
+
+# Cosine similarity threshold
+similarity_threshold = 0.85
+
+[vortex]
+# Vortex sidecar configuration
+grpc_endpoint = "http://vortex:50051"
+connection_timeout_ms = 5000
+request_timeout_ms = 300000  # 5 minutes for generation
+
+# Health check interval
+health_check_interval_secs = 30
+
+[storage]
+# Storage backend: local, ipfs
+backend = "ipfs"
+
+# IPFS API endpoint
+ipfs_api_url = "http://ipfs:5001"
+
+# Local storage path (if backend = local)
+local_path = "/data/storage"
+
+# Chunk size for video distribution (bytes)
+chunk_size = 65536  # 64KB
+
+# Keyframe interval (chunks)
+keyframe_interval = 0
+
+[metrics]
+# Prometheus metrics configuration
+enabled = true
+listen_port = 9100
+
+# Histogram buckets for latency metrics (ms)
+latency_buckets = [10, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+
+[tracing]
+# OpenTelemetry tracing configuration
+enabled = false
+otlp_endpoint = "http://jaeger:4317"
+service_name = "nsn-director"

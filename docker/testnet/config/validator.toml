@@ -1,0 +1,97 @@
+# =============================================================================
+# NSN Validator Node Configuration
+# =============================================================================
+# Configuration reference for validator nodes.
+# Note: Most validator settings are passed via CLI arguments in docker-compose.
+# This file documents available options for reference.
+# =============================================================================
+
+[general]
+# Node name (used in telemetry and logs)
+# Passed via: --name
+# node_name = "alice-validator"
+
+# Chain specification
+# Passed via: --chain
+# chain = "/chain-spec/testnet.json"
+
+# Data directory
+# Passed via: --base-path
+# base_path = "/data"
+
+[networking]
+# P2P port
+# Passed via: --port
+# port = 30333
+
+# RPC port
+# Passed via: --rpc-port
+# rpc_port = 9944
+
+# Enable external RPC access
+# Passed via: --rpc-external
+# rpc_external = true
+
+# CORS allowed origins
+# Passed via: --rpc-cors
+# Testnet: "https://polkadot.js.org,https://nsn.network"
+# Development: "all" (INSECURE)
+
+# RPC methods exposure
+# Passed via: --rpc-methods
+# Production: "Safe" (default)
+# Development: "Unsafe" (allows author_* methods)
+
+# Bootnodes
+# Passed via: --bootnodes
+# Example: "/dns/bootnode.nsn.network/tcp/30333/p2p/12D3KooW..."
+
+[validator]
+# Enable validator mode
+# Passed via: --validator
+
+# Validator account
+# Passed via: --alice, --bob, --charlie, or --key
+
+# Session keys can be rotated via RPC:
+# author_rotateKeys() to generate new keys
+# author_insertKey() to insert specific keys
+
+[telemetry]
+# Telemetry endpoint
+# Passed via: --telemetry-url
+# telemetry_url = "wss://telemetry.nsn.network/submit"
+
+# Telemetry verbosity (0-9)
+# Higher = more verbose, 0 = minimal
+# telemetry_verbosity = 0
+
+[prometheus]
+# Enable Prometheus metrics
+# Passed via: --prometheus-external
+# prometheus_external = true
+
+# Prometheus port
+# Passed via: --prometheus-port
+# prometheus_port = 9615
+
+[security]
+# Node key file (persistent peer ID)
+# Passed via: --node-key-file
+# node_key_file = "/secrets/alice-node-key"
+
+# IMPORTANT: For production, generate persistent node keys:
+# subkey generate-node-key --file alice-node-key
+#
+# This ensures consistent peer IDs across restarts,
+# which is required for bootnode addressing.
+
+[resources]
+# These are set via Docker Compose deploy.resources
+# memory_limit = "4G"
+# cpu_limit = 2
+
+[logging]
+# Log level
+# Set via RUST_LOG environment variable
+# RUST_LOG = "info,runtime=debug"
