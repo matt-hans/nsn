@@ -1,0 +1,193 @@
+# =============================================================================
+# NSN Testnet - Prometheus Alerting Rules
+# =============================================================================
+# Production alerting rules for NSN testnet infrastructure.
+# =============================================================================
+
+groups:
+  # ===========================================================================
+  # Validator Health Alerts
+  # ===========================================================================
+  - name: validator-health
+    interval: 30s
+    rules:
+      - alert: ValidatorDown
+        expr: up{job="validators"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: validator
+        annotations:
+          summary: "Validator {{ $labels.validator }} is down"
+          description: "Validator {{ $labels.instance }} has been unreachable for more than 1 minute."
+          runbook_url: "https://docs.nsn.network/ops/runbooks/validator-down"
+
+      - alert: ValidatorHighMemory
+        expr: process_resident_memory_bytes{job="validators"} / 1024 / 1024 / 1024 > 3.5
+        for: 5m
+        labels:
+          severity: warning
+          component: validator
+        annotations:
+          summary: "Validator {{ $labels.validator }} memory usage high"
+          description: "Validator {{ $labels.instance }} is using {{ $value | printf \"%.1f\" }}GB RAM (limit: 4GB)."
+
+      - alert: ValidatorHighCPU
+        expr: rate(process_cpu_seconds_total{job="validators"}[5m]) > 1.5
+        for: 5m
+        labels:
+          severity: warning
+          component: validator
+        annotations:
+          summary: "Validator {{ $labels.validator }} CPU usage high"
+          description: "Validator {{ $labels.instance }} CPU usage is {{ $value | printf \"%.2f\" }} cores."
+
+  # ===========================================================================
+  # Block Production Alerts
+  # ===========================================================================
+  - name: block-production
+    interval: 30s
+    rules:
+      - alert: BlockProductionSlow
+        expr: rate(substrate_block_height{job="validators"}[5m]) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          component: consensus
+        annotations:
+          summary: "Block production rate below expected"
+          description: "Block production rate is {{ $value | printf \"%.3f\" }} blocks/sec (expected: ~0.166/sec for 6s blocks)."
+
+      - alert: BlockProductionStalled
+        expr: increase(substrate_block_height{job="validators"}[10m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          component: consensus
+        annotations:
+          summary: "Block production has stalled"
+          description: "No new blocks have been produced in the last 10 minutes on {{ $labels.instance }}."
+
+      - alert: ConsensusStalled
+        expr: increase(substrate_finality_grandpa_round{job="validators"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: critical
+          component: consensus
+        annotations:
+          summary: "GRANDPA consensus has stalled"
+          description: "GRANDPA finality has not progressed in 15 minutes. Check validator connectivity."
+
+  # ===========================================================================
+  # Network Health Alerts
+  # ===========================================================================
+  - name: network-health
+    interval: 30s
+    rules:
+      - alert: ValidatorPeersLow
+        expr: substrate_sub_libp2p_peers_count{job="validators"} < 2
+        for: 5m
+        labels:
+          severity: warning
+          component: network
+        annotations:
+          summary: "Validator {{ $labels.validator }} has few peers"
+          description: "Validator {{ $labels.instance }} has only {{ $value }} peers (minimum recommended: 2)."
+
+      - alert: ValidatorNoPeers
+        expr: substrate_sub_libp2p_peers_count{job="validators"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: network
+        annotations:
+          summary: "Validator {{ $labels.validator }} has no peers"
+          description: "Validator {{ $labels.instance }} is isolated with no P2P connections."
+
+      - alert: ValidatorSyncBehind
+        expr: substrate_sync_queued_blocks{job="validators"} > 10
+        for: 10m
+        labels:
+          severity: warning
+          component: sync
+        annotations:
+          summary: "Validator {{ $labels.validator }} is behind on sync"
+          description: "Validator {{ $labels.instance }} has {{ $value }} blocks queued for import."
+
+  # ===========================================================================
+  # Off-Chain Node Alerts
+  # ===========================================================================
+  - name: offchain-health
+    interval: 30s
+    rules:
+      - alert: DirectorDown
+        expr: up{job="directors"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: director
+        annotations:
+          summary: "Director {{ $labels.director_id }} is down"
+          description: "Off-chain director node {{ $labels.instance }} has been unreachable for more than 1 minute."
+
+      - alert: VortexDown
+        expr: up{job="vortex"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: vortex
+        annotations:
+          summary: "Vortex AI engine is down"
+          description: "Vortex GPU node is unreachable. Lane 0 video generation will fail."
+
+      - alert: SignalingDown
+        expr: up{job="signaling"} == 0
+        for: 1m
+        labels:
+          severity: warning
+          component: signaling
+        annotations:
+          summary: "Signaling server is down"
+          description: "WebRTC signaling server is unreachable. Viewer peer discovery will fail."
+
+  # ===========================================================================
+  # Storage Alerts
+  # ===========================================================================
+  - name: storage-health
+    interval: 60s
+    rules:
+      - alert: IPFSDown
+        expr: up{job="ipfs"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: "IPFS node is down"
+          description: "IPFS content storage node is unreachable."
+
+  # ===========================================================================
+  # Observability Stack Alerts
+  # ===========================================================================
+  - name: observability-health
+    interval: 30s
+    rules:
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "Prometheus target {{ $labels.job }} is down"
+          description: "Target {{ $labels.instance }} in job {{ $labels.job }} has been down for 5 minutes."
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "Prometheus config reload failed"
+          description: "Prometheus failed to reload its configuration. Check for syntax errors."

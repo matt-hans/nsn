@@ -1,0 +1,134 @@
+# =============================================================================
+# NSN Testnet - Prometheus Configuration
+# =============================================================================
+# Production-ready Prometheus configuration for multi-node testnet.
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'nsn-testnet'
+    environment: 'testnet'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+      # Uncomment when alertmanager is deployed
+      # - targets: ['alertmanager:9093']
+
+# Rule files for alerting
+rule_files:
+  - '/etc/prometheus/alerts/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # -------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # -------------------------------------------------------------------------
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'observability'
+
+  # -------------------------------------------------------------------------
+  # Validator Nodes
+  # -------------------------------------------------------------------------
+  - job_name: 'validators'
+    static_configs:
+      - targets:
+          - 'validator-alice:9615'
+          - 'validator-bob:9615'
+          - 'validator-charlie:9615'
+        labels:
+          service: 'substrate-node'
+          role: 'validator'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: 'validator-(\w+):.*'
+        target_label: 'validator'
+        replacement: '${1}'
+    metric_relabel_configs:
+      # Keep Substrate and NSN metrics
+      - source_labels: [__name__]
+        regex: '(substrate_.*|polkadot_.*|nsn_.*|process_.*|go_.*)'
+        action: keep
+
+  # -------------------------------------------------------------------------
+  # Off-Chain Director Nodes
+  # -------------------------------------------------------------------------
+  - job_name: 'directors'
+    static_configs:
+      - targets:
+          - 'director-1:9100'
+          - 'director-2:9100'
+        labels:
+          service: 'nsn-offchain'
+          role: 'director'
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: 'director-(\d+):.*'
+        target_label: 'director_id'
+        replacement: '${1}'
+
+  # -------------------------------------------------------------------------
+  # Vortex AI Engine
+  # -------------------------------------------------------------------------
+  - job_name: 'vortex'
+    static_configs:
+      - targets: ['vortex:9100']
+        labels:
+          service: 'vortex'
+          component: 'ai-engine'
+    scrape_interval: 10s  # More frequent for GPU metrics
+    scrape_timeout: 5s
+
+  # -------------------------------------------------------------------------
+  # Signaling Server
+  # -------------------------------------------------------------------------
+  - job_name: 'signaling'
+    static_configs:
+      - targets: ['signaling:8080']
+        labels:
+          service: 'signaling'
+          component: 'webrtc'
+    metrics_path: '/health'
+    scrape_interval: 30s
+
+  # -------------------------------------------------------------------------
+  # IPFS Node
+  # -------------------------------------------------------------------------
+  - job_name: 'ipfs'
+    static_configs:
+      - targets: ['ipfs:5001']
+        labels:
+          service: 'ipfs'
+          component: 'storage'
+    metrics_path: '/api/v0/stats/repo'
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # -------------------------------------------------------------------------
+  # Grafana (optional)
+  # -------------------------------------------------------------------------
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          service: 'grafana'
+          component: 'observability'
+    metrics_path: '/metrics'
+
+  # -------------------------------------------------------------------------
+  # Jaeger (optional, when tracing profile enabled)
+  # -------------------------------------------------------------------------
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']
+        labels:
+          service: 'jaeger'
+          component: 'tracing'
