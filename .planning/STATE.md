@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-08)
 
 **Core value:** End-to-end video generation flow works reliably: prompt in, verified video out, delivered to viewers.
-**Current focus:** Phase 5 planned — Ready for execution
+**Current focus:** Phase 5 complete — Ready for Phase 6
 
 ## Current Position
 
-Phase: 5 of 6 (Multi-Node E2E Simulation)
-Plan: 01-PLAN.md created
-Status: Ready for execution
-Last activity: 2026-01-09 — Phase 5 planned
+Phase: 5 of 6 (Multi-Node E2E Simulation) - COMPLETE
+Plan: 01-PLAN.md executed
+Status: ✅ Complete
+Last activity: 2026-01-11 — Phase 5 executed
 
-Progress: ░░░░░░░░░░ 0% (Phase 5)
+Progress: ██████████ 100% (Phase 5)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: ~1 session
-- Total execution time: 4 sessions
+- Total execution time: 5 sessions
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Progress: ░░░░░░░░░░ 0% (Phase 5)
 | Phase 2 | 1 | 49 tests | ✅ Complete |
 | Phase 3 | 1 | 29 tests | ✅ Complete |
 | Phase 4 | 1 | 19 tests | ✅ Complete |
-| Phase 5 | 0/1 | TBD | 📋 Planned |
+| Phase 5 | 1/1 | 24 tests | ✅ Complete |
 
 **Recent Trend:**
-- Last 5 plans: 4 completed
+- Last 5 plans: 5 completed
 - Trend: On track
 
 ## Accumulated Context
@@ -158,9 +158,34 @@ None yet.
 - `be6a8e4` chore(4-1): configure Vite for standalone web
 - `70f694b` test(4-1): add integration tests
 
+## Phase 5 Summary
+
+**Completed:** 2026-01-11
+
+**Deliverables:**
+- `node-core/crates/simulation/` crate with 13 files (~3,800 lines)
+- SimulatedNetwork for in-memory message routing
+- TestHarness for multi-node scenario orchestration
+- 4 reusable mocks (MockVortexClient, MockBftParticipant, MockChunkPublisher, MockChainClient)
+- 8 pre-defined scenarios (baseline, byzantine, partition, etc.)
+- 24 integration tests (exceeds 15+ target)
+
+**Components implemented:**
+1. ✅ SimulatedNetwork (in-memory routing, latency profiles, partitions)
+2. ✅ TestHarness (node management, epoch events, slot execution)
+3. ✅ MockVortexClient (success/failure slots, latency injection)
+4. ✅ MockBftParticipant (Byzantine modes: Crash, Delay, DivergentEmbedding)
+5. ✅ MockChunkPublisher (event tracking, configurable chunk size)
+6. ✅ MockChainClient (task/epoch event injection, extrinsic tracking)
+7. ✅ 8 Scenarios (BaselineConsensus, ByzantineDirector, NetworkPartition, etc.)
+8. ✅ Integration tests (consensus, faults, lifecycle)
+
+**Commits:**
+- `d9cc41c` feat(5-1): implement multi-node E2E simulation harness
+
 ## Session Continuity
 
-Last session: 2026-01-09
-Stopped at: Phase 5 planned
+Last session: 2026-01-11
+Stopped at: Phase 5 complete
 Resume file: None
-Next step: Execute Phase 5 Plan 1 (`/gsd:execute-plan`)
+Next step: Plan Phase 6 (`/gsd:plan-phase 6`)
