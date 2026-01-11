@@ -1,0 +1,89 @@
+# =============================================================================
+# NSN Off-Chain Node - Multi-Stage Docker Build
+# =============================================================================
+# Builds the nsn-node binary for off-chain Lane 0/Lane 1 orchestration.
+#
+# Build:
+#   docker build -f docker/Dockerfile.nsn-offchain -t nsn-offchain:latest .
+#
+# Run:
+#   docker run --rm nsn-offchain:latest --help
+#   docker run --rm nsn-offchain:latest director-only --help
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Builder
+# -----------------------------------------------------------------------------
+FROM rust:1.75-bookworm AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    clang \
+    libclang-dev \
+    cmake \
+    git \
+    protobuf-compiler \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy workspace configuration
+COPY node-core/Cargo.toml node-core/Cargo.lock ./node-core/
+
+# Copy all workspace members
+COPY node-core/bin ./node-core/bin
+COPY node-core/crates ./node-core/crates
+COPY node-core/sidecar ./node-core/sidecar
+
+# Build release binary
+WORKDIR /app/node-core
+RUN cargo build --release --bin nsn-node
+
+# Strip debug symbols to reduce binary size
+RUN strip target/release/nsn-node
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime
+# -----------------------------------------------------------------------------
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 -U -s /bin/sh nsn && \
+    mkdir -p /data /config && \
+    chown -R nsn:nsn /data /config
+
+WORKDIR /app
+
+# Copy the built binary from builder stage
+COPY --from=builder /app/node-core/target/release/nsn-node /usr/local/bin/nsn-node
+
+# Set ownership
+RUN chown -R nsn:nsn /app
+
+# Switch to non-root user
+USER nsn
+
+# Expose ports
+# P2P networking
+EXPOSE 9000
+# Prometheus metrics
+EXPOSE 9100
+# gRPC (for sidecar)
+EXPOSE 50051
+
+# Health check via metrics endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:9100/metrics || exit 1
+
+# Default command shows help
+ENTRYPOINT ["/usr/local/bin/nsn-node"]
+CMD ["--help"]
