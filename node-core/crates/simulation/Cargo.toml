@@ -1,0 +1,40 @@
+[package]
+name = "nsn-simulation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Deterministic network simulation harness for NSN multi-node E2E testing"
+
+[dependencies]
+# Async runtime with test utilities
+tokio = { workspace = true, features = ["sync", "time", "rt-multi-thread", "macros", "test-util"] }
+futures = { workspace = true }
+async-trait = "0.1"
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Hashing
+blake3 = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+parity-scale-codec = { workspace = true }
+
+# P2P types
+libp2p = { workspace = true }
+
+# Internal crates
+nsn-types = { workspace = true }
+nsn-lane0 = { workspace = true }
+nsn-lane1 = { workspace = true }
+nsn-scheduler = { workspace = true }
+
+[dev-dependencies]
+proptest = "1.4"
+tracing-subscriber = { workspace = true }

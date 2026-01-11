@@ -11,6 +11,7 @@ members = [
     "crates/lane1",
     "crates/storage",
     "crates/validator",
+    "crates/simulation",
     "sidecar",
 ]
 
@@ -64,4 +65,5 @@ nsn-lane0 = { path = "crates/lane0" }
 nsn-lane1 = { path = "crates/lane1" }
 nsn-storage = { path = "crates/storage" }
 nsn-validator = { path = "crates/validator" }
+nsn-simulation = { path = "crates/simulation" }
 nsn-sidecar = { path = "sidecar" }
