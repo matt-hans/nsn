@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-08)
 
 **Core value:** End-to-end video generation flow works reliably: prompt in, verified video out, delivered to viewers.
-**Current focus:** Phase 5 complete — Ready for Phase 6
+**Current focus:** Phase 6 complete — All phases finished
 
 ## Current Position
 
-Phase: 5 of 6 (Multi-Node E2E Simulation) - COMPLETE
+Phase: 6 of 6 (Testnet Deployment Config) - COMPLETE
 Plan: 01-PLAN.md executed
 Status: ✅ Complete
-Last activity: 2026-01-11 — Phase 5 executed
+Last activity: 2026-01-11 — Phase 6 executed
 
-Progress: ██████████ 100% (Phase 5)
+Progress: ██████████ 100% (All Phases Complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: ~1 session
-- Total execution time: 5 sessions
+- Total execution time: 6 sessions
 
 **By Phase:**
 
@@ -32,10 +32,11 @@ Progress: ██████████ 100% (Phase 5)
 | Phase 3 | 1 | 29 tests | ✅ Complete |
 | Phase 4 | 1 | 19 tests | ✅ Complete |
 | Phase 5 | 1/1 | 24 tests | ✅ Complete |
+| Phase 6 | 1/1 | 8 tasks | ✅ Complete |
 
 **Recent Trend:**
-- Last 5 plans: 5 completed
-- Trend: On track
+- Last 6 plans: 6 completed
+- Trend: All phases complete
 
 ## Accumulated Context
 
@@ -183,9 +184,41 @@ None yet.
 **Commits:**
 - `d9cc41c` feat(5-1): implement multi-node E2E simulation harness
 
+## Phase 6 Summary
+
+**Completed:** 2026-01-11
+
+**Deliverables:**
+- `docker/testnet/` directory with complete deployment configuration
+- Multi-node Docker Compose (3 validators, 2 directors, GPU, signaling)
+- Production Dockerfiles (nsn-offchain, signaling)
+- Chain spec generation and bootnode setup scripts
+- Prometheus alerting rules and Grafana dashboard
+- Comprehensive deployment documentation
+
+**Components implemented:**
+1. ✅ docker-compose.yml (multi-node testnet with all services)
+2. ✅ Chain spec generation script
+3. ✅ Environment templates (.env.example, director.toml, validator.toml)
+4. ✅ Bootstrap node configuration
+5. ✅ Dockerfile.nsn-offchain (multi-stage Rust build)
+6. ✅ Dockerfile.signaling (minimal Node.js)
+7. ✅ Prometheus/Grafana configuration with alerts
+8. ✅ Deployment documentation and operational scripts
+
+**Commits:**
+- `a9a64f6` feat(6-1): create testnet docker-compose configuration
+- `d98f0ae` feat(6-1): add testnet chain spec and generation script
+- `59a42ba` feat(6-1): add environment and service configuration templates
+- `65284c4` feat(6-1): add bootstrap node configuration
+- `2bedf6e` feat(6-1): add Dockerfile for off-chain node
+- `2eb302c` feat(6-1): add Dockerfile for signaling server
+- `2b445db` feat(6-1): add Prometheus and Grafana configuration
+- `b4999c0` docs(6-1): add deployment documentation and operational scripts
+
 ## Session Continuity
 
 Last session: 2026-01-11
-Stopped at: Phase 5 complete
+Stopped at: Phase 6 complete
 Resume file: None
-Next step: Plan Phase 6 (`/gsd:plan-phase 6`)
+Next step: All phases complete - ready for testnet deployment

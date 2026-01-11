@@ -19,7 +19,7 @@ None
 - [x] **Phase 3: Lane 1 Pipeline Stitching** - Wire task marketplace from submission to result
 - [x] **Phase 4: Viewer Web Extraction** - Extract React frontend, add WebRTC P2P
 - [x] **Phase 5: Multi-Node E2E Simulation** - Network simulation testing infrastructure
-- [ ] **Phase 6: Testnet Deployment Config** - Docker Compose production packaging
+- [x] **Phase 6: Testnet Deployment Config** - Docker Compose production packaging
 
 ## Phase Details
 
@@ -99,15 +99,20 @@ Implementation approach:
 ### Phase 6: Testnet Deployment Config
 **Goal**: Docker Compose manifests, environment configuration, genesis chain spec for testnet deployment
 **Depends on**: Phase 5 (needs E2E validation passing)
-**Research**: Unlikely (standard Docker Compose, existing Polkadot SDK patterns)
-**Plans**: TBD
+**Research**: Not required (standard Docker Compose, existing Polkadot SDK patterns)
+**Plans**: 1 (01-PLAN.md created 2026-01-11)
 
 Deployment artifacts:
-- docker-compose.yml for full stack
-- Genesis chain spec with test accounts
+- docker-compose.yml for full stack (multi-validator testnet)
+- Genesis chain spec with test accounts (nsn-testnet preset)
 - Environment templates (.env.example)
 - Bootstrap node configuration
 - Health check endpoints
+- Off-chain node Dockerfile
+- Signaling server container
+- Prometheus alerting rules
+- Grafana dashboards
+- Deployment documentation and scripts
 
 ## Progress
 
@@ -118,4 +123,6 @@ Deployment artifacts:
 | 3. Lane 1 Pipeline Stitching | 1/1 | ✅ Complete | 2026-01-08 |
 | 4. Viewer Web Extraction | 1/1 | ✅ Complete | 2026-01-09 |
 | 5. Multi-Node E2E Simulation | 1/1 | ✅ Complete | 2026-01-11 |
-| 6. Testnet Deployment Config | 0/TBD | Not started | - |
+| 6. Testnet Deployment Config | 1/1 | ✅ Complete | 2026-01-11 |
+
+**All phases complete!** NSN testnet is ready for deployment.
