@@ -8,9 +8,13 @@ use std::time::{Duration, Instant};
 use libp2p::PeerId;
 use thiserror::Error;
 
-use crate::mocks::{MockBftParticipant, MockChainClient, MockChunkPublisher, MockVortexClient};
+use crate::mocks::{
+    MockBftParticipant, MockChainClient, MockChunkPublisher, MockExecutionRunner,
+    MockResultSubmitter, MockVortexClient,
+};
 use crate::network::{LatencyProfile, SimulatedNetwork};
 use crate::{ByzantineBehavior, NodeRole};
+use nsn_lane1::{ExecutionRunnerTrait, ResultSubmitterTrait, TaskSpec};
 
 /// Errors from harness operations.
 #[derive(Debug, Error)]
@@ -62,24 +66,133 @@ pub struct DirectorSimState {
     pub chunks_published: Vec<u64>,
 }
 
-/// A simulated executor node.
+/// A simulated executor node with full Lane 1 mock stack.
 pub struct SimulatedExecutor {
     /// Peer ID
     pub peer_id: PeerId,
-    /// Mock chain client
+    /// Mock chain client (for event injection)
     pub chain: MockChainClient,
+    /// Mock execution runner (sidecar simulation)
+    pub runner: MockExecutionRunner,
+    /// Mock result submitter (chain submission tracking)
+    pub submitter: MockResultSubmitter,
     /// Current state
     pub state: ExecutorSimState,
+    /// Account ID for this executor
+    account_id: String,
+}
+
+impl SimulatedExecutor {
+    /// Create a new simulated executor with the given peer ID.
+    pub fn new(peer_id: PeerId) -> Self {
+        let account_id = format!("5Executor{:x}", peer_id.to_bytes()[0..4].iter().fold(0u32, |acc, &x| acc * 256 + x as u32));
+        Self {
+            peer_id,
+            chain: MockChainClient::new().with_account(account_id.clone()),
+            runner: MockExecutionRunner::new(),
+            submitter: MockResultSubmitter::new(),
+            state: ExecutorSimState::default(),
+            account_id,
+        }
+    }
+
+    /// Configure which tasks succeed execution.
+    pub fn with_success_tasks(mut self, task_ids: &[u64]) -> Self {
+        self.runner = self.runner.with_success(task_ids);
+        self
+    }
+
+    /// Configure execution latency.
+    pub fn with_execution_latency(mut self, latency: Duration) -> Self {
+        self.runner = self.runner.with_latency(latency);
+        self
+    }
+
+    /// Get the account ID for this executor.
+    pub fn account_id(&self) -> &str {
+        &self.account_id
+    }
+
+    /// Process a single task through the full execution pipeline.
+    ///
+    /// This simulates the complete TaskExecutorService flow:
+    /// 1. Submit start_task extrinsic
+    /// 2. Execute task via sidecar (MockExecutionRunner)
+    /// 3. On success: submit result to chain
+    /// 4. On failure: submit failure to chain
+    pub async fn process_task(&mut self, task_id: u64, model_id: &str, input_cid: &str) -> Result<(), String> {
+        // Track that we started this task
+        self.state.tasks_started.push(task_id);
+
+        // 1. Submit start_task extrinsic
+        self.submitter
+            .start_task(task_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 2. Build task spec and execute
+        let task_spec = TaskSpec {
+            id: task_id,
+            model_id: model_id.to_string(),
+            input_cid: input_cid.to_string(),
+            parameters: vec![],
+            timeout_ms: Some(300_000),
+        };
+
+        match self.runner.execute(&task_spec).await {
+            Ok(output) => {
+                // 3a. Submit result on success
+                self.submitter
+                    .submit_result(task_id, &output.output_cid, None)
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                self.state.tasks_completed.push(task_id);
+
+                // Update chain state
+                self.chain.state.completed_tasks.push(task_id);
+
+                Ok(())
+            }
+            Err(e) => {
+                // 3b. Submit failure
+                self.submitter
+                    .fail_task(task_id, &e.to_string())
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                self.state.tasks_failed.push(task_id);
+
+                // Update chain state
+                self.chain.state.failed_tasks.push(task_id);
+
+                Err(e.to_string())
+            }
+        }
+    }
+
+    /// Inject a task created event into this executor's chain.
+    pub fn inject_task_created(&mut self, task_id: u64, model_id: &str, input_cid: &str) {
+        self.chain.create_task(task_id, model_id, input_cid, 1000);
+    }
+
+    /// Inject a task assigned event (assigned to this executor).
+    pub fn inject_task_assigned(&mut self, task_id: u64) {
+        self.chain.assign_task_to_me(task_id);
+        self.state.tasks_assigned.push(task_id);
+    }
 }
 
 /// State tracking for simulated executor.
 #[derive(Debug, Clone, Default)]
 pub struct ExecutorSimState {
-    /// Tasks assigned
+    /// Tasks assigned to this executor
     pub tasks_assigned: Vec<u64>,
-    /// Tasks completed
+    /// Tasks where start_task was called
+    pub tasks_started: Vec<u64>,
+    /// Tasks completed successfully
     pub tasks_completed: Vec<u64>,
-    /// Tasks failed
+    /// Tasks that failed
     pub tasks_failed: Vec<u64>,
 }
 
@@ -187,15 +300,14 @@ impl TestHarness {
     /// Add an executor node.
     pub fn add_executor(&mut self) -> PeerId {
         let peer_id = self.network.add_node(NodeRole::Executor);
-
-        let executor = SimulatedExecutor {
-            peer_id,
-            chain: MockChainClient::new(),
-            state: ExecutorSimState::default(),
-        };
-
+        let executor = SimulatedExecutor::new(peer_id);
         self.executors.insert(peer_id, executor);
         peer_id
+    }
+
+    /// Get a mutable reference to an executor.
+    pub fn get_executor_mut(&mut self, peer: &PeerId) -> Option<&mut SimulatedExecutor> {
+        self.executors.get_mut(peer)
     }
 
     /// Remove a node from the simulation.
@@ -439,6 +551,149 @@ impl TestHarness {
     /// Reset metrics.
     pub fn reset_metrics(&mut self) {
         self.metrics = HarnessMetrics::default();
+    }
+
+    // ========== Lane 1 Executor Coordination Methods ==========
+
+    /// Configure which tasks succeed for all executors.
+    pub fn configure_task_success(&mut self, task_ids: &[u64]) {
+        for executor in self.executors.values_mut() {
+            for task_id in task_ids {
+                executor.runner.add_success_task(*task_id);
+            }
+        }
+    }
+
+    /// Run a task through an executor's full pipeline.
+    ///
+    /// # Arguments
+    /// * `executor_peer` - The executor to run the task on
+    /// * `task_id` - Task ID to execute
+    /// * `model_id` - Model to use for execution
+    /// * `input_cid` - Input data CID
+    pub async fn run_task(
+        &mut self,
+        executor_peer: PeerId,
+        task_id: u64,
+        model_id: &str,
+        input_cid: &str,
+    ) -> Result<(), String> {
+        if let Some(executor) = self.executors.get_mut(&executor_peer) {
+            let result = executor.process_task(task_id, model_id, input_cid).await;
+            if result.is_ok() {
+                self.metrics.tasks_completed += 1;
+            }
+            result
+        } else {
+            Err(format!("Executor {:?} not found", executor_peer))
+        }
+    }
+
+    /// Create and assign a task to an executor.
+    ///
+    /// Injects TaskCreated and TaskAssigned events into the executor's chain.
+    pub fn create_and_assign_task(
+        &mut self,
+        executor_peer: PeerId,
+        task_id: u64,
+        model_id: &str,
+        input_cid: &str,
+    ) -> Result<(), String> {
+        if let Some(executor) = self.executors.get_mut(&executor_peer) {
+            executor.inject_task_created(task_id, model_id, input_cid);
+            executor.inject_task_assigned(task_id);
+            Ok(())
+        } else {
+            Err(format!("Executor {:?} not found", executor_peer))
+        }
+    }
+
+    /// Run full task lifecycle: create -> assign -> execute -> submit.
+    ///
+    /// This is a convenience method that combines task creation, assignment,
+    /// and execution into a single call.
+    pub async fn run_task_lifecycle(
+        &mut self,
+        executor_peer: PeerId,
+        task_id: u64,
+        model_id: &str,
+    ) -> Result<(), String> {
+        let input_cid = format!("QmInput{}", task_id);
+
+        // Ensure task is configured for success
+        if let Some(executor) = self.executors.get_mut(&executor_peer) {
+            executor.runner.add_success_task(task_id);
+        }
+
+        // Create and assign
+        self.create_and_assign_task(executor_peer, task_id, model_id, &input_cid)?;
+
+        // Execute
+        self.run_task(executor_peer, task_id, model_id, &input_cid).await
+    }
+
+    /// Assert that an executor has a specific number of submissions.
+    pub fn assert_submissions(&self, executor_peer: &PeerId, expected_count: usize) {
+        if let Some(executor) = self.executors.get(executor_peer) {
+            let actual = executor.submitter.submission_count();
+            assert_eq!(
+                actual, expected_count,
+                "Expected {} submissions for executor {:?}, got {}",
+                expected_count, executor_peer, actual
+            );
+        } else {
+            panic!("Executor {:?} not found", executor_peer);
+        }
+    }
+
+    /// Assert that an executor completed a task.
+    pub fn assert_executor_completed(&self, executor_peer: &PeerId, task_id: u64) {
+        if let Some(executor) = self.executors.get(executor_peer) {
+            assert!(
+                executor.state.tasks_completed.contains(&task_id),
+                "Task {} not in completed list for executor {:?}. Completed: {:?}",
+                task_id,
+                executor_peer,
+                executor.state.tasks_completed
+            );
+        } else {
+            panic!("Executor {:?} not found", executor_peer);
+        }
+    }
+
+    /// Assert that an executor failed a task.
+    pub fn assert_executor_failed(&self, executor_peer: &PeerId, task_id: u64) {
+        if let Some(executor) = self.executors.get(executor_peer) {
+            assert!(
+                executor.state.tasks_failed.contains(&task_id),
+                "Task {} not in failed list for executor {:?}. Failed: {:?}",
+                task_id,
+                executor_peer,
+                executor.state.tasks_failed
+            );
+        } else {
+            panic!("Executor {:?} not found", executor_peer);
+        }
+    }
+
+    /// Assert that an executor started a task (called start_task extrinsic).
+    pub fn assert_executor_started(&self, executor_peer: &PeerId, task_id: u64) {
+        if let Some(executor) = self.executors.get(executor_peer) {
+            assert!(
+                executor.state.tasks_started.contains(&task_id),
+                "Task {} not in started list for executor {:?}. Started: {:?}",
+                task_id,
+                executor_peer,
+                executor.state.tasks_started
+            );
+            assert!(
+                executor.submitter.has_start_task(task_id),
+                "start_task extrinsic not submitted for task {}",
+                task_id
+            );
+        } else {
+            panic!("Executor {:?} not found", executor_peer);
+        }
     }
 }
 

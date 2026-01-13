@@ -3,10 +3,52 @@
 //! Wraps the sidecar gRPC client to execute tasks with progress tracking.
 
 use crate::error::{ExecutionError, ExecutionResult};
+use async_trait::async_trait;
 use nsn_sidecar::{SidecarClient, SidecarClientConfig};
 use nsn_types::TaskStatus;
 use std::time::Duration;
 use tracing::{debug, info, warn};
+
+/// Trait for task execution via sidecar.
+///
+/// This trait enables mock implementations for testing without requiring
+/// a real sidecar connection.
+#[async_trait]
+pub trait ExecutionRunnerTrait: Send + Sync {
+    /// Connect to the execution backend.
+    async fn connect(&mut self) -> ExecutionResult<()>;
+
+    /// Disconnect from the execution backend.
+    fn disconnect(&mut self);
+
+    /// Check if connected to the backend.
+    fn is_connected(&self) -> bool;
+
+    /// Execute a task.
+    ///
+    /// # Arguments
+    /// * `task` - Task specification to execute
+    ///
+    /// # Returns
+    /// Execution result with output CID and timing information.
+    async fn execute(&mut self, task: &TaskSpec) -> ExecutionResult<ExecutionOutput>;
+
+    /// Poll task status.
+    ///
+    /// # Arguments
+    /// * `task_id` - Task to check status for
+    ///
+    /// # Returns
+    /// Current task progress and status.
+    async fn poll_status(&mut self, task_id: u64) -> ExecutionResult<TaskProgress>;
+
+    /// Cancel a running task.
+    ///
+    /// # Arguments
+    /// * `task_id` - Task to cancel
+    /// * `reason` - Cancellation reason
+    async fn cancel(&mut self, task_id: u64, reason: &str) -> ExecutionResult<()>;
+}
 
 /// Configuration for the execution runner.
 #[derive(Debug, Clone)]
@@ -253,6 +295,33 @@ impl ExecutionRunner {
         } else {
             Err(ExecutionError::SidecarFailed(response.error_message))
         }
+    }
+}
+
+#[async_trait]
+impl ExecutionRunnerTrait for ExecutionRunner {
+    async fn connect(&mut self) -> ExecutionResult<()> {
+        self.connect().await
+    }
+
+    fn disconnect(&mut self) {
+        self.disconnect()
+    }
+
+    fn is_connected(&self) -> bool {
+        self.is_connected()
+    }
+
+    async fn execute(&mut self, task: &TaskSpec) -> ExecutionResult<ExecutionOutput> {
+        self.execute(task).await
+    }
+
+    async fn poll_status(&mut self, task_id: u64) -> ExecutionResult<TaskProgress> {
+        self.poll_status(task_id).await
+    }
+
+    async fn cancel(&mut self, task_id: u64, reason: &str) -> ExecutionResult<()> {
+        self.cancel(task_id, reason).await
     }
 }
 

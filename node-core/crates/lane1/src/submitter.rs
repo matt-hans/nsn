@@ -3,9 +3,51 @@
 //! Submits execution results and status updates to the NSN chain.
 
 use crate::error::{SubmissionError, SubmissionResult};
+use async_trait::async_trait;
 use sp_core::sr25519;
 use subxt::{dynamic::tx, dynamic::Value, OnlineClient, PolkadotConfig};
 use tracing::{debug, info, warn};
+
+/// Trait for submitting results to chain.
+///
+/// This trait enables mock implementations for testing without requiring
+/// a real chain connection.
+#[async_trait]
+pub trait ResultSubmitterTrait: Send + Sync {
+    /// Connect to the chain.
+    async fn connect(&mut self) -> SubmissionResult<()>;
+
+    /// Disconnect from the chain.
+    fn disconnect(&mut self);
+
+    /// Check if connected to chain.
+    fn is_connected(&self) -> bool;
+
+    /// Notify chain that we're starting task execution.
+    ///
+    /// Calls `NsnTaskMarket::start_task(task_id)` extrinsic.
+    async fn start_task(&mut self, task_id: u64) -> SubmissionResult<()>;
+
+    /// Submit task execution result to chain.
+    ///
+    /// Calls `NsnTaskMarket::submit_result(task_id, output_cid, attestation_cid)` extrinsic.
+    async fn submit_result(
+        &mut self,
+        task_id: u64,
+        output_cid: &str,
+        attestation_cid: Option<&str>,
+    ) -> SubmissionResult<()>;
+
+    /// Report task execution failure to chain.
+    ///
+    /// Calls `NsnTaskMarket::fail_task(task_id, reason)` extrinsic.
+    async fn fail_task(&mut self, task_id: u64, reason: &str) -> SubmissionResult<()>;
+
+    /// Cancel a task on chain.
+    ///
+    /// Calls `NsnTaskMarket::cancel_task(task_id, reason)` extrinsic.
+    async fn cancel_task(&mut self, task_id: u64, reason: &str) -> SubmissionResult<()>;
+}
 
 /// Configuration for the result submitter.
 #[derive(Debug, Clone)]
@@ -232,6 +274,42 @@ impl ResultSubmitter {
 
         info!(task_id = task_id, "cancel_task submitted successfully");
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ResultSubmitterTrait for ResultSubmitter {
+    async fn connect(&mut self) -> SubmissionResult<()> {
+        self.connect().await
+    }
+
+    fn disconnect(&mut self) {
+        self.disconnect()
+    }
+
+    fn is_connected(&self) -> bool {
+        self.is_connected()
+    }
+
+    async fn start_task(&mut self, task_id: u64) -> SubmissionResult<()> {
+        self.start_task(task_id).await
+    }
+
+    async fn submit_result(
+        &mut self,
+        task_id: u64,
+        output_cid: &str,
+        attestation_cid: Option<&str>,
+    ) -> SubmissionResult<()> {
+        self.submit_result(task_id, output_cid, attestation_cid).await
+    }
+
+    async fn fail_task(&mut self, task_id: u64, reason: &str) -> SubmissionResult<()> {
+        self.fail_task(task_id, reason).await
+    }
+
+    async fn cancel_task(&mut self, task_id: u64, reason: &str) -> SubmissionResult<()> {
+        self.cancel_task(task_id, reason).await
     }
 }
 

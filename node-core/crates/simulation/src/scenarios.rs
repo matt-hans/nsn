@@ -523,25 +523,33 @@ async fn run_task_lifecycle(harness: &mut TestHarness) -> ScenarioResult {
     // Setup: 3 executors
     let executors: Vec<_> = (0..3).map(|_| harness.add_executor()).collect();
 
-    // Simulate task lifecycle
-    if let Some(executor) = harness.executors.get_mut(&executors[0]) {
-        // Task created
-        executor.chain.create_task(1, "model-1", "QmInput", 1000);
+    // Configure task 1 for success
+    harness.configure_task_success(&[1]);
 
-        // Task assigned
-        executor.chain.assign_task_to_me(1);
-        executor.state.tasks_assigned.push(1);
+    // Run full task lifecycle through real executor pipeline:
+    // 1. Create task event
+    // 2. Assign task to executor
+    // 3. Execute via MockExecutionRunner
+    // 4. Submit result via MockResultSubmitter
+    match harness.run_task_lifecycle(executors[0], 1, "flux-schnell").await {
+        Ok(()) => {
+            result.tasks_completed = 1;
 
-        // Task executed (mock)
-        executor.chain.start_task(1).await.unwrap();
-        executor
-            .chain
-            .submit_result(1, "QmOutput".to_string())
-            .await
-            .unwrap();
-        executor.state.tasks_completed.push(1);
+            // Verify executor state
+            if let Some(executor) = harness.get_executor(&executors[0]) {
+                // Verify task was assigned
+                assert!(executor.state.tasks_assigned.contains(&1));
 
-        result.tasks_completed = 1;
+                // Verify submissions were made (start_task + submit_result = 2)
+                assert_eq!(executor.submitter.submission_count(), 2);
+
+                // Verify task was completed
+                assert!(executor.state.tasks_completed.contains(&1));
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Task lifecycle failed");
+        }
     }
 
     result.duration = start.elapsed();
@@ -556,15 +564,18 @@ async fn run_lane_switching(harness: &mut TestHarness) -> ScenarioResult {
     let directors: Vec<_> = (0..5).map(|_| harness.add_director()).collect();
     let executors: Vec<_> = (0..3).map(|_| harness.add_executor()).collect();
 
+    // Configure both Lane 0 and Lane 1 success conditions
     harness.configure_slot_success(&[1]);
+    harness.configure_task_success(&[1]);
 
     // Start with Lane 1 active
     harness.chain_state.state.set_active_lane(1);
 
-    // Create task on Lane 1
-    if let Some(executor) = harness.executors.get_mut(&executors[0]) {
-        executor.chain.create_task(1, "model-1", "QmInput", 1000);
-        executor.state.tasks_assigned.push(1);
+    // Create and assign task on Lane 1 (but don't execute yet)
+    if let Err(e) = harness.create_and_assign_task(executors[0], 1, "model-1", "QmInput1") {
+        tracing::error!(error = %e, "Failed to create and assign task");
+        result.duration = start.elapsed();
+        return result;
     }
 
     // Switch to Lane 0 (epoch starts)
@@ -580,16 +591,30 @@ async fn run_lane_switching(harness: &mut TestHarness) -> ScenarioResult {
     harness.emit_epoch_ended();
     harness.chain_state.state.set_active_lane(1);
 
-    // Complete Lane 1 task
-    if let Some(executor) = harness.executors.get_mut(&executors[0]) {
-        executor.chain.start_task(1).await.unwrap();
-        executor
-            .chain
-            .submit_result(1, "QmOutput".to_string())
-            .await
-            .unwrap();
-        executor.state.tasks_completed.push(1);
-        result.tasks_completed = 1;
+    // Complete Lane 1 task through the real execution pipeline
+    match harness.run_task(executors[0], 1, "model-1", "QmInput1").await {
+        Ok(()) => {
+            result.tasks_completed = 1;
+
+            // Verify executor state through submitter tracking
+            if let Some(executor) = harness.executors.get(&executors[0]) {
+                // Verify submissions were made (start_task + submit_result = 2)
+                assert_eq!(
+                    executor.submitter.submission_count(),
+                    2,
+                    "Expected 2 submissions (start_task + submit_result)"
+                );
+
+                // Verify task was completed
+                assert!(
+                    executor.state.tasks_completed.contains(&1),
+                    "Task 1 should be in completed state"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Lane 1 task execution failed after lane switch");
+        }
     }
 
     for peer in &directors {

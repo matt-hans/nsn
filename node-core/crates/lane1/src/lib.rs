@@ -80,8 +80,13 @@ pub mod runner;
 pub mod submitter;
 
 // Re-export main types
-pub use error::{ExecutionError, Lane1Error, Lane1Result, ListenerError, SubmissionError};
+pub use error::{
+    ExecutionError, ExecutionResult, Lane1Error, Lane1Result, ListenerError, ListenerResult,
+    SubmissionError, SubmissionResult,
+};
 pub use executor::{ExecutorConfig, ExecutorState, TaskExecutorService};
 pub use listener::{ChainListener, ListenerConfig, TaskEvent};
-pub use runner::{ExecutionOutput, ExecutionRunner, RunnerConfig, TaskProgress, TaskSpec};
-pub use submitter::{ResultSubmitter, SubmitterConfig};
+pub use runner::{
+    ExecutionOutput, ExecutionRunner, ExecutionRunnerTrait, RunnerConfig, TaskProgress, TaskSpec,
+};
+pub use submitter::{ResultSubmitter, ResultSubmitterTrait, SubmitterConfig};
