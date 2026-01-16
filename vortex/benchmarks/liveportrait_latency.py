@@ -94,6 +94,8 @@ def load_model(device: str, precision: str):
 
     logger.info(f"Loading LivePortrait model (device={device}, precision={precision})")
     model = load_liveportrait(device=device, precision=precision)
+    if getattr(model, "backend_name", "") != "cli":
+        logger.warning("LivePortrait CLI backend not available; running fallback warper")
     logger.info("Model loaded successfully")
     return model
 

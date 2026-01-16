@@ -284,6 +284,36 @@ class TestVortexPipelineGeneration:
         time_diff = abs(audio_start - actor_start)
         assert time_diff < 0.01, f"Tasks not parallel (diff: {time_diff}s)"
 
+    @patch("vortex.pipeline.ModelRegistry")
+    @patch("vortex.pipeline.VRAMMonitor")
+    async def test_generate_video_uses_recipe_expression(
+        self, mock_monitor_cls, mock_registry_cls
+    ):
+        """Test LivePortrait integration uses recipe expression settings."""
+        config_path = Path(__file__).parent.parent.parent / "config.yaml"
+        pipeline = VortexPipeline(config_path=str(config_path), device="cpu")
+
+        liveportrait = MagicMock()
+        liveportrait.animate.return_value = pipeline.video_buffer
+        mock_registry_cls.return_value.get_model.return_value = liveportrait
+
+        recipe = {
+            "visual_track": {
+                "expression_sequence": ["neutral", "excited"],
+                "expression_preset": "calm",
+            },
+            "slot_params": {"duration_sec": 45},
+        }
+
+        result = await pipeline._generate_video(
+            pipeline.actor_buffer, pipeline.audio_buffer, recipe
+        )
+
+        assert result is pipeline.video_buffer
+        _, kwargs = liveportrait.animate.call_args
+        assert kwargs["expression_sequence"] == ["neutral", "excited"]
+        assert kwargs["expression_preset"] == "calm"
+
 
 class TestGenerationResult:
     """Test GenerationResult dataclass."""

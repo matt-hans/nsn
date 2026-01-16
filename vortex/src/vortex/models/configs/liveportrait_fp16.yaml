@@ -4,7 +4,7 @@
 model:
   name: "liveportrait-base-fp16"
   source: "huggingface"  # or "github" for custom builds
-  repo_id: "liveportrait/base-fp16"  # Hypothetical Hugging Face model ID
+  repo_id: "KwaiVGI/LivePortrait"
 
   # Precision settings
   precision: "fp16"  # torch.float16
@@ -119,9 +119,21 @@ transitions:
 # Model weights cache
 cache:
   directory: "~/.cache/vortex/liveportrait"
-  weights_filename: "liveportrait_fp16.safetensors"
+  weights_filename: "pretrained_weights"
   tensorrt_filename: "liveportrait_trt.engine"
-  download_source: "https://huggingface.co/liveportrait/base-fp16/resolve/main/model.safetensors"
+  download_source: "https://huggingface.co/KwaiVGI/LivePortrait"
+
+# Runtime integration settings
+runtime:
+  backend: "auto"  # auto, cli, fallback
+  repo_path: "~/.cache/vortex/liveportrait/LivePortrait"
+  driving_source: null  # Optional driving video (.mp4) or motion template (.pkl)
+  output_dirs:
+    - "~/.cache/vortex/liveportrait/outputs"
+  animation_region: "lip"
+  crop_driving_video: false
+  relative_motion: true
+  use_output_dir_flag: false
 
 # Performance targets
 performance:

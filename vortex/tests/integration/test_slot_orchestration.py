@@ -57,7 +57,7 @@ def mock_pipeline():
         return torch.randn(1, 3, 512, 512, device="cpu")
 
     # Mock video generation (8s)
-    async def mock_video(image, audio):
+    async def mock_video(image, audio, recipe):
         await asyncio.sleep(0.08)  # 80ms scaled to simulate 8s
         return torch.randn(1080, 3, 512, 512, device="cpu")
 

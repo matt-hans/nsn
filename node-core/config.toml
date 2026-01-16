@@ -1,0 +1,23 @@
+# NSN Node Development Configuration
+# This config disables bootstrap signature verification for local testing
+
+[bootstrap]
+# No DNS seeds in dev mode
+dns_seeds = []
+
+# No HTTP endpoints in dev mode
+http_endpoints = []
+
+# Disable signature requirement for dev testing
+require_signed_manifests = false
+
+# Minimum peers before DHT walk
+min_peers_for_dht = 1
+
+[bootstrap.signer_config]
+# Use static (empty) signer list - signatures not required
+source = "static"
+trusted_signers_hex = []
+revoked_signers_hex = []
+quorum = 0
+chain_timeout = "5s"

@@ -1,7 +1,7 @@
 use crate::{
-    AccountId, Balance, BalancesConfig, CollatorSelectionConfig, ParachainInfoConfig,
-    PolkadotXcmConfig, RuntimeGenesisConfig, SessionConfig, SessionKeys, SudoConfig,
-    EXISTENTIAL_DEPOSIT, NSN,
+    AccountId, Balance, BalancesConfig, CollatorSelectionConfig, NsnBootstrapConfig,
+    ParachainInfoConfig, PolkadotXcmConfig, RuntimeGenesisConfig, SessionConfig, SessionKeys,
+    SudoConfig, EXISTENTIAL_DEPOSIT, NSN,
 };
 
 use alloc::{vec, vec::Vec};
@@ -68,6 +68,21 @@ fn testnet_genesis(
             safe_xcm_version: Some(SAFE_XCM_VERSION)
         },
         sudo: SudoConfig { key: Some(root) },
+        // NSN Bootstrap: Configure trusted signers for off-chain node verification
+        // Using Alice's Sr25519 public key as the initial trusted signer
+        nsn_bootstrap: NsnBootstrapConfig {
+            trusted_signers: vec![
+                // Alice's Sr25519 public key (32 bytes)
+                vec![
+                    0xd4, 0x35, 0x93, 0xc7, 0x15, 0xfd, 0xd3, 0x1c,
+                    0x61, 0x14, 0x1a, 0xbd, 0x04, 0xa9, 0x9f, 0xd6,
+                    0x82, 0x2c, 0x85, 0x58, 0x85, 0x4c, 0xcd, 0xe3,
+                    0x9a, 0x56, 0x84, 0xe7, 0xa5, 0x6d, 0xa2, 0x7d,
+                ],
+            ],
+            signer_quorum: 1,
+            _marker: core::marker::PhantomData,
+        },
     })
 }
 

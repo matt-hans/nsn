@@ -23,6 +23,7 @@ jsonrpsee = { features = ["server"], workspace = true }
 log = { workspace = true, default-features = true }
 nsn-runtime = { workspace = true }
 polkadot-sdk = { workspace = true, features = ["node"] }
+polkadot-cli = { workspace = true, features = ["rococo-native"] }
 prometheus-endpoint = { workspace = true, default-features = true }
 serde = { features = ["derive"], workspace = true, default-features = true }
 

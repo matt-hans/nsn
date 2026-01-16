@@ -28,6 +28,7 @@ use libp2p::kad::{
     Event as KademliaEvent, GetClosestPeersError, GetProvidersError, GetProvidersOk, QueryId,
     QueryResult, RecordKey,
 };
+use libp2p::mdns;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{identity::Keypair, Multiaddr, PeerId, Swarm, SwarmBuilder};
 use prometheus::{Encoder, TextEncoder};
@@ -262,39 +263,45 @@ impl P2pService {
             oracle_clone.sync_loop().await;
         });
 
-        // Resolve trusted bootstrap signers
-        let trusted_signers = if config.bootstrap.require_signed_manifests
-            || !config
-                .bootstrap
-                .signer_config
-                .trusted_signers_hex
-                .is_empty()
-        {
-            resolve_trusted_signers(&config.bootstrap.signer_config, &rpc_url_for_signers)
-                .await
-                .map_err(|e| ServiceError::Bootstrap(e.to_string()))?
+        // Skip bootstrap for local testnet (using mDNS for peer discovery)
+        let bootstrap_targets = if std::env::var("NSN_LOCAL_TESTNET").is_ok() {
+            info!("NSN_LOCAL_TESTNET set: skipping bootstrap protocol, using mDNS for local discovery");
+            Vec::new()
         } else {
-            let temp_keypair = Keypair::generate_ed25519();
-            let mut active = HashSet::new();
-            active.insert(temp_keypair.public());
-            TrustedSignerSet::new(active, HashSet::new(), 1)
-                .map_err(|e| ServiceError::Bootstrap(e.to_string()))?
-        };
+            // Resolve trusted bootstrap signers
+            let trusted_signers = if config.bootstrap.require_signed_manifests
+                || !config
+                    .bootstrap
+                    .signer_config
+                    .trusted_signers_hex
+                    .is_empty()
+            {
+                resolve_trusted_signers(&config.bootstrap.signer_config, &rpc_url_for_signers)
+                    .await
+                    .map_err(|e| ServiceError::Bootstrap(e.to_string()))?
+            } else {
+                let temp_keypair = Keypair::generate_ed25519();
+                let mut active = HashSet::new();
+                active.insert(temp_keypair.public());
+                TrustedSignerSet::new(active, HashSet::new(), 1)
+                    .map_err(|e| ServiceError::Bootstrap(e.to_string()))?
+            };
 
-        // Discover bootstrap peers
-        let bootstrap_protocol = BootstrapProtocol::new(
-            config.bootstrap.clone(),
-            trusted_signers,
-            Some(metrics.clone()),
-        );
-        let bootstrap_peers = match bootstrap_protocol.discover_peers().await {
-            Ok(peers) => peers,
-            Err(err) => {
-                warn!("Bootstrap discovery failed: {}", err);
-                Vec::new()
-            }
+            // Discover bootstrap peers
+            let bootstrap_protocol = BootstrapProtocol::new(
+                config.bootstrap.clone(),
+                trusted_signers,
+                Some(metrics.clone()),
+            );
+            let bootstrap_peers = match bootstrap_protocol.discover_peers().await {
+                Ok(peers) => peers,
+                Err(err) => {
+                    warn!("Bootstrap discovery failed: {}", err);
+                    Vec::new()
+                }
+            };
+            collect_bootstrap_targets(&bootstrap_peers)
         };
-        let bootstrap_targets = collect_bootstrap_targets(&bootstrap_peers);
 
         // Create GossipSub behavior
         let mut gossipsub = create_gossipsub_behaviour(&keypair, reputation_oracle.clone())?;
@@ -310,8 +317,13 @@ impl P2pService {
             .collect();
         let kademlia = build_kademlia(local_peer_id, &bootstrap_addrs);
 
-        // Create NSN behaviour with GossipSub and Kademlia
-        let behaviour = NsnBehaviour::new(gossipsub, kademlia);
+        // Create mDNS behavior for local network peer discovery
+        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)
+            .map_err(|e| ServiceError::Swarm(format!("Failed to create mDNS: {}", e)))?;
+        info!("mDNS local discovery enabled");
+
+        // Create NSN behaviour with GossipSub, Kademlia, and mDNS
+        let behaviour = NsnBehaviour::new(gossipsub, kademlia, mdns);
 
         // Build swarm with QUIC transport
         let mut swarm = SwarmBuilder::with_existing_identity(keypair)
@@ -458,6 +470,29 @@ impl P2pService {
                         }
                         SwarmEvent::Behaviour(super::behaviour::NsnBehaviourEvent::Gossipsub(gossipsub_event)) => {
                             self.handle_gossipsub_event(gossipsub_event).await;
+                        }
+                        SwarmEvent::Behaviour(super::behaviour::NsnBehaviourEvent::Mdns(mdns_event)) => {
+                            match mdns_event {
+                                libp2p::mdns::Event::Discovered(peers) => {
+                                    for (peer_id, addr) in peers {
+                                        info!("mDNS discovered peer {} at {}", peer_id, addr);
+                                        // Add to Kademlia routing table
+                                        self.swarm
+                                            .behaviour_mut()
+                                            .kademlia
+                                            .add_address(&peer_id, addr.clone());
+                                        // Dial the discovered peer
+                                        if let Err(e) = self.swarm.dial(addr.clone()) {
+                                            debug!("Failed to dial mDNS peer {}: {}", peer_id, e);
+                                        }
+                                    }
+                                }
+                                libp2p::mdns::Event::Expired(peers) => {
+                                    for (peer_id, addr) in peers {
+                                        debug!("mDNS peer expired: {} at {}", peer_id, addr);
+                                    }
+                                }
+                            }
                         }
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, connection_id, num_established, .. } => {
                             let addr = endpoint.get_remote_address().clone();

@@ -1,46 +1,48 @@
-"""Vortex core pipeline - Static VRAM manager and generation orchestration.
+"""Vortex core pipeline - Modular video generation orchestration.
 
-This module implements the foundational VortexPipeline class that:
-- Loads all AI models once at initialization (static VRAM residency)
-- Pre-allocates output buffers to prevent fragmentation
-- Monitors VRAM pressure with soft/hard limits
-- Orchestrates async generation (parallel audio + actor, sequential video)
+This module implements the VortexPipeline class that:
+- Loads pluggable video renderers via RendererRegistry
+- Orchestrates async generation through the DeterministicVideoRenderer interface
+- Supports modular Lane 0 video generation backends
 - Returns GenerationResult with video frames, audio, CLIP embedding, metadata
 
-CRITICAL: All models remain loaded in VRAM at all times. No swapping.
-Total VRAM budget: 11.8GB (fits RTX 3060 12GB with 500MB safety margin).
+The pipeline delegates all model loading, VRAM management, and generation logic
+to the configured renderer. This enables network users to run alternative video
+generation backends (e.g., StableVideoDiffusion, CogVideoX) that implement the
+DeterministicVideoRenderer interface.
+
+Example:
+    >>> pipeline = await VortexPipeline.create(config_path="config.yaml")
+    >>> result = await pipeline.generate_slot(recipe=recipe, slot_id=12345)
+    >>> print(f"Generated in {result.generation_time_ms}ms")
 """
 
-import asyncio
+from __future__ import annotations
+
 import logging
+import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import torch
-import torch.nn as nn
 import yaml
 
-from vortex.models import ModelName, load_model
-from vortex.utils.memory import get_current_vram_usage, get_vram_stats, log_vram_snapshot
+from vortex.renderers import (
+    DeterministicVideoRenderer,
+    RendererNotFoundError,
+    RendererPolicy,
+    RendererRegistry,
+    RenderResult,
+    policy_from_config,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class VortexInitializationError(Exception):
-    """Raised when pipeline initialization fails (e.g., CUDA OOM)."""
-
-    pass
-
-
-class MemoryPressureWarning(Warning):
-    """Raised when VRAM usage exceeds soft limit (11.0GB)."""
-
-    pass
-
-
-class MemoryPressureError(Exception):
-    """Raised when VRAM usage exceeds hard limit (11.5GB)."""
+    """Raised when pipeline initialization fails."""
 
     pass
 
@@ -50,13 +52,14 @@ class GenerationResult:
     """Result of a single slot generation.
 
     Attributes:
-        video_frames: Tensor of shape (num_frames, height, width, channels)
+        video_frames: Tensor of shape (num_frames, channels, height, width)
         audio_waveform: Tensor of shape (num_samples,)
         clip_embedding: Combined CLIP embedding from dual ensemble
         generation_time_ms: Total time from start to completion (milliseconds)
         slot_id: Unique slot identifier
         success: Whether generation completed successfully
         error_msg: Error message if success=False
+        determinism_proof: Hash for BFT consensus verification (if successful)
     """
 
     video_frames: torch.Tensor
@@ -66,410 +69,260 @@ class GenerationResult:
     slot_id: int
     success: bool = True
     error_msg: str | None = None
-
-
-class ModelRegistry:
-    """Registry for loaded models with get_model() interface.
-
-    Manages the lifecycle of all 5 models (Flux, LivePortrait, Kokoro, CLIP×2).
-    Models are loaded once and never unloaded (static VRAM residency).
-
-    Example:
-        >>> registry = ModelRegistry(device="cuda:0")
-        >>> flux = registry.get_model("flux")
-        >>> clip_b = registry.get_model("clip_b")
-    """
-
-    def __init__(self, device: str, precision_overrides: dict[ModelName, str] | None = None):
-        """Initialize model registry.
-
-        Args:
-            device: Target device (e.g., "cuda:0", "cpu")
-            precision_overrides: Optional precision overrides per model
-        """
-        self.device = device
-        self.precision_overrides = precision_overrides or {}
-        self._models: dict[ModelName, nn.Module] = {}
-        self._load_all_models()
-
-    def _load_all_models(self) -> None:
-        """Load all 5 models into registry.
-
-        Models loaded: flux, liveportrait, kokoro, clip_b, clip_l
-        Total VRAM: ~10.8GB (6.0 + 3.5 + 0.4 + 0.3 + 0.6 + 1.0 overhead)
-
-        Raises:
-            VortexInitializationError: If CUDA OOM occurs during loading
-        """
-        model_names: list[ModelName] = ["flux", "liveportrait", "kokoro", "clip_b", "clip_l"]
-
-        try:
-            for name in model_names:
-                logger.info(f"Loading model: {name}")
-                precision = self.precision_overrides.get(name)
-                model = load_model(name, device=self.device, precision=precision)
-                self._models[name] = model
-                log_vram_snapshot(f"after_{name}_load")
-
-            logger.info(
-                "All models loaded successfully",
-                extra={
-                    "total_models": len(self._models),
-                    "vram_gb": get_vram_stats()["allocated_gb"],
-                },
-            )
-
-        except torch.cuda.OutOfMemoryError as e:
-            stats = get_vram_stats()
-            error_msg = (
-                f"CUDA OOM during model loading. "
-                f"Allocated: {stats['allocated_gb']:.2f}GB, "
-                f"Total: {stats['total_gb']:.2f}GB. "
-                f"Remediation: Upgrade to GPU with >=12GB VRAM (RTX 3060 minimum)."
-            )
-            logger.error(error_msg, exc_info=True)
-            # Clean up partial models
-            self._models.clear()
-            raise VortexInitializationError(error_msg) from e
-
-    def get_model(self, name: ModelName) -> nn.Module:
-        """Get a loaded model by name.
-
-        Args:
-            name: Model name (flux, liveportrait, kokoro, clip_b, clip_l)
-
-        Returns:
-            nn.Module: The requested model
-
-        Raises:
-            KeyError: If model name is invalid or not loaded
-
-        Example:
-            >>> flux = registry.get_model("flux")
-            >>> output = flux(input_tensor)
-        """
-        if name not in self._models:
-            raise KeyError(
-                f"Model '{name}' not found in registry. "
-                f"Available: {list(self._models.keys())}"
-            )
-        return self._models[name]
-
-    def __contains__(self, name: ModelName) -> bool:
-        """Check if model is loaded in registry."""
-        return name in self._models
-
-
-class VRAMMonitor:
-    """VRAM pressure monitoring with soft/hard limits.
-
-    Tracks VRAM usage and emits warnings/errors when limits are exceeded:
-    - Soft limit (11.0GB): Log warning, continue
-    - Hard limit (11.5GB): Raise MemoryPressureError
-
-    Example:
-        >>> monitor = VRAMMonitor(soft_limit_gb=11.0, hard_limit_gb=11.5)
-        >>> monitor.check()  # May raise MemoryPressureError
-    """
-
-    def __init__(self, soft_limit_gb: float = 11.0, hard_limit_gb: float = 11.5):
-        """Initialize VRAM monitor.
-
-        Args:
-            soft_limit_gb: Soft limit in GB (warning threshold)
-            hard_limit_gb: Hard limit in GB (error threshold)
-        """
-        self.soft_limit_bytes = int(soft_limit_gb * 1e9)
-        self.hard_limit_bytes = int(hard_limit_gb * 1e9)
-        self._warning_emitted = False
-
-    def check(self) -> None:
-        """Check current VRAM usage against limits.
-
-        Emits MemoryPressureWarning if soft limit exceeded (once per instance).
-        Raises MemoryPressureError if hard limit exceeded.
-
-        Raises:
-            MemoryPressureError: If VRAM usage exceeds hard limit
-
-        Example:
-            >>> monitor.check()  # May log warning or raise error
-        """
-        current_usage = get_current_vram_usage()
-        stats = get_vram_stats()
-
-        if current_usage > self.hard_limit_bytes:
-            error_msg = (
-                f"VRAM hard limit exceeded: {stats['allocated_gb']:.2f}GB "
-                f"> {self.hard_limit_bytes / 1e9:.2f}GB. "
-                f"Generation aborted to prevent CUDA OOM."
-            )
-            logger.error(error_msg, extra=stats)
-            raise MemoryPressureError(error_msg)
-
-        if current_usage > self.soft_limit_bytes and not self._warning_emitted:
-            logger.warning(
-                "VRAM soft limit exceeded: %.2fGB > %.2fGB. "
-                "Monitor for OOM. Consider reducing model size or batch size.",
-                stats["allocated_gb"],
-                self.soft_limit_bytes / 1e9,
-                extra=stats,
-            )
-            self._warning_emitted = True
-
-    def reset_warning(self) -> None:
-        """Reset warning flag (for testing or after memory cleanup)."""
-        self._warning_emitted = False
+    determinism_proof: bytes = b""
 
 
 class VortexPipeline:
-    """Core Vortex pipeline - Static VRAM manager and generation orchestration.
+    """Core Vortex pipeline - Modular video generation orchestration.
 
-    Loads all models once, pre-allocates buffers, orchestrates async generation.
-    This is the main interface for video slot generation.
-
-    VRAM Budget:
-        - Flux-Schnell (NF4): ~6.0 GB
-        - LivePortrait (FP16): ~3.5 GB
-        - Kokoro-82M (FP32): ~0.4 GB
-        - CLIP-ViT-B-32 (INT8): ~0.3 GB
-        - CLIP-ViT-L-14 (INT8): ~0.6 GB
-        - Buffers + Overhead: ~1.0 GB
-        - TOTAL: ~11.8 GB
+    Uses the RendererRegistry to load and manage DeterministicVideoRenderer
+    implementations. All model loading, VRAM management, and generation logic
+    is delegated to the configured renderer.
 
     Example:
-        >>> pipeline = VortexPipeline(config_path="config.yaml")
+        >>> pipeline = await VortexPipeline.create(config_path="config.yaml")
         >>> result = await pipeline.generate_slot(recipe=recipe, slot_id=12345)
         >>> print(f"Generated in {result.generation_time_ms}ms")
+
+    Alternative renderers can be used by changing the 'renderers.default' config:
+        renderers:
+          default: "stable-video-diffusion"
     """
 
-    def __init__(self, config_path: str | None = None, device: str | None = None):
-        """Initialize Vortex pipeline.
+    def __init__(
+        self,
+        config: dict[str, Any],
+        renderer: DeterministicVideoRenderer,
+        device: str,
+    ):
+        """Initialize pipeline with config and renderer.
+
+        Use VortexPipeline.create() for async initialization instead.
+
+        Args:
+            config: Loaded configuration dict
+            renderer: Initialized DeterministicVideoRenderer
+            device: Target device string
+        """
+        self.config = config
+        self.renderer = renderer
+        self.device = device
+        self._initialized = True
+
+    @classmethod
+    async def create(
+        cls,
+        config_path: str | None = None,
+        device: str | None = None,
+        renderer_name: str | None = None,
+    ) -> VortexPipeline:
+        """Create and initialize a VortexPipeline.
+
+        This is the recommended way to create a pipeline. It:
+        1. Loads configuration from config.yaml
+        2. Creates a RendererRegistry from the renderers directory
+        3. Loads and initializes the specified renderer
+        4. Returns a ready-to-use pipeline
 
         Args:
             config_path: Path to config.yaml (default: vortex/config.yaml)
             device: Override device from config (e.g., "cpu" for testing)
+            renderer_name: Override renderer from config
+
+        Returns:
+            Initialized VortexPipeline ready for generation
 
         Raises:
-            VortexInitializationError: If initialization fails (CUDA OOM, etc.)
+            VortexInitializationError: If initialization fails
+            RendererNotFoundError: If specified renderer not found
+
+        Example:
+            >>> pipeline = await VortexPipeline.create()
+            >>> result = await pipeline.generate_slot(recipe, slot_id=1)
         """
         # Load configuration
         if config_path is None:
             config_path = str(Path(__file__).parent.parent.parent / "config.yaml")
-        with open(config_path) as f:
-            self.config = yaml.safe_load(f)
 
-        # Device setup
-        self.device = device or self.config["device"]["name"]
-        logger.info(f"Initializing Vortex pipeline on device: {self.device}")
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+        except Exception as e:
+            raise VortexInitializationError(f"Failed to load config: {e}") from e
 
-        # Model registry (loads all models once)
-        precision_overrides = self.config["models"]["precision"]
-        self.model_registry = ModelRegistry(
-            device=self.device, precision_overrides=precision_overrides
+        # Determine device
+        device = device or config.get("device", {}).get("name", "cuda:0")
+        logger.info(f"Initializing Vortex pipeline on device: {device}")
+
+        # Load renderer registry
+        renderers_config = config.get("renderers", {})
+        base_path = Path(__file__).parent
+
+        policy = policy_from_config(renderers_config.get("policy"))
+        registry = RendererRegistry.from_config(
+            renderers_config,
+            base_path,
+            policy=policy,
+            load_renderers=True,
         )
 
-        # VRAM monitor
-        self.vram_monitor = VRAMMonitor(
-            soft_limit_gb=self.config["vram"]["soft_limit_gb"],
-            hard_limit_gb=self.config["vram"]["hard_limit_gb"],
+        # Get renderer name
+        renderer_name = renderer_name or renderers_config.get(
+            "default", "default-flux-liveportrait"
         )
 
-        # Pre-allocate output buffers (prevents fragmentation)
-        self._allocate_buffers()
+        # Get and initialize renderer
+        try:
+            renderer = registry.get(renderer_name)
+        except RendererNotFoundError:
+            # If no renderers in registry, try loading default directly
+            available = registry.list_renderers()
+            if not available:
+                logger.info("No renderers in registry, loading default renderer directly")
+                from vortex.renderers.default import DefaultRenderer
 
-        # Log final VRAM state
-        log_vram_snapshot("pipeline_initialized")
-        stats = get_vram_stats()
+                renderer = DefaultRenderer()
+            else:
+                raise
+
+        logger.info(f"Initializing renderer: {renderer.manifest.name}")
+        await renderer.initialize(device, config)
+
+        # Verify renderer health
+        if not await renderer.health_check():
+            raise VortexInitializationError(
+                f"Renderer '{renderer.manifest.name}' health check failed"
+            )
+
         logger.info(
             "Vortex pipeline initialized successfully",
             extra={
-                "device": self.device,
-                "models_loaded": 5,
-                "vram_allocated_gb": stats["allocated_gb"],
-                "vram_total_gb": stats["total_gb"],
+                "device": device,
+                "renderer": renderer.manifest.name,
+                "renderer_version": renderer.manifest.version,
+                "vram_gb": renderer.manifest.resources.vram_gb,
             },
         )
 
-    def _allocate_buffers(self) -> None:
-        """Pre-allocate output buffers to prevent fragmentation during generation.
+        return cls(config=config, renderer=renderer, device=device)
 
-        Buffers:
-            - actor_buffer: (1, channels, height, width) for single actor image
-            - video_buffer: (frames, channels, height, width) for video sequence
-            - audio_buffer: (samples,) for audio waveform
-        """
-        buf_cfg = self.config["buffers"]
-
-        # Actor buffer (512x512x3)
-        self.actor_buffer = torch.zeros(
-            1,
-            buf_cfg["actor"]["channels"],
-            buf_cfg["actor"]["height"],
-            buf_cfg["actor"]["width"],
-            device=self.device,
-            dtype=torch.float32,
-        )
-
-        # Video buffer (1080 frames × 512x512x3)
-        self.video_buffer = torch.zeros(
-            buf_cfg["video"]["frames"],
-            buf_cfg["video"]["channels"],
-            buf_cfg["video"]["height"],
-            buf_cfg["video"]["width"],
-            device=self.device,
-            dtype=torch.float32,
-        )
-
-        # Audio buffer (1080000 samples = 45s @ 24kHz)
-        self.audio_buffer = torch.zeros(
-            buf_cfg["audio"]["samples"],
-            device=self.device,
-            dtype=torch.float32,
-        )
-
-        logger.info(
-            "Output buffers pre-allocated",
-            extra={
-                "actor_shape": tuple(self.actor_buffer.shape),
-                "video_shape": tuple(self.video_buffer.shape),
-                "audio_shape": tuple(self.audio_buffer.shape),
-            },
-        )
-
-    async def generate_slot(self, recipe: dict, slot_id: int) -> GenerationResult:
+    async def generate_slot(
+        self,
+        recipe: dict[str, Any],
+        slot_id: int,
+        seed: int | None = None,
+        deadline: float | None = None,
+    ) -> GenerationResult:
         """Generate a single slot (45-second video) from recipe.
 
-        Orchestration:
-            1. Parallel: Audio (Kokoro) + Actor image (Flux)
-            2. Sequential: Video warping (LivePortrait)
-            3. Verification: Dual CLIP embedding
+        Delegates generation to the configured renderer. The renderer handles:
+        - Model orchestration (Flux, LivePortrait, Kokoro, CLIP)
+        - VRAM management
+        - Deterministic seed propagation
+        - Deadline tracking
 
         Args:
-            recipe: Recipe dict with audio_track, visual_track, semantic_constraints
+            recipe: Recipe dict with:
+                - slot_params: {slot_id, duration_sec, fps}
+                - audio_track: {script, voice_id, speed, emotion}
+                - visual_track: {prompt, expression_preset, ...}
+                - semantic_constraints: {clip_threshold, ...}
             slot_id: Unique slot identifier
+            seed: Deterministic seed (random if not provided)
+            deadline: Absolute deadline timestamp (default: now + 45s)
 
         Returns:
             GenerationResult with video, audio, CLIP embedding, metadata
 
-        Raises:
-            MemoryPressureError: If VRAM exceeds hard limit during generation
-            asyncio.TimeoutError: If generation exceeds timeout (20s default)
-
         Example:
-            >>> recipe = {"audio_track": {...}, "visual_track": {...}}
-            >>> result = await pipeline.generate_slot(recipe, slot_id=12345)
+            >>> recipe = {
+            ...     "slot_params": {"slot_id": 1, "duration_sec": 45},
+            ...     "audio_track": {"script": "Hello world!", "voice_id": "rick_c137"},
+            ...     "visual_track": {"prompt": "scientist in lab coat"},
+            ... }
+            >>> result = await pipeline.generate_slot(recipe, slot_id=1)
         """
         start_time = time.time()
-        timeout = self.config["pipeline"]["generation_timeout_sec"]
 
-        try:
-            # Check VRAM before starting
-            self.vram_monitor.check()
+        # Generate seed if not provided
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
 
-            # Phase 1: Parallel audio + actor generation
-            if self.config["pipeline"]["parallel_audio_actor"]:
-                audio_task = asyncio.create_task(self._generate_audio(recipe))
-                actor_task = asyncio.create_task(self._generate_actor(recipe))
+        # Set deadline if not provided (default: 45 seconds from now)
+        if deadline is None:
+            deadline = time.time() + 45.0
 
-                # Wait for both with timeout
-                audio_result, actor_result = await asyncio.wait_for(
-                    asyncio.gather(audio_task, actor_task),
-                    timeout=timeout,
-                )
-            else:
-                # Sequential fallback (for debugging)
-                audio_result = await self._generate_audio(recipe)
-                actor_result = await self._generate_actor(recipe)
+        # Add slot_id to recipe if not present
+        if "slot_params" not in recipe:
+            recipe["slot_params"] = {}
+        recipe["slot_params"]["slot_id"] = slot_id
 
-            # Phase 2: Sequential video warping
-            video_result = await self._generate_video(actor_result, audio_result)
+        logger.info(
+            f"Starting slot generation",
+            extra={
+                "slot_id": slot_id,
+                "seed": seed,
+                "deadline_in": deadline - time.time(),
+                "renderer": self.renderer.manifest.name,
+            },
+        )
 
-            # Phase 3: CLIP verification
-            clip_embedding = await self._verify_semantic(video_result, recipe)
+        # Delegate to renderer
+        render_result: RenderResult = await self.renderer.render(
+            recipe=recipe,
+            slot_id=slot_id,
+            seed=seed,
+            deadline=deadline,
+        )
 
-            # Compute total time
-            generation_time_ms = (time.time() - start_time) * 1000
+        # Convert RenderResult to GenerationResult
+        generation_time_ms = (time.time() - start_time) * 1000
 
-            return GenerationResult(
-                video_frames=video_result,
-                audio_waveform=audio_result,
-                clip_embedding=clip_embedding,
-                generation_time_ms=generation_time_ms,
-                slot_id=slot_id,
-                success=True,
+        result = GenerationResult(
+            video_frames=render_result.video_frames,
+            audio_waveform=render_result.audio_waveform,
+            clip_embedding=render_result.clip_embedding,
+            generation_time_ms=generation_time_ms,
+            slot_id=slot_id,
+            success=render_result.success,
+            error_msg=render_result.error_msg,
+            determinism_proof=render_result.determinism_proof,
+        )
+
+        if result.success:
+            logger.info(
+                f"Slot generation completed",
+                extra={
+                    "slot_id": slot_id,
+                    "generation_time_ms": generation_time_ms,
+                    "proof_hash": result.determinism_proof.hex()[:16] + "...",
+                },
+            )
+        else:
+            logger.error(
+                f"Slot generation failed",
+                extra={
+                    "slot_id": slot_id,
+                    "error": result.error_msg,
+                },
             )
 
-        except asyncio.CancelledError:
-            logger.warning(f"Slot {slot_id} generation cancelled")
-            raise
+        return result
 
-        except Exception as e:
-            logger.error(f"Slot {slot_id} generation failed: {e}", exc_info=True)
-            return GenerationResult(
-                video_frames=torch.empty(0),
-                audio_waveform=torch.empty(0),
-                clip_embedding=torch.empty(0),
-                generation_time_ms=(time.time() - start_time) * 1000,
-                slot_id=slot_id,
-                success=False,
-                error_msg=str(e),
-            )
-
-    async def _generate_audio(self, recipe: dict) -> torch.Tensor:
-        """Generate audio waveform using Kokoro TTS.
-
-        Args:
-            recipe: Recipe with audio_track section
+    async def health_check(self) -> bool:
+        """Check if pipeline and renderer are healthy.
 
         Returns:
-            Audio waveform tensor (reuses self.audio_buffer)
+            True if ready for generation, False otherwise
         """
-        # TODO(T017): Replace with real Kokoro TTS implementation
-        # In real implementation, Kokoro will write directly to self.audio_buffer
-        await asyncio.sleep(0.1)  # Simulate 100ms generation
-        return self.audio_buffer
+        return await self.renderer.health_check()
 
-    async def _generate_actor(self, recipe: dict) -> torch.Tensor:
-        """Generate actor image using Flux-Schnell.
+    @property
+    def renderer_name(self) -> str:
+        """Return the name of the active renderer."""
+        return self.renderer.manifest.name
 
-        Args:
-            recipe: Recipe with visual_track section
-
-        Returns:
-            Actor image tensor (reuses self.actor_buffer)
-        """
-        # TODO(T015): Replace with real Flux-Schnell implementation
-        # In real implementation, Flux will write directly to self.actor_buffer
-        await asyncio.sleep(0.1)  # Simulate 100ms generation
-        return self.actor_buffer
-
-    async def _generate_video(self, actor_img: torch.Tensor, audio: torch.Tensor) -> torch.Tensor:
-        """Generate video using LivePortrait warping.
-
-        Args:
-            actor_img: Base actor image
-            audio: Audio waveform for lip sync
-
-        Returns:
-            Video frames tensor (reuses self.video_buffer)
-        """
-        # TODO(T016): Replace with real LivePortrait implementation
-        # In real implementation, LivePortrait will write directly to self.video_buffer
-        await asyncio.sleep(0.1)  # Simulate 100ms generation
-        return self.video_buffer
-
-    async def _verify_semantic(self, video: torch.Tensor, recipe: dict) -> torch.Tensor:
-        """Dual CLIP semantic verification.
-
-        Args:
-            video: Generated video frames
-            recipe: Recipe with semantic_constraints
-
-        Returns:
-            Combined CLIP embedding (B-32 + L-14 ensemble)
-        """
-        # TODO(T018): Replace with real dual CLIP ensemble
-        await asyncio.sleep(0.05)  # Simulate 50ms verification
-        # Return mock 512-dim embedding
-        return torch.randn(512, device=self.device, dtype=torch.float32)
+    @property
+    def renderer_version(self) -> str:
+        """Return the version of the active renderer."""
+        return self.renderer.manifest.version

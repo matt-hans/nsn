@@ -1,9 +1,4 @@
 {
-  "enabledPlugins": {
-    "rust-analyzer-lsp@claude-plugins-official": true,
-    "claude-mem@thedotmack": true,
-    "pyright-lsp@claude-plugins-official": true
-  },
   "hooks": {
     "SubagentStop": [
       {
@@ -16,5 +11,20 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "claude-mem@thedotmack": true,
+    "pyright-lsp@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": true,
+    "nsn-testnet@matt-plugins": true
+  },
+  "extraKnownMarketplaces": {
+    "matt-plugins": {
+      "source": {
+        "source": "directory",
+        "path": "/home/matt/plugins"
+      }
+    }
   }
 }

@@ -57,6 +57,7 @@ futures = { version = "0.3.31" }
 jsonrpsee = { version = "0.24.3" }
 log = { version = "0.4.22", default-features = false }
 polkadot-sdk = { version = "2512.0.0", default-features = false }
+polkadot-cli = { version = "31.0.0" }
 prometheus-endpoint = { version = "0.17.7", default-features = false, package = "substrate-prometheus-endpoint" }
 serde = { version = "1.0.214", default-features = false }
 codec = { version = "3.7.4", default-features = false, package = "parity-scale-codec" }

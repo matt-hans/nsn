@@ -18,9 +18,14 @@ COPY nsn-chain/rust-toolchain.toml ./
 COPY nsn-chain/node ./node
 COPY nsn-chain/runtime ./runtime
 COPY nsn-chain/pallets ./pallets
+COPY nsn-chain/integration-tests ./integration-tests
 
 # Copy node-core primitives (dependency)
 COPY node-core/crates/primitives /node-core/crates/primitives
+
+# Ensure WASM runtime build dependencies are installed
+RUN rustup component add rust-src && \
+    rustup target add wasm32-unknown-unknown
 
 # Build the node binary
 RUN cargo build --release --bin nsn-node

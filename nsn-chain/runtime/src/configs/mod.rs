@@ -422,6 +422,10 @@ parameter_types! {
     pub const ModelRegistryMaxCidLen: u32 = 128;
     pub const ModelRegistryMaxHotModels: u32 = 10;
     pub const ModelRegistryMaxWarmModels: u32 = 20;
+    pub const ModelRegistryMaxRendererIdLen: u32 = 64;
+    pub const ModelRegistryMaxRendererModels: u32 = 10;
+    pub const ModelRegistryMaxRendererVramMb: u32 = 11_500;
+    pub const ModelRegistryMaxRendererLatencyMs: u32 = 15_000;
 }
 
 impl pallet_nsn_stake::Config for Runtime {
@@ -642,5 +646,9 @@ impl pallet_nsn_model_registry::Config for Runtime {
     type MaxCidLen = ModelRegistryMaxCidLen;
     type MaxHotModels = ModelRegistryMaxHotModels;
     type MaxWarmModels = ModelRegistryMaxWarmModels;
+    type MaxRendererIdLen = ModelRegistryMaxRendererIdLen;
+    type MaxRendererModels = ModelRegistryMaxRendererModels;
+    type MaxRendererVramMb = ModelRegistryMaxRendererVramMb;
+    type MaxRendererLatencyMs = ModelRegistryMaxRendererLatencyMs;
     type WeightInfo = pallet_nsn_model_registry::weights::SubstrateWeight<Runtime>;
 }

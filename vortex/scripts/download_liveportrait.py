@@ -84,12 +84,16 @@ def check_existing_weights(cache_dir: Path, precision: str, force: bool) -> bool
     Returns:
         bool: True if should skip download
     """
-    weights_file = cache_dir / f"liveportrait_{precision}.safetensors"
-
-    if weights_file.exists() and not force:
-        logger.info(f"Model weights already exist: {weights_file}")
-        logger.info("Use --force to re-download")
-        return True
+    weights_dir = cache_dir / "pretrained_weights"
+    if weights_dir.exists() and not force:
+        weight_files = list(weights_dir.rglob("*.pth")) + list(weights_dir.rglob("*.pt"))
+        weight_files += list(weights_dir.rglob("*.safetensors"))
+        weight_files += list(weights_dir.rglob("*.bin")) + list(weights_dir.rglob("*.onnx"))
+        weight_files += list(weights_dir.rglob("*.pkl"))
+        if weight_files:
+            logger.info("Model weights already exist: %s", weights_dir)
+            logger.info("Use --force to re-download")
+            return True
 
     return False
 
@@ -106,47 +110,26 @@ def download_weights(cache_dir: Path, precision: str) -> bool:
     """
     logger.info(f"Downloading LivePortrait {precision.upper()} model weights...")
 
-    # In production, this would use Hugging Face Hub or direct download
-    # For now, this is a placeholder that documents the expected process
-
     try:
-        # Example using huggingface_hub:
-        # from huggingface_hub import hf_hub_download
-        # weights_path = hf_hub_download(
-        #     repo_id="liveportrait/base-fp16",
-        #     filename="model.safetensors",
-        #     cache_dir=cache_dir,
-        # )
+        try:
+            from huggingface_hub import snapshot_download
+        except ImportError as exc:
+            logger.error("huggingface_hub not installed. Install with:")
+            logger.error("  pip install huggingface_hub>=0.24.0")
+            raise exc
 
-        # Placeholder: Document the download process
-        logger.info("=" * 70)
-        logger.info("LivePortrait Model Download Instructions")
-        logger.info("=" * 70)
-        logger.info("")
-        logger.info("LivePortrait is not yet available as a public Hugging Face model.")
-        logger.info("To use LivePortrait in production:")
-        logger.info("")
-        logger.info("1. Option A: Download from GitHub (if available)")
-        logger.info("   git clone https://github.com/KwaiVGI/LivePortrait")
-        logger.info("   cd LivePortrait")
-        logger.info("   python scripts/download_weights.py")
-        logger.info("")
-        logger.info("2. Option B: Download from Hugging Face (when available)")
-        logger.info("   huggingface-cli download KwaiVGI/LivePortrait \\")
-        logger.info("     --local-dir pretrained_weights \\")
-        logger.info("     --exclude '*.git*' 'README.md' 'docs'")
-        logger.info("")
-        logger.info("3. Option C: Manual download")
-        logger.info("   Visit: https://huggingface.co/liveportrait/base-fp16")
-        logger.info("   Download model.safetensors to:")
-        logger.info(f"   {cache_dir}/liveportrait_{precision}.safetensors")
-        logger.info("")
-        logger.info("=" * 70)
-        logger.info("")
-        logger.info("For T016 development, the Vortex pipeline uses a mock")
-        logger.info("implementation that simulates LivePortrait functionality.")
-        logger.info("")
+        weights_dir = cache_dir / "pretrained_weights"
+        weights_dir.mkdir(parents=True, exist_ok=True)
 
+        snapshot_download(
+            repo_id="KwaiVGI/LivePortrait",
+            local_dir=str(weights_dir),
+            local_dir_use_symlinks=False,
+            allow_patterns=["*.pth", "*.pt", "*.safetensors", "*.bin", "*.onnx", "*.pkl"],
+            ignore_patterns=["*.git*", "README.md", "docs/*", "*.md"],
+        )
+
+        logger.info("LivePortrait weights downloaded to: %s", weights_dir)
         return True
 
     except Exception as e:

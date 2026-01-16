@@ -24,6 +24,8 @@ class TestLivePortraitGeneration:
         from vortex.models.liveportrait import load_liveportrait
 
         model = load_liveportrait(device="cuda:0", precision="fp16")
+        if getattr(model, "backend_name", "") != "cli":
+            pytest.skip("LivePortrait CLI backend not available in this environment")
         yield model
 
         # Cleanup
@@ -213,6 +215,8 @@ class TestLipsyncAccuracy:
         from vortex.models.liveportrait import load_liveportrait
 
         model = load_liveportrait(device="cuda:0", precision="fp16")
+        if getattr(model, "backend_name", "") != "cli":
+            pytest.skip("LivePortrait CLI backend not available in this environment")
         yield model
         del model
         torch.cuda.empty_cache()
@@ -245,6 +249,8 @@ class TestErrorHandling:
         from vortex.models.liveportrait import load_liveportrait
 
         model = load_liveportrait(device="cuda:0", precision="fp16")
+        if getattr(model, "backend_name", "") != "cli":
+            pytest.skip("LivePortrait CLI backend not available in this environment")
         yield model
         del model
         torch.cuda.empty_cache()
@@ -293,6 +299,8 @@ class TestVRAMProfiling:
 
         # Load model
         model = load_liveportrait(device="cuda:0", precision="fp16")
+        if getattr(model, "backend_name", "") != "cli":
+            pytest.skip("LivePortrait CLI backend not available in this environment")
         after_load_vram = torch.cuda.memory_allocated() / 1e9
         load_vram = after_load_vram - initial_vram
 

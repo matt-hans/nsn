@@ -18,11 +18,17 @@ Latency Target: <8s P99 on RTX 3060 for 45s video
 """
 
 import logging
+import math
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import List, Optional
 
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
 import yaml
 
 from vortex.utils.lipsync import audio_to_visemes
@@ -36,18 +42,131 @@ class VortexInitializationError(Exception):
     pass
 
 
-class LivePortraitPipeline:
-    """Mock/placeholder for LivePortrait pipeline.
+class _FallbackWarp:
+    """Deterministic CPU/GPU fallback warper for audio-driven lip motion.
 
-    This is a placeholder implementation that defines the expected interface.
-    Replace this with actual LivePortrait integration when available.
-
-    In production, this would be the real LivePortrait model that:
-    - Loads pretrained weights from Hugging Face or GitHub
-    - Performs facial landmark detection
-    - Warps source image based on driving motion
-    - Generates per-frame facial animations
+    This is used when LivePortrait is not available locally. It does NOT
+    replicate LivePortrait quality, but provides deterministic, audio-driven
+    mouth motion for testing and CI.
     """
+
+    def __init__(self, mouth_region: tuple[float, float, float, float]):
+        self.mouth_region = mouth_region  # (y0, y1, x0, x1) in relative coords
+
+    def warp_sequence(
+        self,
+        source_image: torch.Tensor,
+        visemes: List[torch.Tensor],
+        expression_params: List[torch.Tensor],
+        num_frames: int,
+    ) -> torch.Tensor:
+        source = source_image.float()
+        channels, height, width = source.shape
+        y0 = int(self.mouth_region[0] * height)
+        y1 = int(self.mouth_region[1] * height)
+        x0 = int(self.mouth_region[2] * width)
+        x1 = int(self.mouth_region[3] * width)
+
+        base_patch = source[:, y0:y1, x0:x1]
+        output = torch.empty(
+            (num_frames, channels, height, width), device=source.device, dtype=torch.float32
+        )
+
+        for idx in range(num_frames):
+            viseme = visemes[min(idx, len(visemes) - 1)]
+            expr = expression_params[min(idx, len(expression_params) - 1)]
+            frame = output[idx]
+            frame.copy_(source)
+
+            warped_patch = self._warp_patch(base_patch, viseme, expr)
+            frame[:, y0:y1, x0:x1] = warped_patch
+
+            head_motion = float(expr[3].clamp(0.0, 1.0))
+            if head_motion > 0:
+                shift_x = int(math.sin(idx / max(num_frames, 1) * math.tau) * head_motion * 4)
+                shift_y = int(math.cos(idx / max(num_frames, 1) * math.tau) * head_motion * 3)
+                frame.copy_(torch.roll(frame, shifts=(shift_y, shift_x), dims=(1, 2)))
+
+        return output
+
+    def _warp_patch(
+        self, patch: torch.Tensor, viseme: torch.Tensor, expr: torch.Tensor
+    ) -> torch.Tensor:
+        jaw_open = float(viseme[0].clamp(0.0, 1.0))
+        lip_width = float(viseme[1].clamp(0.0, 1.0))
+        lip_rounding = float(viseme[2].clamp(0.0, 1.0))
+        mouth_scale = float(expr[2].clamp(0.5, 1.5))
+
+        patch_h, patch_w = patch.shape[1], patch.shape[2]
+        scale_y = 1.0 + jaw_open * 0.5 * mouth_scale
+        scale_x = 1.0 + (lip_width - 0.5) * 0.4 * mouth_scale
+        scale_x *= 1.0 - (lip_rounding - 0.5) * 0.2
+
+        new_h = max(1, int(patch_h * scale_y))
+        new_w = max(1, int(patch_w * scale_x))
+
+        resized = F.interpolate(
+            patch.unsqueeze(0),
+            size=(new_h, new_w),
+            mode="bilinear",
+            align_corners=False,
+        ).squeeze(0)
+
+        return self._center_crop_or_pad(resized, patch_h, patch_w)
+
+    def _center_crop_or_pad(
+        self, patch: torch.Tensor, target_h: int, target_w: int
+    ) -> torch.Tensor:
+        _, height, width = patch.shape
+
+        if height > target_h:
+            start_y = (height - target_h) // 2
+            patch = patch[:, start_y : start_y + target_h, :]
+        if width > target_w:
+            start_x = (width - target_w) // 2
+            patch = patch[:, :, start_x : start_x + target_w]
+
+        pad_h = target_h - patch.shape[1]
+        pad_w = target_w - patch.shape[2]
+        if pad_h > 0 or pad_w > 0:
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
+            patch = F.pad(patch, (pad_left, pad_right, pad_top, pad_bottom), mode="replicate")
+
+        return patch
+
+
+class LivePortraitPipeline:
+    """LivePortrait pipeline adapter.
+
+    Uses a local LivePortrait checkout via CLI when available, otherwise falls
+    back to a deterministic warper for testing environments.
+    """
+
+    def __init__(
+        self,
+        backend: str,
+        repo_path: Optional[Path],
+        output_dirs: List[Path],
+        default_driving_source: Optional[Path],
+        animation_region: str,
+        crop_driving_video: bool,
+        relative_motion: bool,
+        use_output_dir_flag: bool,
+    ):
+        self.backend = backend
+        self.repo_path = repo_path
+        self.output_dirs = output_dirs
+        self.default_driving_source = default_driving_source
+        self.animation_region = animation_region
+        self.crop_driving_video = crop_driving_video
+        self.relative_motion = relative_motion
+        self.use_output_dir_flag = use_output_dir_flag
+        self._fallback = _FallbackWarp(mouth_region=(0.60, 0.85, 0.30, 0.70))
+        self.dtype = torch.float16
+        self.device = "cpu"
 
     @classmethod
     def from_pretrained(
@@ -57,26 +176,80 @@ class LivePortraitPipeline:
         device_map: Optional[dict] = None,
         use_safetensors: bool = True,
         cache_dir: Optional[str] = None,
+        config: Optional[dict] = None,
     ):
-        """Load pretrained LivePortrait model.
+        """Load LivePortrait pipeline (CLI adapter or fallback).
 
         Args:
-            model_name: Model identifier (e.g., "liveportrait/base-fp16")
+            model_name: Model identifier (e.g., "KwaiVGI/LivePortrait")
             torch_dtype: Model precision
             device_map: Device mapping for model layers
             use_safetensors: Use safetensors format
             cache_dir: Model cache directory
+            config: Parsed LivePortrait config (optional)
 
         Returns:
             LivePortraitPipeline instance
         """
-        logger.info(f"Loading LivePortrait pipeline: {model_name}")
-        instance = cls()
+        logger.info("Loading LivePortrait pipeline: %s", model_name)
+        config = config or {}
+        runtime_cfg = config.get("runtime", {})
+
+        repo_path = os.getenv("LIVEPORTRAIT_HOME") or runtime_cfg.get("repo_path")
+        repo_path = Path(repo_path).expanduser() if repo_path else None
+
+        driving_source = os.getenv("LIVEPORTRAIT_DRIVING_SOURCE") or runtime_cfg.get(
+            "driving_source"
+        )
+        driving_source = Path(driving_source).expanduser() if driving_source else None
+
+        output_dirs = runtime_cfg.get("output_dirs") or []
+        output_dirs = [Path(path).expanduser() for path in output_dirs]
+        if repo_path:
+            output_dirs.extend(
+                [
+                    repo_path / "outputs",
+                    repo_path / "output",
+                    repo_path / "results",
+                    repo_path / "result",
+                ]
+            )
+
+        animation_region = runtime_cfg.get("animation_region", "lip")
+        crop_driving_video = bool(runtime_cfg.get("crop_driving_video", False))
+        relative_motion = bool(runtime_cfg.get("relative_motion", True))
+        use_output_dir_flag = bool(runtime_cfg.get("use_output_dir_flag", False))
+
+        backend = runtime_cfg.get("backend", "auto")
+        if backend == "auto":
+            if repo_path and (repo_path / "inference.py").exists():
+                backend = "cli"
+            else:
+                backend = "fallback"
+
+        if backend == "cli" and not (repo_path and (repo_path / "inference.py").exists()):
+            logger.warning(
+                "LivePortrait repo not found for CLI backend; falling back",
+                extra={"repo_path": str(repo_path) if repo_path else None},
+            )
+            backend = "fallback"
+
+        instance = cls(
+            backend=backend,
+            repo_path=repo_path,
+            output_dirs=output_dirs,
+            default_driving_source=driving_source,
+            animation_region=animation_region,
+            crop_driving_video=crop_driving_video,
+            relative_motion=relative_motion,
+            use_output_dir_flag=use_output_dir_flag,
+        )
         instance.dtype = torch_dtype
+        logger.info("LivePortrait pipeline backend: %s", backend)
         return instance
 
     def to(self, device: str):
-        """Move pipeline to device."""
+        """Move pipeline to device (metadata only for CLI backend)."""
         self.device = device
         return self
 
@@ -86,28 +259,139 @@ class LivePortraitPipeline:
         visemes: List[torch.Tensor],
         expression_params: List[torch.Tensor],
         num_frames: int,
+        driving_source: Optional[Path] = None,
     ) -> torch.Tensor:
         """Warp source image into video sequence.
-
-        This is a placeholder that returns random frames.
-        Real implementation would:
-        - Extract facial landmarks from source image
-        - Apply viseme-driven lip movements
-        - Apply expression-driven facial deformations
-        - Warp image for each frame
 
         Args:
             source_image: Source actor image [3, 512, 512]
             visemes: Per-frame viseme parameters
             expression_params: Per-frame expression parameters
             num_frames: Number of frames to generate
+            driving_source: Optional driving video or motion template path
 
         Returns:
             Video tensor [num_frames, 3, 512, 512]
         """
-        # Placeholder: return random frames in [0, 1] with correct num_frames
-        # Real implementation would use visemes and expression_params
-        return torch.rand(num_frames, 3, 512, 512)
+        if self.backend == "cli":
+            driving_path = driving_source or self.default_driving_source
+            if driving_path is None:
+                logger.warning("No driving source provided; using fallback warper")
+                return self._fallback.warp_sequence(
+                    source_image, visemes, expression_params, num_frames
+                )
+            return self._run_cli(source_image, driving_path)
+
+        return self._fallback.warp_sequence(source_image, visemes, expression_params, num_frames)
+
+    def _run_cli(self, source_image: torch.Tensor, driving_source: Path) -> torch.Tensor:
+        if not self.repo_path:
+            raise RuntimeError("LivePortrait repo path not configured")
+
+        driving_source = driving_source.expanduser()
+        if not driving_source.exists():
+            raise FileNotFoundError(f"Driving source not found: {driving_source}")
+
+        with tempfile.TemporaryDirectory(prefix="vortex-liveportrait-") as tmpdir:
+            tmp_path = Path(tmpdir)
+            source_path = tmp_path / "source.png"
+            self._save_image(source_image, source_path)
+
+            cmd = [
+                sys.executable,
+                "inference.py",
+                "-s",
+                str(source_path),
+                "-d",
+                str(driving_source),
+            ]
+
+            if self.animation_region:
+                cmd.extend(["--animation_region", self.animation_region])
+            if self.crop_driving_video:
+                cmd.append("--flag_crop_driving_video")
+            if not self.relative_motion:
+                cmd.append("--no_flag_relative_motion")
+            if self.use_output_dir_flag and self.output_dirs:
+                cmd.extend(["--output_dir", str(self.output_dirs[0])])
+
+            start_time = time.time()
+            logger.info("Running LivePortrait CLI", extra={"cmd": " ".join(cmd)})
+            subprocess.run(
+                cmd,
+                cwd=str(self.repo_path),
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+            output_video = self._find_latest_output(start_time)
+            if output_video is None:
+                raise RuntimeError("LivePortrait CLI completed but no output video found")
+
+            return self._load_video_to_tensor(output_video, device=source_image.device)
+
+    def _find_latest_output(self, start_time: float) -> Optional[Path]:
+        candidates: list[Path] = []
+        for directory in self.output_dirs:
+            if not directory.exists():
+                continue
+            candidates.extend(directory.glob("**/*.mp4"))
+
+        if not candidates:
+            return None
+
+        recent = [
+            path
+            for path in candidates
+            if path.stat().st_mtime >= start_time - 1.0
+        ]
+        if not recent:
+            return None
+
+        return max(recent, key=lambda path: path.stat().st_mtime)
+
+    def _save_image(self, image: torch.Tensor, path: Path) -> None:
+        image = image.detach().float().clamp(0.0, 1.0).cpu()
+        image = (image * 255.0).to(torch.uint8)
+        image = image.permute(1, 2, 0).numpy()
+
+        try:
+            from PIL import Image
+        except ImportError as exc:
+            raise RuntimeError("Pillow is required to save LivePortrait inputs") from exc
+
+        Image.fromarray(image).save(path)
+
+    def _load_video_to_tensor(self, path: Path, device: torch.device) -> torch.Tensor:
+        try:
+            import cv2
+            import numpy as np
+        except ImportError as exc:
+            raise RuntimeError("opencv-python and numpy are required to load outputs") from exc
+
+        cap = cv2.VideoCapture(str(path))
+        if not cap.isOpened():
+            raise RuntimeError(f"Failed to open LivePortrait output: {path}")
+
+        frames: list[torch.Tensor] = []
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if frame.shape[0] != 512 or frame.shape[1] != 512:
+                frame = cv2.resize(frame, (512, 512), interpolation=cv2.INTER_AREA)
+            frames.append(torch.from_numpy(frame))
+        cap.release()
+
+        if not frames:
+            raise RuntimeError("LivePortrait output video contained no frames")
+
+        stacked = torch.stack(frames).to(torch.float32) / 255.0
+        stacked = stacked.permute(0, 3, 1, 2).to(device=device)
+        return stacked.contiguous()
 
 
 class LivePortraitModel:
@@ -131,8 +415,8 @@ class LivePortraitModel:
         ... )
     """
 
-    # Expression preset definitions
-    EXPRESSION_PRESETS = {
+    # Default expression preset definitions
+    DEFAULT_EXPRESSION_PRESETS = {
         "neutral": {
             "intensity": 0.3,
             "eye_openness": 0.5,
@@ -159,7 +443,7 @@ class LivePortraitModel:
         },
     }
 
-    def __init__(self, pipeline: LivePortraitPipeline, device: str):
+    def __init__(self, pipeline: LivePortraitPipeline, device: str, config: Optional[dict] = None):
         """Initialize LivePortraitModel wrapper.
 
         Args:
@@ -168,6 +452,12 @@ class LivePortraitModel:
         """
         self.pipeline = pipeline
         self.device = device
+        self.config = config or {}
+        self.expression_presets = self._load_expression_presets()
+        self.sample_rate = int(self.config.get("audio", {}).get("sample_rate", 24000))
+        self.smoothing_window = int(
+            self.config.get("lipsync", {}).get("smoothing_window", 3)
+        )
         logger.info("LivePortraitModel initialized", extra={"device": device})
 
     @torch.no_grad()
@@ -181,6 +471,7 @@ class LivePortraitModel:
         duration: int = 45,
         output: Optional[torch.Tensor] = None,
         seed: Optional[int] = None,
+        driving_source: Optional[Path] = None,
     ) -> torch.Tensor:
         """Generate animated video from static image + audio.
 
@@ -196,6 +487,8 @@ class LivePortraitModel:
             output: Pre-allocated output buffer [num_frames, 3, 512, 512]
                 If None, creates new tensor
             seed: Random seed for deterministic generation (optional)
+            driving_source: Optional driving video or motion template path
+                (used by LivePortrait CLI backend when available)
 
         Returns:
             torch.Tensor: Video tensor, shape [num_frames, 3, 512, 512], range [0, 1]
@@ -224,13 +517,24 @@ class LivePortraitModel:
             )
 
         # Truncate audio if too long
-        expected_samples = duration * 24000  # 24kHz
+        expected_samples = duration * self.sample_rate
         if driving_audio.shape[0] > expected_samples:
-            original_length = driving_audio.shape[0] / 24000
+            original_samples = driving_audio.shape[0]
+            original_length = original_samples / self.sample_rate
             driving_audio = driving_audio[:expected_samples]
             logger.warning(
                 f"Audio truncated from {original_length:.1f}s to {duration}s",
-                extra={"original_samples": driving_audio.shape[0]},
+                extra={"original_samples": original_samples},
+            )
+        elif driving_audio.shape[0] < expected_samples:
+            original_length = driving_audio.shape[0] / self.sample_rate
+            pad_len = expected_samples - driving_audio.shape[0]
+            driving_audio = F.pad(driving_audio, (0, pad_len))
+            logger.warning(
+                "Audio padded from %.1fs to %ds",
+                original_length,
+                duration,
+                extra={"pad_samples": pad_len},
             )
 
         # Set deterministic seed if provided
@@ -242,7 +546,10 @@ class LivePortraitModel:
         num_frames = fps * duration
 
         # Convert audio to per-frame visemes (lip-sync)
-        visemes = audio_to_visemes(driving_audio, fps, sample_rate=24000)
+        visemes = audio_to_visemes(
+            driving_audio, fps, sample_rate=self.sample_rate, smoothing_window=self.smoothing_window
+        )
+        visemes = self._normalize_visemes(visemes, num_frames)
 
         # Get expression parameters
         if expression_sequence:
@@ -268,23 +575,43 @@ class LivePortraitModel:
             },
         )
 
+        if driving_source is not None and not isinstance(driving_source, Path):
+            driving_source = Path(driving_source)
+
         video = self.pipeline.warp_sequence(
             source_image=source_image,
             visemes=visemes,
             expression_params=expression_params_list,
             num_frames=num_frames,
+            driving_source=driving_source,
         )
 
         # Ensure output is in [0, 1] range
-        video = torch.clamp(video, 0.0, 1.0)
+        video = torch.clamp(video, 0.0, 1.0).to(dtype=torch.float32)
 
         # Write to pre-allocated buffer if provided
         if output is not None:
+            if output.shape != (num_frames, 3, 512, 512):
+                raise ValueError(
+                    f"Invalid output buffer shape: {output.shape}. "
+                    f"Expected [{num_frames}, 3, 512, 512]"
+                )
             output[:num_frames].copy_(video)
             logger.debug("Wrote to pre-allocated video buffer")
             return output
 
         return video
+
+    @property
+    def backend_name(self) -> str:
+        """Return the active LivePortrait backend name."""
+        return getattr(self.pipeline, "backend", "unknown")
+
+    def _load_expression_presets(self) -> dict:
+        presets = self.config.get("expressions")
+        if isinstance(presets, dict) and presets:
+            return presets
+        return self.DEFAULT_EXPRESSION_PRESETS
 
     def _get_expression_params(self, expression: str) -> dict:
         """Retrieve expression preset parameters.
@@ -295,14 +622,14 @@ class LivePortraitModel:
         Returns:
             dict: Expression parameters (intensity, eye_openness, mouth_scale, head_motion)
         """
-        if expression not in self.EXPRESSION_PRESETS:
+        if expression not in self.expression_presets:
             logger.warning(
                 f"Unknown expression '{expression}', falling back to 'neutral'",
-                extra={"available_expressions": list(self.EXPRESSION_PRESETS.keys())},
+                extra={"available_expressions": list(self.expression_presets.keys())},
             )
             expression = "neutral"
 
-        return self.EXPRESSION_PRESETS[expression]
+        return self.expression_presets[expression]
 
     def _get_single_expression_params(
         self, expression: str, num_frames: int
@@ -320,7 +647,12 @@ class LivePortraitModel:
 
         # Convert to tensor and replicate for all frames
         params_tensor = torch.tensor(
-            [params["intensity"], params["eye_openness"], params["mouth_scale"], params["head_motion"]],
+            [
+                params["intensity"],
+                params["eye_openness"],
+                params["mouth_scale"],
+                params["head_motion"],
+            ],
             dtype=torch.float32,
         )
 
@@ -370,12 +702,32 @@ class LivePortraitModel:
 
             # Convert to tensor
             params_tensor = torch.tensor(
-                [params["intensity"], params["eye_openness"], params["mouth_scale"], params["head_motion"]],
+                [
+                    params["intensity"],
+                    params["eye_openness"],
+                    params["mouth_scale"],
+                    params["head_motion"],
+                ],
                 dtype=torch.float32,
             )
             params_list.append(params_tensor)
 
         return params_list
+
+    def _normalize_visemes(
+        self, visemes: List[torch.Tensor], num_frames: int
+    ) -> List[torch.Tensor]:
+        if len(visemes) >= num_frames:
+            return visemes[:num_frames]
+
+        if not visemes:
+            neutral = torch.tensor([0.2, 0.5, 0.3], dtype=torch.float32)
+            return [neutral.clone() for _ in range(num_frames)]
+
+        padded = list(visemes)
+        last = visemes[-1]
+        padded.extend(last.clone() for _ in range(num_frames - len(visemes)))
+        return padded
 
     def _interpolate_params(self, params1: dict, params2: dict, t: float) -> dict:
         """Interpolate between two expression parameter sets.
@@ -478,6 +830,17 @@ def load_liveportrait(
     )
 
     try:
+        # Load configuration
+        if config_path is None:
+            config_path = str(Path(__file__).parent / "configs" / "liveportrait_fp16.yaml")
+        config: dict = {}
+        if config_path and Path(config_path).exists():
+            with open(config_path) as f:
+                config = yaml.safe_load(f) or {}
+        if cache_dir:
+            config.setdefault("cache", {})
+            config["cache"]["directory"] = cache_dir
+
         # Configure precision
         if precision == "fp16":
             torch_dtype = torch.float16
@@ -490,21 +853,18 @@ def load_liveportrait(
                 f"Unsupported precision: {precision}. Use 'fp16' or 'fp32'"
             )
 
-        # Load pipeline
-        # In production, this would be:
-        # pipeline = LivePortraitPipeline.from_pretrained(
-        #     "liveportrait/base-fp16",
-        #     torch_dtype=torch_dtype,
-        #     device_map={"": device},
-        #     use_safetensors=True,
-        #     cache_dir=cache_dir,
-        # )
+        model_name = (
+            config.get("model", {}).get("repo_id")
+            or config.get("model", {}).get("name")
+            or "KwaiVGI/LivePortrait"
+        )
         pipeline = LivePortraitPipeline.from_pretrained(
-            "liveportrait/base-fp16",
+            model_name,
             torch_dtype=torch_dtype,
             device_map={"": device},
             use_safetensors=True,
             cache_dir=cache_dir,
+            config=config,
         )
 
         # Move to target device
@@ -512,7 +872,7 @@ def load_liveportrait(
 
         logger.info("LivePortrait loaded successfully")
 
-        return LivePortraitModel(pipeline, device)
+        return LivePortraitModel(pipeline, device, config=config)
 
     except torch.cuda.OutOfMemoryError as e:
         # Get VRAM stats for debugging

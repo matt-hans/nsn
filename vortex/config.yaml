@@ -9,9 +9,9 @@ device:
 
 vram:
   # Soft limit (11.0GB) - log warning but continue
-  soft_limit_gb: 11.0
-  # Hard limit (11.5GB) - raise error and abort
-  hard_limit_gb: 11.5
+  soft_limit_gb: 11.5
+  # Hard limit (12.5GB) - raise error and abort
+  hard_limit_gb: 12.5
   # Monitoring interval (seconds)
   monitor_interval_sec: 5.0
 
@@ -47,6 +47,25 @@ pipeline:
   generation_timeout_sec: 20.0
   # Enable async parallelization for audio + image generation
   parallel_audio_actor: true
+
+# Lane 0 renderer configuration
+renderers:
+  # Enable renderer system (uses RendererRegistry)
+  enabled: true
+  # Directory containing renderer folders with manifest.yaml
+  directory: "renderers"
+  # Default renderer to use (must match a registered renderer name)
+  default: "default-flux-liveportrait"
+  # Renderer policy limits
+  policy:
+    # Maximum VRAM any renderer can declare (GB)
+    max_vram_gb: 12.0
+    # Maximum latency for Lane 0 (ms)
+    max_latency_ms: 25000
+    # Require determinism for Lane 0 (must be true for BFT consensus)
+    require_determinism: true
+    # Allowlist of renderer names (null = allow all registered renderers)
+    allowlist: null
 
 plugins:
   # Enable plugin discovery for custom renderers

@@ -36,7 +36,7 @@
 pub use pallet::*;
 
 mod types;
-pub use types::{ModelCapabilities, ModelMetadata, ModelState, NodeCapabilityAd};
+pub use types::{ModelCapabilities, ModelMetadata, ModelState, NodeCapabilityAd, RendererMetadata};
 
 #[cfg(test)]
 mod mock;
@@ -54,6 +54,7 @@ pub mod pallet {
     use super::*;
     use frame_support::{pallet_prelude::*, traits::StorageVersion};
     use frame_system::pallet_prelude::*;
+    use types::RendererMetadata;
 
     /// Model ID type alias
     pub type ModelIdOf<T> = BoundedVec<u8, <T as Config>::MaxModelIdLen>;
@@ -74,6 +75,18 @@ pub mod pallet {
         <T as Config>::MaxModelIdLen,
         <T as Config>::MaxHotModels,
         <T as Config>::MaxWarmModels,
+    >;
+
+    /// Renderer ID type alias
+    pub type RendererIdOf<T> = BoundedVec<u8, <T as Config>::MaxRendererIdLen>;
+
+    /// Renderer metadata type alias
+    pub type RendererMetadataOf<T> = RendererMetadata<
+        <T as frame_system::Config>::AccountId,
+        BlockNumberFor<T>,
+        <T as Config>::MaxCidLen,
+        <T as Config>::MaxModelIdLen,
+        <T as Config>::MaxRendererModels,
     >;
 
     /// The in-code storage version.
@@ -101,6 +114,22 @@ pub mod pallet {
         /// Maximum number of warm models a node can advertise
         #[pallet::constant]
         type MaxWarmModels: Get<u32>;
+
+        /// Maximum length of renderer identifier
+        #[pallet::constant]
+        type MaxRendererIdLen: Get<u32>;
+
+        /// Maximum number of model dependencies a renderer can declare
+        #[pallet::constant]
+        type MaxRendererModels: Get<u32>;
+
+        /// Maximum VRAM a renderer can require (in MB) - Lane 0 constraint
+        #[pallet::constant]
+        type MaxRendererVramMb: Get<u32>;
+
+        /// Maximum latency a renderer can declare (in ms) - Lane 0 constraint
+        #[pallet::constant]
+        type MaxRendererLatencyMs: Get<u32>;
 
         /// Weight information
         type WeightInfo: WeightInfo;
@@ -130,6 +159,20 @@ pub mod pallet {
     pub type NodeCapabilities<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, NodeCapabilityAdOf<T>, OptionQuery>;
 
+    /// Renderer catalog: Maps renderer ID to renderer metadata
+    ///
+    /// Contains all registered Lane 0 video renderers. Renderers are modular
+    /// video generation backends that implement the DeterministicVideoRenderer
+    /// interface. Network users can register alternative renderers that meet
+    /// Lane 0 constraints (determinism, VRAM, latency).
+    ///
+    /// # Storage Key
+    /// Blake2_128Concat(RendererId) - renderer IDs may be user-controlled
+    #[pallet::storage]
+    #[pallet::getter(fn renderer_catalog)]
+    pub type RendererCatalog<T: Config> =
+        StorageMap<_, Blake2_128Concat, RendererIdOf<T>, RendererMetadataOf<T>, OptionQuery>;
+
     /// Events emitted by the pallet
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -147,6 +190,15 @@ pub mod pallet {
             available_vram_mb: u32,
             hot_model_count: u32,
             warm_model_count: u32,
+        },
+        /// A new Lane 0 renderer was registered in the catalog
+        RendererRegistered {
+            renderer_id: RendererIdOf<T>,
+            container_cid: ContainerCidOf<T>,
+            vram_required_mb: u32,
+            max_latency_ms: u32,
+            model_count: u32,
+            registered_by: T::AccountId,
         },
     }
 
@@ -167,6 +219,18 @@ pub mod pallet {
         TooManyHotModels,
         /// Too many warm models in advertisement
         TooManyWarmModels,
+        /// Renderer with this ID is already registered
+        RendererAlreadyRegistered,
+        /// Renderer ID is empty
+        InvalidRendererId,
+        /// Lane 0 renderers must be deterministic
+        RendererNotDeterministic,
+        /// Renderer VRAM exceeds maximum allowed for Lane 0
+        RendererVramExceeded,
+        /// Renderer latency exceeds maximum allowed for Lane 0
+        RendererLatencyExceeded,
+        /// A model dependency does not exist in the catalog
+        ModelDependencyNotFound,
     }
 
     #[pallet::hooks]
@@ -279,6 +343,109 @@ pub mod pallet {
 
             Ok(())
         }
+
+        /// Register a new Lane 0 video renderer
+        ///
+        /// Renderers are modular video generation backends that implement the
+        /// DeterministicVideoRenderer interface. Network users can register
+        /// alternative renderers (e.g., StableVideoDiffusion, CogVideoX) that
+        /// meet Lane 0 constraints.
+        ///
+        /// # Lane 0 Constraints (enforced)
+        /// - Must be deterministic (same input + seed = same output)
+        /// - VRAM must be <= MaxRendererVramMb (11,500 MB)
+        /// - Latency must be <= MaxRendererLatencyMs (15,000 ms)
+        /// - All model dependencies must exist in ModelCatalog
+        ///
+        /// # Arguments
+        /// * `renderer_id` - Unique identifier for the renderer
+        /// * `container_cid` - Content identifier for the renderer container
+        /// * `vram_required_mb` - Total VRAM required for all models (in MB)
+        /// * `max_latency_ms` - Maximum latency guarantee (in ms)
+        /// * `model_dependencies` - Model IDs this renderer depends on
+        /// * `deterministic` - Whether output is deterministic (must be true)
+        ///
+        /// # Errors
+        /// * `RendererAlreadyRegistered` - Renderer ID already exists
+        /// * `InvalidRendererId` - Renderer ID is empty
+        /// * `InvalidContainerCid` - Container CID is empty
+        /// * `RendererNotDeterministic` - Renderer not deterministic
+        /// * `RendererVramExceeded` - VRAM exceeds Lane 0 limit
+        /// * `RendererLatencyExceeded` - Latency exceeds Lane 0 limit
+        /// * `ModelDependencyNotFound` - A model dependency doesn't exist
+        #[pallet::call_index(2)]
+        #[pallet::weight(T::WeightInfo::register_model())] // TODO: Add register_renderer weight
+        pub fn register_renderer(
+            origin: OriginFor<T>,
+            renderer_id: RendererIdOf<T>,
+            container_cid: ContainerCidOf<T>,
+            vram_required_mb: u32,
+            max_latency_ms: u32,
+            model_dependencies: BoundedVec<ModelIdOf<T>, T::MaxRendererModels>,
+            deterministic: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // Validate inputs
+            ensure!(!renderer_id.is_empty(), Error::<T>::InvalidRendererId);
+            ensure!(!container_cid.is_empty(), Error::<T>::InvalidContainerCid);
+
+            // Check renderer doesn't already exist
+            ensure!(
+                !RendererCatalog::<T>::contains_key(&renderer_id),
+                Error::<T>::RendererAlreadyRegistered
+            );
+
+            // Lane 0 constraints: must be deterministic
+            ensure!(deterministic, Error::<T>::RendererNotDeterministic);
+
+            // Lane 0 constraints: VRAM budget
+            ensure!(
+                vram_required_mb <= T::MaxRendererVramMb::get(),
+                Error::<T>::RendererVramExceeded
+            );
+
+            // Lane 0 constraints: latency budget
+            ensure!(
+                max_latency_ms <= T::MaxRendererLatencyMs::get(),
+                Error::<T>::RendererLatencyExceeded
+            );
+
+            // Validate all model dependencies exist
+            for model_id in &model_dependencies {
+                ensure!(
+                    ModelCatalog::<T>::contains_key(model_id),
+                    Error::<T>::ModelDependencyNotFound
+                );
+            }
+
+            // Create renderer metadata
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let model_count = model_dependencies.len() as u32;
+            let metadata = RendererMetadata {
+                container_cid: container_cid.clone(),
+                vram_required_mb,
+                max_latency_ms,
+                model_dependencies,
+                deterministic,
+                registered_by: who.clone(),
+                registered_at: current_block,
+            };
+
+            // Store in catalog
+            RendererCatalog::<T>::insert(&renderer_id, metadata);
+
+            Self::deposit_event(Event::RendererRegistered {
+                renderer_id,
+                container_cid,
+                vram_required_mb,
+                max_latency_ms,
+                model_count,
+                registered_by: who,
+            });
+
+            Ok(())
+        }
     }
 
     // Helper functions
@@ -324,6 +491,25 @@ pub mod pallet {
                 ModelState::Warm
             } else {
                 ModelState::Cold
+            }
+        }
+
+        /// Check if a renderer exists in the catalog
+        pub fn renderer_exists(renderer_id: &RendererIdOf<T>) -> bool {
+            RendererCatalog::<T>::contains_key(renderer_id)
+        }
+
+        /// Get renderer metadata by ID
+        pub fn get_renderer(renderer_id: &RendererIdOf<T>) -> Option<RendererMetadataOf<T>> {
+            RendererCatalog::<T>::get(renderer_id)
+        }
+
+        /// Check if a renderer has a specific model dependency
+        pub fn renderer_has_model(renderer_id: &RendererIdOf<T>, model_id: &ModelIdOf<T>) -> bool {
+            if let Some(renderer) = RendererCatalog::<T>::get(renderer_id) {
+                renderer.model_dependencies.iter().any(|m| m == model_id)
+            } else {
+                false
             }
         }
     }

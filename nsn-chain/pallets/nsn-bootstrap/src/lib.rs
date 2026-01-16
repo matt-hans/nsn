@@ -22,7 +22,7 @@ pub mod weights;
 pub mod pallet {
     use super::WeightInfo;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::GenesisBuild;
+    use frame_support::traits::BuildGenesisConfig;
     use frame_system::pallet_prelude::*;
     use sp_std::collections::btree_set::BTreeSet;
     use sp_std::vec::Vec;
@@ -79,7 +79,6 @@ pub mod pallet {
         pub _marker: core::marker::PhantomData<T>,
     }
 
-    #[cfg(feature = "std")]
     impl<T: Config> Default for GenesisConfig<T> {
         fn default() -> Self {
             Self {
@@ -91,7 +90,7 @@ pub mod pallet {
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
             let signers = normalize_signers::<T>(&self.trusted_signers)
                 .expect("invalid bootstrap signers in genesis");

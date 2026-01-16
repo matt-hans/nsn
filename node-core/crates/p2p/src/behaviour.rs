@@ -1,19 +1,20 @@
 //! P2P network behaviour
 //!
 //! Defines the libp2p NetworkBehaviour for NSN nodes with
-//! GossipSub messaging, Kademlia DHT, and connection management.
+//! GossipSub messaging, Kademlia DHT, mDNS discovery, and connection management.
 
 use libp2p::gossipsub;
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::Behaviour as KademliaBehaviour;
+use libp2p::mdns;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::PeerId;
 use std::collections::HashMap;
 
-/// P2P network behaviour with GossipSub and Kademlia DHT
+/// P2P network behaviour with GossipSub, Kademlia DHT, and mDNS
 ///
 /// Combines GossipSub for pub/sub messaging with Kademlia DHT for
-/// peer discovery and provider records.
+/// peer discovery and provider records, plus mDNS for local network discovery.
 #[derive(NetworkBehaviour)]
 pub struct NsnBehaviour {
     /// GossipSub pub/sub messaging
@@ -21,22 +22,31 @@ pub struct NsnBehaviour {
 
     /// Kademlia DHT for peer discovery and content addressing
     pub kademlia: KademliaBehaviour<MemoryStore>,
+
+    /// mDNS for local network peer discovery
+    pub mdns: mdns::tokio::Behaviour,
 }
 
 impl NsnBehaviour {
-    /// Create new NSN behaviour with GossipSub and Kademlia
+    /// Create new NSN behaviour with GossipSub, Kademlia, and mDNS
     ///
     /// # Arguments
     /// * `gossipsub` - Configured GossipSub behavior
     /// * `kademlia` - Configured Kademlia DHT behavior
-    pub fn new(gossipsub: gossipsub::Behaviour, kademlia: KademliaBehaviour<MemoryStore>) -> Self {
+    /// * `mdns` - Configured mDNS behavior for local discovery
+    pub fn new(
+        gossipsub: gossipsub::Behaviour,
+        kademlia: KademliaBehaviour<MemoryStore>,
+        mdns: mdns::tokio::Behaviour,
+    ) -> Self {
         Self {
             gossipsub,
             kademlia,
+            mdns,
         }
     }
 
-    /// Create a simple behaviour for testing (uses default GossipSub config and Kademlia)
+    /// Create a simple behaviour for testing (uses default GossipSub config, Kademlia, and mDNS)
     #[cfg(test)]
     pub fn new_for_testing(keypair: &libp2p::identity::Keypair) -> Self {
         use libp2p::gossipsub::{ConfigBuilder, MessageAuthenticity};
@@ -58,9 +68,13 @@ impl NsnBehaviour {
         let kad_config = KademliaConfig::default();
         let kademlia = KademliaBehaviour::with_config(peer_id, store, kad_config);
 
+        let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), peer_id)
+            .expect("mDNS creation should succeed");
+
         Self {
             gossipsub,
             kademlia,
+            mdns,
         }
     }
 }

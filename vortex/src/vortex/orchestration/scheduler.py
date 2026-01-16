@@ -388,7 +388,7 @@ class SlotScheduler:
             asyncio.TimeoutError: If timeout exceeded
         """
         return await asyncio.wait_for(
-            self.pipeline._generate_video(image, audio),
+            self.pipeline._generate_video(image, audio, recipe),
             timeout=self.timeouts["video_s"],
         )
 

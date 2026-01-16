@@ -10,7 +10,15 @@ use libp2p::PeerId;
 ///
 /// These are foundation-operated nodes with high availability guarantees.
 /// Returns at least 3 bootstrap peers.
+///
+/// Set NSN_LOCAL_TESTNET=1 to disable hardcoded peers for local testing.
 pub fn get_hardcoded_peers() -> Vec<PeerInfo> {
+    // For local testnet, skip hardcoded production peers
+    if std::env::var("NSN_LOCAL_TESTNET").is_ok() {
+        tracing::info!("NSN_LOCAL_TESTNET set: skipping hardcoded production bootstrap peers");
+        return vec![];
+    }
+
     vec![
         // Bootstrap peer 1: boot1.nsn.network
         PeerInfo {

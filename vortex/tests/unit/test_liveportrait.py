@@ -24,7 +24,9 @@ class TestLivePortraitModelInterface(unittest.TestCase):
         mock_pipeline_class.from_pretrained.return_value = self.mock_pipeline
 
         # Mock warp_sequence to return correct number of frames based on num_frames arg
-        def mock_warp_sequence(source_image, visemes, expression_params, num_frames):
+        def mock_warp_sequence(
+            source_image, visemes, expression_params, num_frames, driving_source=None
+        ):
             return torch.rand(num_frames, 3, 512, 512)  # TCHW format
 
         self.mock_pipeline.warp_sequence.side_effect = mock_warp_sequence
@@ -235,7 +237,9 @@ class TestLipsyncAccuracy(unittest.TestCase):
         self.mock_pipeline = MagicMock()
         mock_pipeline_class.from_pretrained.return_value = self.mock_pipeline
 
-        def mock_warp_sequence(source_image, visemes, expression_params, num_frames):
+        def mock_warp_sequence(
+            source_image, visemes, expression_params, num_frames, driving_source=None
+        ):
             return torch.rand(num_frames, 3, 512, 512)
 
         self.mock_pipeline.warp_sequence.side_effect = mock_warp_sequence
@@ -275,7 +279,9 @@ class TestExpressionPresets(unittest.TestCase):
         self.mock_pipeline = MagicMock()
         mock_pipeline_class.from_pretrained.return_value = self.mock_pipeline
 
-        def mock_warp_sequence(source_image, visemes, expression_params, num_frames):
+        def mock_warp_sequence(
+            source_image, visemes, expression_params, num_frames, driving_source=None
+        ):
             return torch.rand(num_frames, 3, 512, 512)
 
         self.mock_pipeline.warp_sequence.side_effect = mock_warp_sequence
@@ -321,7 +327,9 @@ class TestOutputConstraints(unittest.TestCase):
         mock_pipeline_class.from_pretrained.return_value = self.mock_pipeline
 
         # Mock output in correct range [0, 1]
-        def mock_warp_sequence(source_image, visemes, expression_params, num_frames):
+        def mock_warp_sequence(
+            source_image, visemes, expression_params, num_frames, driving_source=None
+        ):
             return torch.rand(num_frames, 3, 512, 512)  # rand() gives [0, 1]
 
         self.mock_pipeline.warp_sequence.side_effect = mock_warp_sequence

@@ -210,3 +210,79 @@ impl<
             + BlockNumber::max_encoded_len() // last_updated
     }
 }
+
+/// Metadata for a registered Lane 0 video renderer
+///
+/// Renderers are modular video generation backends that implement the
+/// DeterministicVideoRenderer interface. They must guarantee deterministic
+/// output for BFT consensus verification.
+///
+/// # Lane 0 Requirements
+/// - `deterministic` must be `true`
+/// - `max_latency_ms` must be <= 15,000 ms
+/// - `vram_required_mb` must be <= 11,500 MB
+#[derive(Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, RuntimeDebug, TypeInfo)]
+#[scale_info(skip_type_params(MaxCidLen, MaxModelIdLen, MaxRendererModels))]
+pub struct RendererMetadata<AccountId, BlockNumber, MaxCidLen, MaxModelIdLen, MaxRendererModels>
+where
+    MaxCidLen: Get<u32>,
+    MaxModelIdLen: Get<u32>,
+    MaxRendererModels: Get<u32>,
+{
+    /// Content identifier for the renderer container (Docker/OCI image)
+    pub container_cid: BoundedVec<u8, MaxCidLen>,
+    /// Total VRAM required for all models (in MB)
+    pub vram_required_mb: u32,
+    /// Maximum latency guarantee (in milliseconds)
+    pub max_latency_ms: u32,
+    /// Model IDs this renderer depends on (must exist in ModelCatalog)
+    pub model_dependencies: BoundedVec<BoundedVec<u8, MaxModelIdLen>, MaxRendererModels>,
+    /// Whether the renderer guarantees deterministic output (must be true for Lane 0)
+    pub deterministic: bool,
+    /// Account that registered this renderer
+    pub registered_by: AccountId,
+    /// Block number when the renderer was registered
+    pub registered_at: BlockNumber,
+}
+
+impl<
+        AccountId: Default,
+        BlockNumber: Default,
+        MaxCidLen: Get<u32>,
+        MaxModelIdLen: Get<u32>,
+        MaxRendererModels: Get<u32>,
+    > Default for RendererMetadata<AccountId, BlockNumber, MaxCidLen, MaxModelIdLen, MaxRendererModels>
+{
+    fn default() -> Self {
+        Self {
+            container_cid: BoundedVec::default(),
+            vram_required_mb: 0,
+            max_latency_ms: 0,
+            model_dependencies: BoundedVec::default(),
+            deterministic: false,
+            registered_by: AccountId::default(),
+            registered_at: BlockNumber::default(),
+        }
+    }
+}
+
+// Manual MaxEncodedLen implementation for RendererMetadata
+impl<
+        AccountId: MaxEncodedLen,
+        BlockNumber: MaxEncodedLen,
+        MaxCidLen: Get<u32>,
+        MaxModelIdLen: Get<u32>,
+        MaxRendererModels: Get<u32>,
+    > MaxEncodedLen
+    for RendererMetadata<AccountId, BlockNumber, MaxCidLen, MaxModelIdLen, MaxRendererModels>
+{
+    fn max_encoded_len() -> usize {
+        BoundedVec::<u8, MaxCidLen>::max_encoded_len() // container_cid
+            + u32::max_encoded_len() // vram_required_mb
+            + u32::max_encoded_len() // max_latency_ms
+            + BoundedVec::<BoundedVec<u8, MaxModelIdLen>, MaxRendererModels>::max_encoded_len() // model_dependencies
+            + bool::max_encoded_len() // deterministic
+            + AccountId::max_encoded_len() // registered_by
+            + BlockNumber::max_encoded_len() // registered_at
+    }
+}
