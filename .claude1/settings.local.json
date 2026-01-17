@@ -1,7 +1,0 @@
-{
-  "enabledPlugins": {
-    "icn-bft-prover@codeplugins": true,
-    "substrate-pallet-architect@codeplugins": true,
-    "icn-vram-oracle@codeplugins": true
-  }
-}
