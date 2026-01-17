@@ -211,7 +211,7 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
     type ReservedXcmpWeight = ReservedXcmpWeight;
     type CheckAssociatedRelayNumber = RelayNumberMonotonicallyIncreases;
     type ConsensusHook = ConsensusHook;
-    type RelayParentOffset = ConstU32<1>;
+    type RelayParentOffset = ConstU32<0>;
 }
 
 impl parachain_info::Config for Runtime {}

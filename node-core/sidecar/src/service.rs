@@ -149,7 +149,7 @@ pub struct SidecarServiceConfig {
 impl Default for SidecarServiceConfig {
     fn default() -> Self {
         Self {
-            bind_addr: "127.0.0.1:50050".parse().unwrap(),
+            bind_addr: "0.0.0.0:50050".parse().unwrap(),
             max_task_duration: Duration::from_secs(300), // 5 minutes
             task_retention: Duration::from_secs(3600),   // 1 hour
             plugins_enabled: true,

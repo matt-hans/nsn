@@ -1,0 +1,75 @@
+# =============================================================================
+# NSN Testnet - Local Prometheus Configuration
+# =============================================================================
+# For local testnet running on localhost (not Docker service names)
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'nsn-testnet'
+    environment: 'local'
+
+# Rule files for alerting
+rule_files:
+  - '/etc/prometheus/alerts/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # -------------------------------------------------------------------------
+  # Prometheus self-monitoring
+  # -------------------------------------------------------------------------
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'observability'
+
+  # -------------------------------------------------------------------------
+  # NSN Chain Node
+  # -------------------------------------------------------------------------
+  - job_name: 'nsn-chain'
+    static_configs:
+      - targets: ['host.docker.internal:9615']
+        labels:
+          service: 'substrate-node'
+          role: 'validator'
+    metrics_path: /metrics
+
+  # -------------------------------------------------------------------------
+  # Director Node
+  # -------------------------------------------------------------------------
+  - job_name: 'director'
+    static_configs:
+      - targets: ['host.docker.internal:9101']
+        labels:
+          service: 'nsn-offchain'
+          role: 'director'
+
+  # -------------------------------------------------------------------------
+  # Validator Nodes
+  # -------------------------------------------------------------------------
+  - job_name: 'validators'
+    static_configs:
+      - targets:
+          - 'host.docker.internal:9100'
+          - 'host.docker.internal:9102'
+          - 'host.docker.internal:9103'
+          - 'host.docker.internal:9104'
+        labels:
+          service: 'nsn-offchain'
+          role: 'validator'
+
+  # -------------------------------------------------------------------------
+  # Vortex AI Engine
+  # -------------------------------------------------------------------------
+  - job_name: 'vortex'
+    static_configs:
+      - targets: ['host.docker.internal:9100']
+        labels:
+          service: 'vortex'
+          component: 'ai-engine'
+    scrape_interval: 10s
+    scrape_timeout: 5s

@@ -14,7 +14,7 @@
   },
   "enabledPlugins": {
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "claude-mem@thedotmack": true,
+    "claude-mem@thedotmack": false,
     "pyright-lsp@claude-plugins-official": true,
     "plugin-dev@claude-plugins-official": true,
     "nsn-testnet@matt-plugins": true

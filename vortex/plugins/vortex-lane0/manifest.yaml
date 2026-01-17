@@ -1,0 +1,43 @@
+schema_version: "1.0"
+name: "vortex-lane0"
+version: "1.0.0"
+entrypoint: "plugin:VortexLane0Plugin"
+description: "Lane 0 deterministic video generation via Vortex pipeline (Flux+LivePortrait+Kokoro+CLIP)"
+supported_lanes:
+  - lane0
+deterministic: true
+resources:
+  vram_gb: 11.5
+  max_latency_ms: 45000
+  max_concurrency: 1
+io:
+  input_schema:
+    type: object
+    properties:
+      recipe:
+        type: object
+      seed:
+        type: integer
+      slot_id:
+        type: integer
+    required:
+      - recipe
+      - slot_id
+  output_schema:
+    type: object
+    properties:
+      output_cid:
+        type: string
+      video_path:
+        type: string
+      audio_path:
+        type: string
+      clip_embedding:
+        type: array
+      determinism_proof:
+        type: string
+      generation_time_ms:
+        type: number
+    required:
+      - output_cid
+      - determinism_proof

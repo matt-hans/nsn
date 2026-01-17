@@ -1,0 +1,14 @@
+{
+  "plugins": [
+    {
+      "name": "vortex-lane0",
+      "version": "1.0.0",
+      "schema_version": "1.0",
+      "supported_lanes": ["lane0"],
+      "deterministic": true,
+      "max_latency_ms": 45000,
+      "vram_gb": 11.5,
+      "max_concurrency": 1
+    }
+  ]
+}

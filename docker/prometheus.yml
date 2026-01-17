@@ -26,48 +26,60 @@ scrape_configs:
         labels:
           service: 'prometheus'
 
-  # NSN Substrate node metrics
-  - job_name: 'substrate-node'
+  # NSN Chain node metrics (local testnet via zombienet)
+  # Note: When using zombienet, the collator's prometheus port is dynamically assigned
+  # Check `ps aux | grep nsn-node` for --prometheus-port value
+  - job_name: 'nsn-chain'
     static_configs:
-      - targets: ['substrate-node:9615']
+      - targets: ['localhost:9615']
         labels:
           service: 'substrate-node'
           chain: 'nsn-dev'
-    metric_relabel_configs:
-      # Keep only NSN-specific metrics
-      - source_labels: [__name__]
-        regex: '(substrate_.*|polkadot_.*|nsn_.*)'
-        action: keep
+    metrics_path: /metrics
 
-  # Vortex AI engine metrics
-  - job_name: 'vortex'
+  # Director node (local testnet)
+  - job_name: 'director'
     static_configs:
-      - targets: ['vortex:9100']
+      - targets: ['localhost:9101']
         labels:
-          service: 'vortex'
-          component: 'ai-engine'
-    scrape_interval: 10s  # More frequent for GPU metrics
+          service: 'nsn-offchain'
+          role: 'director'
 
-  # STUN/TURN servers (if they expose metrics)
-  - job_name: 'stun-turn'
+  # Validator nodes (local testnet)
+  - job_name: 'validators'
     static_configs:
-      - targets: ['stun-server:3478', 'turn-server:3479']
+      - targets:
+          - 'localhost:9102'
+          - 'localhost:9103'
+          - 'localhost:9104'
         labels:
-          service: 'nat-traversal'
-    scrape_timeout: 5s
-    # These are placeholder targets - coturn doesn't expose Prometheus metrics by default
+          service: 'nsn-offchain'
+          role: 'validator'
 
-  # Grafana self-monitoring (optional)
+  # Vortex AI engine metrics (local testnet)
+  # DISABLED: Vortex requires GPU and conflicts with director port (9101)
+  # Uncomment when running with GPU support
+  # - job_name: 'vortex'
+  #   static_configs:
+  #     - targets: ['localhost:9100']
+  #       labels:
+  #         service: 'vortex'
+  #         component: 'ai-engine'
+  #   scrape_interval: 10s  # More frequent for GPU metrics
+
+  # Grafana self-monitoring
+  # Note: Using localhost:3001 because Prometheus uses host network mode
   - job_name: 'grafana'
     static_configs:
-      - targets: ['grafana:3000']
+      - targets: ['localhost:3001']
         labels:
           service: 'grafana'
     metrics_path: '/metrics'
 
-  # Jaeger metrics (optional)
+  # Jaeger metrics
+  # Note: Using localhost:14269 because Prometheus uses host network mode
   - job_name: 'jaeger'
     static_configs:
-      - targets: ['jaeger:14269']
+      - targets: ['localhost:14269']
         labels:
           service: 'jaeger'

@@ -431,6 +431,18 @@ class DefaultRenderer(DeterministicVideoRenderer):
             self._video_buffer.zero_()
             return self._video_buffer
 
+        # Check if pre-allocated buffer matches requested frame count
+        expected_frames = int(duration * fps)
+        output_buffer = None
+        if self._video_buffer is not None and self._video_buffer.shape[0] == expected_frames:
+            output_buffer = self._video_buffer
+        else:
+            logger.debug(
+                "Buffer size mismatch: buffer=%s, expected=%d frames. LivePortrait will allocate.",
+                self._video_buffer.shape[0] if self._video_buffer is not None else None,
+                expected_frames,
+            )
+
         # LivePortrait should use seed for deterministic warping
         video = liveportrait.animate(
             source_image=actor_img,
@@ -439,7 +451,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             expression_sequence=expression_sequence,
             fps=fps,
             duration=duration,
-            output=self._video_buffer,
+            output=output_buffer,
             driving_source=Path(driving_source) if driving_source else None,
             seed=seed,  # Pass seed for determinism
         )

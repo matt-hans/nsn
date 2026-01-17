@@ -104,8 +104,8 @@ class TestFluxLoading(unittest.TestCase):
     """Test Flux model loading with NF4 quantization."""
 
     @patch("vortex.models.flux.FluxPipeline")
-    @patch("vortex.models.flux.BitsAndBytesConfig")
-    def test_load_flux_schnell_nf4(self, mock_bnb_config, mock_pipeline_class):
+    @patch("vortex.models.flux.PipelineQuantizationConfig")
+    def test_load_flux_schnell_nf4(self, mock_quant_config, mock_pipeline_class):
         """Test loading Flux-Schnell with NF4 quantization config."""
         from vortex.models.flux import FluxModel, load_flux_schnell
 
@@ -114,12 +114,14 @@ class TestFluxLoading(unittest.TestCase):
 
         result = load_flux_schnell(device="cuda:0", quantization="nf4")
 
-        # Verify BitsAndBytesConfig was created correctly
-        mock_bnb_config.assert_called_once()
-        bnb_call_kwargs = mock_bnb_config.call_args[1]
-        self.assertTrue(bnb_call_kwargs["load_in_4bit"])
-        self.assertEqual(bnb_call_kwargs["bnb_4bit_quant_type"], "nf4")
-        self.assertEqual(bnb_call_kwargs["bnb_4bit_compute_dtype"], torch.bfloat16)
+        # Verify PipelineQuantizationConfig was created correctly
+        mock_quant_config.assert_called_once()
+        quant_call_kwargs = mock_quant_config.call_args[1]
+        self.assertEqual(quant_call_kwargs["quant_backend"], "bitsandbytes_4bit")
+        self.assertTrue(quant_call_kwargs["quant_kwargs"]["load_in_4bit"])
+        self.assertEqual(quant_call_kwargs["quant_kwargs"]["bnb_4bit_quant_type"], "nf4")
+        self.assertEqual(quant_call_kwargs["quant_kwargs"]["bnb_4bit_compute_dtype"], torch.bfloat16)
+        self.assertEqual(quant_call_kwargs["components_to_quantize"], ["transformer"])
 
         # Verify pipeline was loaded with correct parameters
         mock_pipeline_class.from_pretrained.assert_called_once()

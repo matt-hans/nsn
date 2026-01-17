@@ -19,7 +19,7 @@ import logging
 
 import torch
 from diffusers import FluxPipeline
-from transformers import BitsAndBytesConfig
+from diffusers.quantizers import PipelineQuantizationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -195,24 +195,28 @@ def load_flux_schnell(
     )
 
     try:
-        # Configure NF4 quantization
+        # Configure NF4 quantization using PipelineQuantizationConfig
         if quantization == "nf4":
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-                bnb_4bit_use_double_quant=False,  # Single quantization for speed
+            quant_config = PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={
+                    "load_in_4bit": True,
+                    "bnb_4bit_quant_type": "nf4",
+                    "bnb_4bit_compute_dtype": torch.bfloat16,
+                    "bnb_4bit_use_double_quant": False,  # Single quantization for speed
+                },
+                components_to_quantize=["transformer"],  # Only quantize transformer
             )
-            logger.info("Using NF4 4-bit quantization")
+            logger.info("Using NF4 4-bit quantization via PipelineQuantizationConfig")
         else:
             raise ValueError(f"Unsupported quantization: {quantization}. Only 'nf4' supported.")
 
         # Load pipeline with quantization
+        # Note: Don't use device_map with quantization - use .to(device) after loading
         pipeline = FluxPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-schnell",
-            quantization_config=bnb_config,
+            quantization_config=quant_config,
             torch_dtype=torch.bfloat16,
-            device_map={"": device},
             use_safetensors=True,
             cache_dir=cache_dir,
         )

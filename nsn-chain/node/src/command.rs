@@ -19,8 +19,8 @@ use crate::{
 
 fn load_spec(id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
     Ok(match id {
-        "dev" => Box::new(chain_spec::development_chain_spec()),
-        "" | "local" => Box::new(chain_spec::local_chain_spec()),
+        "dev" | "nsn-dev" => Box::new(chain_spec::development_chain_spec()),
+        "" | "local" | "nsn-local" => Box::new(chain_spec::local_chain_spec()),
         "nsn-testnet" => Box::new(chain_spec::nsn_testnet_chain_spec()),
         "nsn-mainnet" => Box::new(chain_spec::nsn_mainnet_chain_spec()),
         // Legacy aliases

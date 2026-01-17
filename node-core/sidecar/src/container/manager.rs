@@ -295,7 +295,7 @@ impl Default for ContainerManagerConfig {
         Self {
             default_grpc_port: 50051,
             network_mode: "none".to_string(),
-            bind_address: "127.0.0.1".to_string(),
+            bind_address: "0.0.0.0".to_string(),
             health_check_interval: Duration::from_secs(10),
             shutdown_timeout: Duration::from_secs(30),
             max_containers: 10,

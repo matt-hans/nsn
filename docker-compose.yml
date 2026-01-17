@@ -120,12 +120,11 @@ services:
     networks:
       - nsn-network
 
-  # Prometheus
+  # Prometheus - uses host network for easy access to local services
   prometheus:
     image: prom/prometheus:v2.47.0
     container_name: nsn-prometheus
-    ports:
-      - "9090:9090"
+    network_mode: host
     volumes:
       - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -139,8 +138,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-    networks:
-      - nsn-network
 
   # Grafana
   grafana:
@@ -180,6 +177,7 @@ services:
       - "4317:4317"    # OTLP gRPC
       - "4318:4318"    # OTLP HTTP
       - "14250:14250"  # gRPC
+      - "14269:14269"  # Admin/Metrics (for Prometheus)
     environment:
       - COLLECTOR_OTLP_ENABLED=true
       - SPAN_STORAGE_TYPE=badger

@@ -247,7 +247,7 @@ impl P2pService {
         // Spawn Prometheus metrics server (after oracle creation)
         if config.metrics_port != 0 {
             let metrics_registry = metrics.registry.clone();
-            let metrics_addr: SocketAddr = ([127, 0, 0, 1], config.metrics_port).into();
+            let metrics_addr: SocketAddr = ([0, 0, 0, 0], config.metrics_port).into();
             tokio::spawn(async move {
                 if let Err(err) = serve_metrics(metrics_registry, metrics_addr).await {
                     error!("Metrics server failed: {}", err);
@@ -325,9 +325,16 @@ impl P2pService {
         // Create NSN behaviour with GossipSub, Kademlia, and mDNS
         let behaviour = NsnBehaviour::new(gossipsub, kademlia, mdns);
 
-        // Build swarm with QUIC transport
+        // Build swarm with TCP and QUIC transports
+        // TCP transport is needed for compatibility with chain-advertised WebSocket addresses
         let mut swarm = SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
+            .with_tcp(
+                libp2p::tcp::Config::default(),
+                libp2p::noise::Config::new,
+                libp2p::yamux::Config::default,
+            )
+            .map_err(|e| ServiceError::Swarm(format!("TCP transport error: {}", e)))?
             .with_quic()
             .with_behaviour(|_| behaviour)
             .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
@@ -431,17 +438,29 @@ impl P2pService {
     /// This will start listening on the configured port and process
     /// events until shutdown is requested.
     pub async fn start(&mut self) -> Result<(), ServiceError> {
-        // Start listening
-        let listen_addr: Multiaddr =
+        // Start listening on both QUIC and TCP transports
+        let quic_addr: Multiaddr =
             format!("/ip4/0.0.0.0/udp/{}/quic-v1", self.config.listen_port)
                 .parse()
-                .map_err(|e| ServiceError::Transport(format!("Invalid listen address: {}", e)))?;
+                .map_err(|e| ServiceError::Transport(format!("Invalid QUIC address: {}", e)))?;
+
+        let tcp_addr: Multiaddr =
+            format!("/ip4/0.0.0.0/tcp/{}", self.config.listen_port)
+                .parse()
+                .map_err(|e| ServiceError::Transport(format!("Invalid TCP address: {}", e)))?;
 
         self.swarm
-            .listen_on(listen_addr.clone())
-            .map_err(|e| ServiceError::Transport(format!("Failed to listen: {}", e)))?;
+            .listen_on(quic_addr.clone())
+            .map_err(|e| ServiceError::Transport(format!("Failed to listen on QUIC: {}", e)))?;
 
-        info!("P2P service listening on {}", listen_addr);
+        self.swarm
+            .listen_on(tcp_addr.clone())
+            .map_err(|e| ServiceError::Transport(format!("Failed to listen on TCP: {}", e)))?;
+
+        info!(
+            "P2P service listening on {} (QUIC) and {} (TCP)",
+            quic_addr, tcp_addr
+        );
 
         // Advertise external addresses (STUN/UPnP)
         if let Err(err) = self.configure_nat().await {
