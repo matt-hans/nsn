@@ -41,6 +41,282 @@ Neural Sovereign Network (NSN) is a decentralized AI compute marketplace that co
 
 ---
 
+## Video Generation Pipeline
+
+**This is NSN's core innovation**: a decentralized, deterministic video generation pipeline with Byzantine fault-tolerant consensus. Unlike traditional AI services, NSN guarantees that multiple independent nodes produce identical outputs from the same inputs, enabling trustless verification without centralized control.
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    NSN Video Generation Flow (45-second slot)               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   1. RECIPE SUBMISSION                                                      │
+│      User submits generation recipe with script, voice, and visual prompt   │
+│                              │                                              │
+│                              ▼                                              │
+│   2. PARALLEL GENERATION (0-12s)                                            │
+│      ┌─────────────────┬─────────────────┐                                  │
+│      │  Kokoro TTS     │  Flux-Schnell   │                                  │
+│      │  "Hello world"  │  "scientist"    │                                  │
+│      │     ↓           │       ↓         │                                  │
+│      │  Audio.wav      │  Actor.png      │                                  │
+│      └────────┬────────┴────────┬────────┘                                  │
+│               │                 │                                           │
+│               └────────┬────────┘                                           │
+│                        ▼                                                    │
+│   3. VIDEO SYNTHESIS (12-15s)                                               │
+│      LivePortrait warps actor image to match audio lip-sync                 │
+│                        │                                                    │
+│                        ▼                                                    │
+│   4. SEMANTIC VERIFICATION (15-17s)                                         │
+│      Dual CLIP ensemble computes 512-dim embedding + self-check             │
+│                        │                                                    │
+│                        ▼                                                    │
+│   5. BFT CONSENSUS (17-30s)                                                 │
+│      5 validators compare embeddings, 3-of-5 must match (cosine > 0.99)     │
+│                        │                                                    │
+│                        ▼                                                    │
+│   6. ON-CHAIN FINALIZATION                                                  │
+│      Determinism proof + CLIP embedding stored on-chain                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why Deterministic Generation Matters
+
+Traditional AI models are non-deterministic: the same prompt produces different outputs each time. NSN solves this through:
+
+1. **Seeded Random State**: All random number generators use deterministic seeds derived from on-chain entropy
+2. **Fixed Precision**: Models run in consistent precision (FP16/FP32) to avoid floating-point divergence
+3. **GPU-Resident Models**: All 5 models stay loaded in VRAM, eliminating initialization variance
+4. **Cryptographic Proofs**: Each generation produces a SHA-256 hash proving deterministic execution
+
+This enables **trustless verification**: any validator can reproduce the exact same video from the same recipe+seed, then compare CLIP embeddings to detect tampering.
+
+### Starting the Vortex Server
+
+The Vortex server provides an HTTP API for video generation:
+
+```bash
+# Navigate to vortex directory
+cd vortex
+source .venv/bin/activate
+
+# Start server (models load lazily on first request)
+python -m vortex.server \
+    --host 0.0.0.0 \
+    --port 50051 \
+    --device cuda:0 \
+    --models-path /path/to/models \
+    --output-path /path/to/output
+
+# Or with eager model loading (recommended for production)
+python -m vortex.server \
+    --host 0.0.0.0 \
+    --port 50051 \
+    --device cuda:0 \
+    --eager-init
+```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/generate` | POST | Generate video from recipe |
+| `/health` | GET | Server health and pipeline status |
+| `/vram` | GET | GPU memory usage statistics |
+| `/metrics` | GET | Prometheus metrics for monitoring |
+
+### Generating Video
+
+#### Recipe Format
+
+```json
+{
+  "recipe": {
+    "slot_params": {
+      "slot_id": 12345,
+      "duration_sec": 45,
+      "fps": 24
+    },
+    "audio_track": {
+      "script": "Welcome to the Neural Sovereign Network!",
+      "voice_id": "rick_c137",
+      "speed": 1.0,
+      "emotion": "excited"
+    },
+    "visual_track": {
+      "prompt": "a scientist in a futuristic laboratory explaining quantum mechanics",
+      "negative_prompt": "blurry, low quality, watermark, text"
+    },
+    "semantic_constraints": {
+      "clip_threshold": 0.70
+    }
+  },
+  "slot_id": 12345,
+  "seed": 42
+}
+```
+
+#### Recipe Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `slot_params.slot_id` | int | Unique slot identifier (on-chain reference) |
+| `slot_params.duration_sec` | int | Video duration (max 45 seconds) |
+| `slot_params.fps` | int | Frame rate (default: 24) |
+| `audio_track.script` | string | Text to convert to speech |
+| `audio_track.voice_id` | string | Voice character: `rick_c137`, `morty`, `summer`, `jerry`, `beth` |
+| `audio_track.speed` | float | Speech rate: 0.8-1.2 (default: 1.0) |
+| `audio_track.emotion` | string | Emotion: `neutral`, `excited`, `sad`, `angry`, `manic` |
+| `visual_track.prompt` | string | Text description of the actor/scene |
+| `visual_track.negative_prompt` | string | Elements to avoid in generation |
+| `semantic_constraints.clip_threshold` | float | Minimum CLIP similarity score (0.0-1.0) |
+| `seed` | int | Deterministic seed for reproducibility |
+
+#### Example: Generate Video via cURL
+
+```bash
+# Generate a 45-second video slot
+curl -X POST http://localhost:50051/generate \
+    -H "Content-Type: application/json" \
+    -d '{
+        "recipe": {
+            "slot_params": {"slot_id": 1001, "duration_sec": 45, "fps": 24},
+            "audio_track": {
+                "script": "Morty, we need to go on an adventure!",
+                "voice_id": "rick_c137",
+                "emotion": "excited"
+            },
+            "visual_track": {
+                "prompt": "a mad scientist with wild grey hair in a garage laboratory",
+                "negative_prompt": "blurry, cartoon, anime"
+            },
+            "semantic_constraints": {"clip_threshold": 0.70}
+        },
+        "slot_id": 1001,
+        "seed": 42
+    }'
+```
+
+#### Response Format
+
+```json
+{
+  "success": true,
+  "slot_id": 1001,
+  "video_path": "/output/slot_1001_video.npy",
+  "audio_path": "/output/slot_1001_audio.npy",
+  "video_shape": [1080, 3, 512, 512],
+  "audio_samples": 1080000,
+  "clip_embedding_shape": [512],
+  "determinism_proof": "a3f2b1c4d5e6f7...",
+  "generation_time_ms": 15234.5
+}
+```
+
+#### Understanding the Output
+
+| Output | Format | Description |
+|--------|--------|-------------|
+| `video_path` | NumPy `.npy` | Video frames `[T, C, H, W]` - 1080 frames × 3 channels × 512×512 |
+| `audio_path` | NumPy `.npy` | Audio waveform at 24kHz mono (1,080,000 samples for 45s) |
+| `clip_embedding_shape` | 512-dim vector | Semantic embedding for BFT consensus comparison |
+| `determinism_proof` | SHA-256 hex | Cryptographic proof of deterministic execution |
+
+#### Loading Generated Output
+
+```python
+import numpy as np
+import torch
+
+# Load video frames
+video = np.load("/output/slot_1001_video.npy")
+print(f"Video shape: {video.shape}")  # (1080, 3, 512, 512)
+
+# Load audio
+audio = np.load("/output/slot_1001_audio.npy")
+print(f"Audio samples: {len(audio)}")  # 1080000 (45s @ 24kHz)
+
+# Convert to playable format
+from scipy.io.wavfile import write
+write("/output/slot_1001.wav", 24000, (audio * 32767).astype(np.int16))
+
+# Convert video to MP4 (requires ffmpeg)
+import subprocess
+# Reshape to (T, H, W, C) for video encoding
+video_hwc = np.transpose(video, (0, 2, 3, 1))
+# ... use imageio or cv2 to save as MP4
+```
+
+### Monitoring Generation
+
+#### Check Server Health
+
+```bash
+curl http://localhost:50051/health | jq
+```
+
+```json
+{
+  "status": "healthy",
+  "device": "cuda:0",
+  "initialized": true,
+  "renderer": "default",
+  "renderer_version": "0.1.0"
+}
+```
+
+#### Monitor VRAM Usage
+
+```bash
+curl http://localhost:50051/vram | jq
+```
+
+```json
+{
+  "available": true,
+  "device": "cuda:0",
+  "gpu_name": "NVIDIA GeForce RTX 3090",
+  "total_gb": 24.0,
+  "allocated_gb": 22.5,
+  "reserved_gb": 23.1,
+  "free_gb": 0.9
+}
+```
+
+#### Prometheus Metrics
+
+```bash
+curl http://localhost:50051/metrics
+```
+
+```
+# HELP nvidia_gpu_memory_used_bytes GPU memory currently used in bytes
+# TYPE nvidia_gpu_memory_used_bytes gauge
+nvidia_gpu_memory_used_bytes{gpu="0",name="NVIDIA GeForce RTX 3090"} 24159191040
+nvidia_gpu_temperature_celsius{gpu="0",name="NVIDIA GeForce RTX 3090"} 45
+vortex_pipeline_initialized{device="cuda:0"} 1
+```
+
+### Network Integration
+
+In production, video generation is orchestrated by the NSN network:
+
+1. **Epoch Election**: 5 Directors are elected from the On-Deck set each epoch (100 blocks)
+2. **Recipe Distribution**: Director broadcasts recipe to elected validators via P2P
+3. **Parallel Generation**: All 5 validators generate video independently with same seed
+4. **Embedding Exchange**: Validators exchange 512-dim CLIP embeddings via GossipSub
+5. **BFT Consensus**: 3-of-5 matching embeddings (cosine similarity > 0.99) required
+6. **On-Chain Proof**: Determinism proof and consensus result stored on NSN chain
+7. **P2P Streaming**: Finalized video distributed to viewers via mesh network
+
+This ensures no single node can manipulate video content - Byzantine fault tolerance guarantees integrity even if 2-of-5 validators are malicious.
+
+---
+
 ## Architecture
 
 ```
@@ -381,7 +657,7 @@ pytest tests/ --cov=vortex --cov-report=html
 | NSN Chain | 9615 | Substrate metrics |
 | Director | 9101 | P2P and BFT metrics |
 | Validators | 9102-9104 | Validator node metrics |
-| Vortex | 9100 | GPU and generation metrics |
+| Vortex | 50051 | GPU and generation metrics (via `/metrics`) |
 
 Access Prometheus UI: http://localhost:9090
 
