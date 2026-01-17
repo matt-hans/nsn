@@ -2,6 +2,7 @@
 
 This server provides HTTP JSON API for Lane 0 video generation:
 - POST /generate: Generate video from recipe
+- POST /unload: Manually unload models to free GPU memory
 - GET /health: Health check endpoint
 - GET /vram: VRAM status endpoint
 - GET /metrics: Prometheus metrics endpoint
@@ -9,12 +10,32 @@ This server provides HTTP JSON API for Lane 0 video generation:
 The server wraps the VortexPipeline and provides a simple HTTP interface
 for standalone operation or direct integration testing.
 
+GPU Memory Management:
+    Models are loaded lazily on first /generate request and remain in VRAM
+    for fast subsequent generations. To free GPU memory for other processes:
+
+    1. Automatic: Models unload after --idle-timeout seconds of inactivity
+       (default: 300 seconds / 5 minutes, set to 0 to disable)
+
+    2. Manual: POST /unload to immediately free GPU memory
+
+    Models will automatically reload on the next /generate request.
+
 Example:
     $ python -m vortex.server --host 0.0.0.0 --port 50051 --device cuda:0
+
+    # With 10-minute idle timeout
+    $ python -m vortex.server --idle-timeout 600
+
+    # Disable auto-unload (models stay loaded forever)
+    $ python -m vortex.server --idle-timeout 0
 
     $ curl -X POST http://localhost:50051/generate \\
         -H "Content-Type: application/json" \\
         -d '{"recipe": {...}, "slot_id": 1, "seed": 42}'
+
+    # Manually unload models to free GPU
+    $ curl -X POST http://localhost:50051/unload
 """
 
 from __future__ import annotations
@@ -41,20 +62,37 @@ class VortexServer:
 
     Provides endpoints for video generation, health checks, and VRAM monitoring.
     Lazily initializes the VortexPipeline on first generation request.
+
+    GPU Memory Management:
+        - Models load lazily on first /generate request
+        - Models unload automatically after idle_timeout_sec of inactivity
+        - Manual unload available via /unload endpoint
+        - Models reload automatically on next /generate request
     """
 
-    def __init__(self, device: str, output_path: Path):
+    def __init__(
+        self,
+        device: str,
+        output_path: Path,
+        idle_timeout_sec: float = 300.0,
+    ):
         """Initialize server.
 
         Args:
             device: CUDA device for GPU inference (e.g., "cuda:0")
             output_path: Directory for output files
+            idle_timeout_sec: Seconds of inactivity before unloading models.
+                              Set to 0 to disable auto-unload. Default: 300 (5 min)
         """
         self.device = device
         self.output_path = output_path
+        self.idle_timeout_sec = idle_timeout_sec
         self._pipeline = None
         self._initialized = False
         self._init_error: str | None = None
+        self._last_activity_time: float = 0.0
+        self._idle_monitor_task: asyncio.Task | None = None
+        self._unload_count: int = 0  # Track number of unloads for metrics
 
     async def ensure_pipeline(self) -> bool:
         """Lazily initialize the VortexPipeline.
@@ -62,8 +100,16 @@ class VortexServer:
         Returns:
             True if pipeline is ready, False if initialization failed
         """
-        if self._initialized:
-            return self._pipeline is not None
+        # Update activity time
+        self._last_activity_time = time.time()
+
+        # If already initialized and pipeline exists, we're good
+        if self._initialized and self._pipeline is not None:
+            return True
+
+        # If previously failed, don't retry
+        if self._initialized and self._init_error is not None:
+            return False
 
         try:
             logger.info(f"Initializing VortexPipeline on device: {self.device}")
@@ -71,9 +117,18 @@ class VortexServer:
 
             self._pipeline = await VortexPipeline.create(device=self.device)
             self._initialized = True
+            self._init_error = None
             logger.info(
                 f"VortexPipeline initialized with renderer: {self._pipeline.renderer_name}"
             )
+
+            # Start idle monitor if timeout is enabled
+            if self.idle_timeout_sec > 0 and self._idle_monitor_task is None:
+                self._idle_monitor_task = asyncio.create_task(self._idle_monitor())
+                logger.info(
+                    f"Idle monitor started (timeout: {self.idle_timeout_sec}s)"
+                )
+
             return True
         except Exception as e:
             self._init_error = str(e)
@@ -81,30 +136,170 @@ class VortexServer:
             logger.error(f"Failed to initialize VortexPipeline: {e}")
             return False
 
+    async def unload_pipeline(self) -> bool:
+        """Unload the pipeline and free GPU memory.
+
+        Returns:
+            True if pipeline was unloaded, False if nothing to unload
+        """
+        if self._pipeline is None:
+            logger.debug("No pipeline to unload")
+            return False
+
+        try:
+            logger.info("Unloading VortexPipeline to free GPU memory...")
+
+            # Get VRAM before unload for logging
+            if torch.cuda.is_available():
+                device_idx = (
+                    int(self.device.split(":")[-1]) if ":" in self.device else 0
+                )
+                vram_before = torch.cuda.memory_allocated(device_idx) / 1e9
+
+            # Delete pipeline and clear references
+            del self._pipeline
+            self._pipeline = None
+            self._initialized = False
+            self._init_error = None
+
+            # Force CUDA memory cleanup
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                import gc
+                gc.collect()
+                torch.cuda.empty_cache()
+
+                vram_after = torch.cuda.memory_allocated(device_idx) / 1e9
+                freed = vram_before - vram_after
+                logger.info(
+                    f"Pipeline unloaded: freed {freed:.2f} GB VRAM "
+                    f"({vram_before:.2f} GB -> {vram_after:.2f} GB)"
+                )
+            else:
+                logger.info("Pipeline unloaded (CUDA not available)")
+
+            self._unload_count += 1
+            return True
+
+        except Exception as e:
+            logger.error(f"Error unloading pipeline: {e}")
+            return False
+
+    async def _idle_monitor(self) -> None:
+        """Background task that monitors for idle timeout and unloads models."""
+        logger.debug("Idle monitor task started")
+        check_interval = min(30.0, self.idle_timeout_sec / 2)  # Check at least every 30s
+
+        try:
+            while True:
+                await asyncio.sleep(check_interval)
+
+                # Skip if pipeline not loaded
+                if self._pipeline is None:
+                    continue
+
+                # Check if idle timeout exceeded
+                idle_time = time.time() - self._last_activity_time
+                if idle_time >= self.idle_timeout_sec:
+                    logger.info(
+                        f"Idle timeout reached ({idle_time:.0f}s >= {self.idle_timeout_sec}s), "
+                        "unloading models..."
+                    )
+                    await self.unload_pipeline()
+
+        except asyncio.CancelledError:
+            logger.debug("Idle monitor task cancelled")
+        except Exception as e:
+            logger.error(f"Idle monitor error: {e}")
+
+    def _update_activity(self) -> None:
+        """Update last activity timestamp."""
+        self._last_activity_time = time.time()
+
     async def handle_health(self) -> tuple[int, dict[str, Any]]:
         """Handle health check request.
 
         Returns:
             Tuple of (HTTP status code, response dict)
         """
-        status = "healthy" if self._pipeline is not None else "initializing"
-        if self._init_error:
+        if self._pipeline is not None:
+            status = "healthy"
+        elif self._init_error:
             status = "unhealthy"
+        else:
+            status = "idle"  # Not loaded, waiting for first request
 
-        response = {
+        response: dict[str, Any] = {
             "status": status,
             "device": self.device,
-            "initialized": self._initialized,
+            "models_loaded": self._pipeline is not None,
         }
 
         if self._pipeline is not None:
             response["renderer"] = self._pipeline.renderer_name
             response["renderer_version"] = self._pipeline.renderer_version
 
+            # Include idle time info
+            idle_time = time.time() - self._last_activity_time
+            response["idle_seconds"] = round(idle_time, 1)
+            if self.idle_timeout_sec > 0:
+                response["idle_timeout_seconds"] = self.idle_timeout_sec
+                response["unload_in_seconds"] = max(
+                    0, round(self.idle_timeout_sec - idle_time, 1)
+                )
+
         if self._init_error:
             response["error"] = self._init_error
 
+        # Include unload stats
+        if self._unload_count > 0:
+            response["unload_count"] = self._unload_count
+
         return HTTPStatus.OK, response
+
+    async def handle_unload(self) -> tuple[int, dict[str, Any]]:
+        """Handle manual model unload request.
+
+        Returns:
+            Tuple of (HTTP status code, response dict)
+        """
+        if self._pipeline is None:
+            return HTTPStatus.OK, {
+                "success": True,
+                "message": "Models already unloaded",
+                "models_loaded": False,
+            }
+
+        # Get VRAM before for response
+        vram_before = 0.0
+        if torch.cuda.is_available():
+            device_idx = (
+                int(self.device.split(":")[-1]) if ":" in self.device else 0
+            )
+            vram_before = torch.cuda.memory_allocated(device_idx) / 1e9
+
+        success = await self.unload_pipeline()
+
+        # Get VRAM after
+        vram_after = 0.0
+        if torch.cuda.is_available():
+            vram_after = torch.cuda.memory_allocated(device_idx) / 1e9
+
+        if success:
+            return HTTPStatus.OK, {
+                "success": True,
+                "message": "Models unloaded successfully",
+                "models_loaded": False,
+                "vram_freed_gb": round(vram_before - vram_after, 2),
+                "vram_before_gb": round(vram_before, 2),
+                "vram_after_gb": round(vram_after, 2),
+            }
+        else:
+            return HTTPStatus.INTERNAL_SERVER_ERROR, {
+                "success": False,
+                "message": "Failed to unload models",
+                "models_loaded": self._pipeline is not None,
+            }
 
     async def handle_vram(self) -> tuple[int, dict[str, Any]]:
         """Handle VRAM status request.
@@ -161,10 +356,25 @@ class VortexServer:
         lines.append("# TYPE nvidia_gpu_temperature_celsius gauge")
         lines.append("# HELP vortex_pipeline_initialized Whether the pipeline is initialized")
         lines.append("# TYPE vortex_pipeline_initialized gauge")
+        lines.append("# HELP vortex_idle_seconds Seconds since last generation activity")
+        lines.append("# TYPE vortex_idle_seconds gauge")
+        lines.append("# HELP vortex_idle_timeout_seconds Configured idle timeout (0=disabled)")
+        lines.append("# TYPE vortex_idle_timeout_seconds gauge")
+        lines.append("# HELP vortex_unload_total Total number of model unloads")
+        lines.append("# TYPE vortex_unload_total counter")
+
+        device_label = f'device="{self.device}"'
 
         # Pipeline status
         initialized = 1 if self._pipeline is not None else 0
-        lines.append(f'vortex_pipeline_initialized{{device="{self.device}"}} {initialized}')
+        lines.append(f"vortex_pipeline_initialized{{{device_label}}} {initialized}")
+
+        # Idle metrics
+        if self._last_activity_time > 0:
+            idle_seconds = time.time() - self._last_activity_time
+            lines.append(f"vortex_idle_seconds{{{device_label}}} {idle_seconds:.1f}")
+        lines.append(f"vortex_idle_timeout_seconds{{{device_label}}} {self.idle_timeout_sec}")
+        lines.append(f"vortex_unload_total{{{device_label}}} {self._unload_count}")
 
         if torch.cuda.is_available():
             try:
@@ -307,6 +517,8 @@ class VortexServer:
         elif path == "/metrics" and method == "GET":
             # Metrics returns (status, str) not (status, dict)
             return await self.handle_metrics()  # type: ignore[return-value]
+        elif path == "/unload" and method == "POST":
+            return await self.handle_unload()
         elif path == "/generate" and method == "POST":
             try:
                 parsed_body = json.loads(body) if body else {}
@@ -321,6 +533,7 @@ class VortexServer:
                     "GET /vram",
                     "GET /metrics",
                     "POST /generate",
+                    "POST /unload",
                 ],
             }
 
@@ -432,6 +645,15 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Initialize pipeline eagerly at startup (default: lazy init on first request)",
     )
+    parser.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=float(os.getenv("VORTEX_IDLE_TIMEOUT", "300")),
+        help=(
+            "Seconds of inactivity before unloading models to free GPU memory. "
+            "Set to 0 to disable auto-unload. (default: 300 = 5 minutes)"
+        ),
+    )
     args = parser.parse_args()
     # Handle deprecated --grpc-port for backward compatibility
     if args.grpc_port is not None:
@@ -441,10 +663,19 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _run_server(
-    host: str, port: int, device: str, output_path: Path, eager_init: bool
+    host: str,
+    port: int,
+    device: str,
+    output_path: Path,
+    eager_init: bool,
+    idle_timeout_sec: float,
 ) -> None:
     """Run the HTTP server."""
-    server = VortexServer(device=device, output_path=output_path)
+    server = VortexServer(
+        device=device,
+        output_path=output_path,
+        idle_timeout_sec=idle_timeout_sec,
+    )
     handler = HTTPHandler(server)
 
     # Eager initialization if requested
@@ -483,6 +714,10 @@ def main() -> None:
     )
     logger.info(f"Models path: {models_path}")
     logger.info(f"Output path: {output_path}")
+    if args.idle_timeout > 0:
+        logger.info(f"Idle timeout: {args.idle_timeout}s (models will unload after inactivity)")
+    else:
+        logger.info("Idle timeout: disabled (models stay loaded until manual unload)")
 
     asyncio.run(
         _run_server(
@@ -491,6 +726,7 @@ def main() -> None:
             device=args.device,
             output_path=output_path,
             eager_init=args.eager_init,
+            idle_timeout_sec=args.idle_timeout,
         )
     )
 
