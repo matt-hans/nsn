@@ -60,3 +60,7 @@ secrets/
 
 # Git worktrees
 .worktrees/
+
+# Claude Code plugin directories
+.claude/
+.claude1/
