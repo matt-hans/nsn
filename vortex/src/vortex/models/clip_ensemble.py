@@ -20,6 +20,7 @@ Latency Target: <1s P99 for 5-frame verification on RTX 3060
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -200,10 +201,10 @@ class ClipEnsemble:
     ) -> tuple[float, float]:
         """Compute CLIP scores from both models."""
         score_b = self._compute_similarity(
-            keyframes, prompt, self.clip_b, self.tokenizer_b
+            keyframes, prompt, self.clip_b, self.tokenizer_b, self.preprocess_b
         )
         score_l = self._compute_similarity(
-            keyframes, prompt, self.clip_l, self.tokenizer_l
+            keyframes, prompt, self.clip_l, self.tokenizer_l, self.preprocess_l
         )
         return score_b, score_l
 
@@ -287,14 +288,16 @@ class ClipEnsemble:
         prompt: str,
         clip_model: torch.nn.Module,
         tokenizer: callable,
+        preprocess: Callable | None = None,
     ) -> float:
         """Compute cosine similarity between keyframes and prompt.
 
         Args:
-            keyframes: Keyframe tensor [N, C, H, W]
+            keyframes: Keyframe tensor [N, C, H, W] with values in [0, 1]
             prompt: Text prompt
             clip_model: CLIP model (ViT-B-32 or ViT-L-14)
             tokenizer: Text tokenizer for the model
+            preprocess: Optional preprocessing transform for the model
 
         Returns:
             Average cosine similarity score [0, 1]
@@ -303,10 +306,25 @@ class ClipEnsemble:
             RuntimeError: If CUDA out of memory
         """
         try:
+            # Preprocess keyframes for CLIP (resize to 224x224, normalize)
+            if preprocess is not None:
+                # Convert tensor frames to PIL-like format and apply transform
+                # OpenCLIP preprocess expects PIL images or tensors in [0, 255]
+                from torchvision.transforms import functional as TF
+
+                processed_frames = []
+                for frame in keyframes:
+                    # Ensure frame is in [0, 1] range, then convert to PIL
+                    frame_uint8 = (frame.clamp(0, 1) * 255).byte()
+                    pil_image = TF.to_pil_image(frame_uint8.cpu())
+                    processed = preprocess(pil_image)
+                    processed_frames.append(processed)
+                keyframes = torch.stack(processed_frames).to(self.device)
+            else:
+                keyframes = keyframes.to(self.device)
+
             # Encode keyframes
-            # Note: keyframes are already tensors, CLIP expects normalized images
-            # OpenCLIP's encode_image handles batched inputs
-            image_features = clip_model.encode_image(keyframes.to(self.device))
+            image_features = clip_model.encode_image(keyframes)
 
             # Encode text
             text_tokens = tokenizer([prompt]).to(self.device)
@@ -343,7 +361,11 @@ class ClipEnsemble:
     def _generate_embedding(
         self, keyframes: torch.Tensor, prompt: str
     ) -> torch.Tensor:
-        """Generate combined L2-normalized embedding for BFT consensus.
+        """Generate L2-normalized embedding for BFT consensus.
+
+        Uses CLIP-ViT-B-32 for embedding generation (512-dim output).
+        Note: ViT-L-14 produces 768-dim embeddings, so we use only B-32 for
+        the consensus embedding while both models contribute to scoring.
 
         Args:
             keyframes: Keyframe tensor [N, C, H, W]
@@ -356,26 +378,30 @@ class ClipEnsemble:
             RuntimeError: If CUDA out of memory
         """
         try:
-            # Encode with both models
-            img_emb_b = self.clip_b.encode_image(keyframes.to(self.device))
-            img_emb_l = self.clip_l.encode_image(keyframes.to(self.device))
+            # Preprocess keyframes for CLIP-B-32 (resize to 224x224, normalize)
+            from torchvision.transforms import functional as TF
+
+            processed_frames = []
+            for frame in keyframes:
+                # Ensure frame is in [0, 1] range, then convert to PIL
+                frame_uint8 = (frame.clamp(0, 1) * 255).byte()
+                pil_image = TF.to_pil_image(frame_uint8.cpu())
+                processed = self.preprocess_b(pil_image)
+                processed_frames.append(processed)
+            processed_keyframes = torch.stack(processed_frames).to(self.device)
+
+            # Use CLIP-ViT-B-32 for embedding (native 512-dim output)
+            # ViT-L-14 has 768-dim output which can't be directly combined
+            img_emb_b = self.clip_b.encode_image(processed_keyframes)
 
             text_tokens_b = self.tokenizer_b([prompt]).to(self.device)
-            text_tokens_l = self.tokenizer_l([prompt]).to(self.device)
-
             txt_emb_b = self.clip_b.encode_text(text_tokens_b)
-            txt_emb_l = self.clip_l.encode_text(text_tokens_l)
 
             # Average keyframe features
             img_emb_b = img_emb_b.mean(dim=0)
-            img_emb_l = img_emb_l.mean(dim=0)
 
-            # Combine image and text for each model
-            combined_b = (img_emb_b + txt_emb_b.squeeze()) / 2
-            combined_l = (img_emb_l + txt_emb_l.squeeze()) / 2
-
-            # Weighted combination for final embedding
-            final_embedding = combined_b * self.weight_b + combined_l * self.weight_l
+            # Combine image and text embeddings (both 512-dim)
+            final_embedding = (img_emb_b + txt_emb_b.squeeze()) / 2
 
             # L2 normalize
             final_embedding = functional.normalize(final_embedding, dim=-1)
@@ -442,8 +468,14 @@ def load_clip_ensemble(
         extra={"device": device, "cache_dir": str(cache_dir)},
     )
 
+    # Determine if we should apply INT8 quantization
+    # Only quantize on CPU - INT8 ops (quantized::linear_dynamic) don't work on CUDA
+    # On GPU, use FP32/FP16 (faster, more VRAM but INT8 ops not supported)
+    should_quantize = not device.startswith("cuda")
+
     # Load ViT-B-32
-    logger.info("Loading CLIP-ViT-B-32 (INT8)")
+    precision_str = "INT8" if should_quantize else "FP32"
+    logger.info(f"Loading CLIP-ViT-B-32 ({precision_str})")
     clip_b, _, preprocess_b = open_clip.create_model_and_transforms(
         "ViT-B-32",
         pretrained="openai",
@@ -453,13 +485,14 @@ def load_clip_ensemble(
     clip_b.eval()
     tokenizer_b = open_clip.get_tokenizer("ViT-B-32")
 
-    # Apply INT8 quantization to ViT-B-32
-    clip_b = torch.quantization.quantize_dynamic(
-        clip_b, {torch.nn.Linear}, dtype=torch.qint8
-    )
+    # Apply INT8 quantization to ViT-B-32 (CUDA only)
+    if should_quantize:
+        clip_b = torch.quantization.quantize_dynamic(
+            clip_b, {torch.nn.Linear}, dtype=torch.qint8
+        )
 
     # Load ViT-L-14
-    logger.info("Loading CLIP-ViT-L-14 (INT8)")
+    logger.info(f"Loading CLIP-ViT-L-14 ({precision_str})")
     clip_l, _, preprocess_l = open_clip.create_model_and_transforms(
         "ViT-L-14",
         pretrained="openai",
@@ -469,10 +502,11 @@ def load_clip_ensemble(
     clip_l.eval()
     tokenizer_l = open_clip.get_tokenizer("ViT-L-14")
 
-    # Apply INT8 quantization to ViT-L-14
-    clip_l = torch.quantization.quantize_dynamic(
-        clip_l, {torch.nn.Linear}, dtype=torch.qint8
-    )
+    # Apply INT8 quantization to ViT-L-14 (CUDA only)
+    if should_quantize:
+        clip_l = torch.quantization.quantize_dynamic(
+            clip_l, {torch.nn.Linear}, dtype=torch.qint8
+        )
 
     logger.info("CLIP ensemble loaded successfully")
 

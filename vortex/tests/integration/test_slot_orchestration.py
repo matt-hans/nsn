@@ -27,7 +27,7 @@ from vortex.orchestration import (
     SlotResult,
     SlotScheduler,
 )
-from vortex.pipeline import MemoryPressureError
+from vortex.renderers.default.renderer import MemoryPressureError
 
 # Mark all tests as requiring GPU
 pytestmark = pytest.mark.skipif(

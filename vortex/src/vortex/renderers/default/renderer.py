@@ -29,6 +29,7 @@ import torch.nn as nn
 import yaml
 
 from vortex.models import ModelName, load_model
+from vortex.models.clip_ensemble import DualClipResult, load_clip_ensemble
 from vortex.renderers.base import DeterministicVideoRenderer
 from vortex.renderers.recipe_schema import merge_with_defaults, validate_recipe
 from vortex.renderers.types import RendererManifest, RenderResult
@@ -62,16 +63,23 @@ class _ModelRegistry:
         self._models: dict[ModelName, nn.Module] = {}
 
     def load_all_models(self) -> None:
-        """Load all 5 models into registry."""
-        model_names: list[ModelName] = ["flux", "liveportrait", "kokoro", "clip_b", "clip_l"]
+        """Load all models into registry."""
+        # Load individual models (flux, liveportrait, kokoro)
+        single_models: list[ModelName] = ["flux", "liveportrait", "kokoro"]
 
         try:
-            for name in model_names:
+            for name in single_models:
                 logger.info(f"Loading model: {name}")
                 precision = self.precision_overrides.get(name)
                 model = load_model(name, device=self.device, precision=precision)
                 self._models[name] = model
                 log_vram_snapshot(f"after_{name}_load")
+
+            # Load ClipEnsemble (handles both clip_b and clip_l internally)
+            logger.info("Loading model: clip_ensemble")
+            clip_ensemble = load_clip_ensemble(device=self.device)
+            self._models["clip_ensemble"] = clip_ensemble
+            log_vram_snapshot("after_clip_ensemble_load")
 
             logger.info(
                 "All models loaded successfully",
@@ -365,14 +373,52 @@ class DefaultRenderer(DeterministicVideoRenderer):
             seed: Deterministic seed
 
         Returns:
-            Audio waveform tensor
+            Audio waveform tensor of shape (samples,) at 24kHz
         """
+        assert self._model_registry is not None
         assert self._audio_buffer is not None
-        # TODO(T017): Replace with real Kokoro TTS implementation
-        # Kokoro should use seed for deterministic output
-        # In real implementation: kokoro.synthesize(..., seed=seed)
-        await asyncio.sleep(0.1)  # Simulate generation
-        return self._audio_buffer
+
+        # Get Kokoro model from registry
+        kokoro = self._model_registry.get_model("kokoro")
+
+        # Extract audio parameters from recipe
+        audio_track = recipe.get("audio_track", {})
+        script = audio_track.get("script", "")
+        voice_id = audio_track.get("voice_id", "rick_c137")
+        speed = audio_track.get("speed", 1.0)
+        emotion = audio_track.get("emotion", "neutral")
+
+        # Validate script is not empty
+        if not script or not script.strip():
+            logger.warning("Empty script provided, returning zeroed audio buffer")
+            self._audio_buffer.zero_()
+            return self._audio_buffer
+
+        # Check if model has synthesize method (real vs mock)
+        if not hasattr(kokoro, "synthesize"):
+            logger.warning("Kokoro model missing synthesize(); using zeroed buffer")
+            self._audio_buffer.zero_()
+            return self._audio_buffer
+
+        # Generate audio with deterministic seed
+        try:
+            audio = kokoro.synthesize(
+                text=script,
+                voice_id=voice_id,
+                speed=speed,
+                emotion=emotion,
+                output=self._audio_buffer,
+                seed=seed,
+            )
+            return audio
+        except ValueError as e:
+            logger.warning(f"Kokoro synthesis failed: {e}, using zeroed buffer")
+            self._audio_buffer.zero_()
+            return self._audio_buffer
+        except Exception as e:
+            logger.error(f"Unexpected Kokoro error: {e}", exc_info=True)
+            self._audio_buffer.zero_()
+            return self._audio_buffer
 
     async def _generate_actor(self, recipe: dict[str, Any], seed: int) -> torch.Tensor:
         """Generate actor image using Flux-Schnell.
@@ -382,14 +428,62 @@ class DefaultRenderer(DeterministicVideoRenderer):
             seed: Deterministic seed
 
         Returns:
-            Actor image tensor
+            Actor image tensor of shape [1, 3, 512, 512]
         """
+        assert self._model_registry is not None
         assert self._actor_buffer is not None
-        # TODO(T015): Replace with real Flux-Schnell implementation
-        # Flux should use seed for deterministic output
-        # In real implementation: flux.generate(..., seed=seed)
-        await asyncio.sleep(0.1)  # Simulate generation
-        return self._actor_buffer
+
+        # Get Flux model from registry
+        flux = self._model_registry.get_model("flux")
+
+        # Extract visual parameters from recipe
+        visual_track = recipe.get("visual_track", {})
+        prompt = visual_track.get("prompt", "")
+        negative_prompt = visual_track.get("negative_prompt", "")
+
+        # Validate prompt is not empty
+        if not prompt or not prompt.strip():
+            logger.warning("Empty prompt provided, returning zeroed actor buffer")
+            self._actor_buffer.zero_()
+            return self._actor_buffer
+
+        # Check if model has generate method (real vs mock)
+        if not hasattr(flux, "generate"):
+            logger.warning("Flux model missing generate(); using zeroed buffer")
+            self._actor_buffer.zero_()
+            return self._actor_buffer
+
+        # Generate actor image with deterministic seed
+        try:
+            # Flux expects output buffer shape [3, 512, 512]
+            output_buffer = (
+                self._actor_buffer.squeeze(0)
+                if self._actor_buffer.dim() == 4
+                else self._actor_buffer
+            )
+
+            image = flux.generate(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                num_inference_steps=4,  # Schnell fast variant
+                guidance_scale=0.0,  # Unconditional for speed
+                output=output_buffer,
+                seed=seed,
+            )
+
+            # Ensure consistent return shape [1, 3, 512, 512]
+            if image.dim() == 3:
+                return image.unsqueeze(0)
+            return image
+
+        except ValueError as e:
+            logger.warning(f"Flux generation failed: {e}, using zeroed buffer")
+            self._actor_buffer.zero_()
+            return self._actor_buffer
+        except Exception as e:
+            logger.error(f"Unexpected Flux error: {e}", exc_info=True)
+            self._actor_buffer.zero_()
+            return self._actor_buffer
 
     async def _generate_video(
         self,
@@ -468,15 +562,82 @@ class DefaultRenderer(DeterministicVideoRenderer):
         """Dual CLIP semantic verification.
 
         Args:
-            video: Generated video frames
-            recipe: Recipe with semantic_constraints
+            video: Generated video frames tensor [T, C, H, W]
+            recipe: Recipe with visual_track (prompt) and semantic_constraints
 
         Returns:
-            Combined CLIP embedding (B-32 + L-14 ensemble)
+            Combined CLIP embedding (512-dim, L2-normalized) for BFT consensus
         """
-        # TODO(T018): Replace with real dual CLIP ensemble
-        await asyncio.sleep(0.05)  # Simulate verification
-        return torch.randn(512, device=self._device, dtype=torch.float32)
+        assert self._model_registry is not None
+
+        # Get ClipEnsemble from registry
+        try:
+            clip_ensemble = self._model_registry.get_model("clip_ensemble")
+        except KeyError:
+            logger.warning("ClipEnsemble not loaded; returning random embedding")
+            return torch.randn(512, device=self._device, dtype=torch.float32)
+
+        # Extract parameters from recipe
+        visual_track = recipe.get("visual_track", {})
+        prompt = visual_track.get("prompt", "")
+        semantic_constraints = recipe.get("semantic_constraints", {})
+        clip_threshold = semantic_constraints.get("clip_threshold", 0.70)
+
+        # Validate inputs
+        if not prompt or not prompt.strip():
+            logger.warning("Empty prompt for CLIP verification; returning random embedding")
+            return torch.randn(512, device=self._device, dtype=torch.float32)
+
+        if not hasattr(clip_ensemble, "verify"):
+            logger.warning("ClipEnsemble missing verify(); returning random embedding")
+            return torch.randn(512, device=self._device, dtype=torch.float32)
+
+        if video.numel() == 0:
+            logger.warning("Empty video frames for CLIP verification; returning random embedding")
+            return torch.randn(512, device=self._device, dtype=torch.float32)
+
+        # Perform semantic verification
+        try:
+            result: DualClipResult = clip_ensemble.verify(
+                video_frames=video,
+                prompt=prompt,
+                threshold=clip_threshold,
+                seed=None,  # Already seeded at render() level
+            )
+
+            # Log verification results
+            logger.info(
+                "CLIP verification completed",
+                extra={
+                    "score_b": result.score_clip_b,
+                    "score_l": result.score_clip_l,
+                    "ensemble_score": result.ensemble_score,
+                    "self_check_passed": result.self_check_passed,
+                    "outlier_detected": result.outlier_detected,
+                },
+            )
+
+            if not result.self_check_passed:
+                logger.warning("CLIP self-check FAILED: video may not match prompt semantically")
+            if result.outlier_detected:
+                logger.warning("CLIP outlier detected: potential adversarial content")
+
+            # Return the embedding for BFT consensus
+            embedding = result.embedding
+            if embedding.device != self._device:
+                embedding = embedding.to(self._device)
+
+            return embedding
+
+        except ValueError as e:
+            logger.warning(f"CLIP verification failed: {e}")
+            return torch.randn(512, device=self._device, dtype=torch.float32)
+        except RuntimeError as e:
+            logger.error(f"CLIP verification runtime error: {e}", exc_info=True)
+            return torch.randn(512, device=self._device, dtype=torch.float32)
+        except Exception as e:
+            logger.error(f"Unexpected CLIP error: {e}", exc_info=True)
+            return torch.randn(512, device=self._device, dtype=torch.float32)
 
     def compute_determinism_proof(
         self,
@@ -533,7 +694,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             return False
 
         # Check all required models are loaded
-        required_models: list[ModelName] = ["flux", "liveportrait", "kokoro", "clip_b", "clip_l"]
+        required_models = ["flux", "liveportrait", "kokoro", "clip_ensemble"]
         for model_name in required_models:
             if model_name not in self._model_registry:
                 logger.warning(f"Health check failed: model '{model_name}' not loaded")

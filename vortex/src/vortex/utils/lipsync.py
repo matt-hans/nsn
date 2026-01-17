@@ -20,7 +20,6 @@ Target Accuracy:
 """
 
 import logging
-from typing import List, Optional
 
 import torch
 
@@ -89,7 +88,7 @@ def audio_to_visemes(
     fps: int,
     sample_rate: int = 24000,
     smoothing_window: int = 3,
-) -> List[torch.Tensor]:
+) -> list[torch.Tensor]:
     """Convert audio waveform to per-frame viseme parameters.
 
     This function analyzes the audio waveform and generates viseme (mouth shape)
@@ -153,11 +152,13 @@ def _audio_segment_to_viseme(audio_segment: torch.Tensor) -> torch.Tensor:
         audio_segment: Audio samples for one frame
 
     Returns:
-        Viseme tensor [jaw_open, lip_width, lip_rounding]
+        Viseme tensor [jaw_open, lip_width, lip_rounding] on same device as input
     """
+    device = audio_segment.device if len(audio_segment) > 0 else "cpu"
+
     if len(audio_segment) == 0:
         # Silence - neutral viseme
-        return torch.tensor([0.2, 0.5, 0.3], dtype=torch.float32)
+        return torch.tensor([0.2, 0.5, 0.3], dtype=torch.float32, device=device)
 
     # Compute audio features
     energy = audio_segment.abs().mean().item()
@@ -172,7 +173,7 @@ def _audio_segment_to_viseme(audio_segment: torch.Tensor) -> torch.Tensor:
     lip_width = min(spectral_centroid * 0.8, 1.0)  # Brightness → width
     lip_rounding = max(0.3, 1.0 - spectral_centroid)  # Darkness → rounding
 
-    return torch.tensor([jaw_open, lip_width, lip_rounding], dtype=torch.float32)
+    return torch.tensor([jaw_open, lip_width, lip_rounding], dtype=torch.float32, device=device)
 
 
 def _compute_spectral_centroid(audio: torch.Tensor) -> float:
@@ -190,7 +191,8 @@ def _compute_spectral_centroid(audio: torch.Tensor) -> float:
     # Simplified spectral centroid using FFT magnitude
     fft = torch.fft.rfft(audio)
     magnitude = torch.abs(fft)
-    freqs = torch.arange(len(magnitude), dtype=torch.float32)
+    # Create freqs on the same device as the audio tensor
+    freqs = torch.arange(len(magnitude), dtype=torch.float32, device=audio.device)
 
     # Weighted average of frequencies
     if magnitude.sum() > 1e-8:
@@ -228,8 +230,8 @@ def phoneme_to_viseme(phoneme: str) -> torch.Tensor:
 
 
 def smooth_viseme_sequence(
-    visemes: List[torch.Tensor], window_size: int = 3
-) -> List[torch.Tensor]:
+    visemes: list[torch.Tensor], window_size: int = 3
+) -> list[torch.Tensor]:
     """Smooth viseme sequence using moving average for natural transitions.
 
     Args:
@@ -292,7 +294,7 @@ def interpolate_visemes(
 
 
 def validate_viseme_sequence(
-    visemes: List[torch.Tensor], fps: int, audio_duration: float
+    visemes: list[torch.Tensor], fps: int, audio_duration: float
 ) -> bool:
     """Validate that viseme sequence has correct length and format.
 
@@ -337,8 +339,8 @@ def validate_viseme_sequence(
 
 
 def measure_lipsync_accuracy(
-    visemes: List[torch.Tensor],
-    reference_phonemes: List[tuple[str, float]],
+    visemes: list[torch.Tensor],
+    reference_phonemes: list[tuple[str, float]],
     fps: int,
     tolerance_frames: int = 2,
 ) -> float:
