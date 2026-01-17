@@ -469,9 +469,10 @@ def load_clip_ensemble(
     )
 
     # Determine if we should apply INT8 quantization
-    # Only quantize on CPU - INT8 ops (quantized::linear_dynamic) don't work on CUDA
-    # On GPU, use FP32/FP16 (faster, more VRAM but INT8 ops not supported)
-    should_quantize = not device.startswith("cuda")
+    # INT8 quantization disabled - causes compatibility issues with open_clip's
+    # transformer layers (get_weight_dtype fails on quantized Linear).
+    # Using FP32/FP16 for now; consider bitsandbytes for future optimization.
+    should_quantize = False
 
     # Load ViT-B-32
     precision_str = "INT8" if should_quantize else "FP32"

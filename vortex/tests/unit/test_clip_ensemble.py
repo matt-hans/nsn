@@ -56,17 +56,20 @@ def create_mock_ensemble():
     mock_clip_b = MagicMock()
     mock_clip_l = MagicMock()
 
-    # Mock encode_image to return fixed embeddings
-    mock_clip_b.encode_image.return_value = torch.tensor([[1.0, 0.0, 0.0]])
-    mock_clip_l.encode_image.return_value = torch.tensor([[0.0, 1.0, 0.0]])
+    # Mock encode_image to return fixed embeddings (512-dim for B, 768-dim for L)
+    mock_clip_b.encode_image.return_value = torch.randn(1, 512)
+    mock_clip_l.encode_image.return_value = torch.randn(1, 768)
 
     # Mock encode_text to return fixed embeddings
-    mock_clip_b.encode_text.return_value = torch.tensor([[1.0, 0.0, 0.0]])
-    mock_clip_l.encode_text.return_value = torch.tensor([[0.0, 1.0, 0.0]])
+    mock_clip_b.encode_text.return_value = torch.randn(1, 512)
+    mock_clip_l.encode_text.return_value = torch.randn(1, 768)
 
-    # Mock preprocessors and tokenizers
-    mock_preprocess_b = MagicMock()
-    mock_preprocess_l = MagicMock()
+    # Mock preprocessors to return proper tensors (3, 224, 224) for CLIP input
+    def mock_preprocess(pil_image):
+        return torch.randn(3, 224, 224)
+
+    mock_preprocess_b = MagicMock(side_effect=mock_preprocess)
+    mock_preprocess_l = MagicMock(side_effect=mock_preprocess)
     mock_tokenizer_b = MagicMock(return_value=torch.tensor([[0]]))
     mock_tokenizer_l = MagicMock(return_value=torch.tensor([[0]]))
 

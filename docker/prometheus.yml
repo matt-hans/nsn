@@ -57,15 +57,15 @@ scrape_configs:
           role: 'validator'
 
   # Vortex AI engine metrics (local testnet)
-  # DISABLED: Vortex requires GPU and conflicts with director port (9101)
-  # Uncomment when running with GPU support
-  # - job_name: 'vortex'
-  #   static_configs:
-  #     - targets: ['localhost:9100']
-  #       labels:
-  #         service: 'vortex'
-  #         component: 'ai-engine'
-  #   scrape_interval: 10s  # More frequent for GPU metrics
+  # Scrapes GPU memory, temperature, and pipeline status from Vortex server
+  - job_name: 'vortex'
+    static_configs:
+      - targets: ['localhost:50051']
+        labels:
+          service: 'vortex'
+          component: 'ai-engine'
+    scrape_interval: 10s  # More frequent for GPU metrics
+    metrics_path: /metrics
 
   # Grafana self-monitoring
   # Note: Using localhost:3001 because Prometheus uses host network mode

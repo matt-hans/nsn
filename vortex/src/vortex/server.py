@@ -4,6 +4,7 @@ This server provides HTTP JSON API for Lane 0 video generation:
 - POST /generate: Generate video from recipe
 - GET /health: Health check endpoint
 - GET /vram: VRAM status endpoint
+- GET /metrics: Prometheus metrics endpoint
 
 The server wraps the VortexPipeline and provides a simple HTTP interface
 for standalone operation or direct integration testing.
@@ -141,6 +142,65 @@ class VortexServer:
                 "error": str(e),
             }
 
+    async def handle_metrics(self) -> tuple[int, str]:
+        """Handle Prometheus metrics request.
+
+        Returns Prometheus-formatted metrics for GPU monitoring.
+
+        Returns:
+            Tuple of (HTTP status code, response text)
+        """
+        lines = []
+
+        # Add metric metadata
+        lines.append("# HELP nvidia_gpu_memory_used_bytes GPU memory currently used in bytes")
+        lines.append("# TYPE nvidia_gpu_memory_used_bytes gauge")
+        lines.append("# HELP nvidia_gpu_memory_total_bytes Total GPU memory in bytes")
+        lines.append("# TYPE nvidia_gpu_memory_total_bytes gauge")
+        lines.append("# HELP nvidia_gpu_temperature_celsius GPU temperature in Celsius")
+        lines.append("# TYPE nvidia_gpu_temperature_celsius gauge")
+        lines.append("# HELP vortex_pipeline_initialized Whether the pipeline is initialized")
+        lines.append("# TYPE vortex_pipeline_initialized gauge")
+
+        # Pipeline status
+        initialized = 1 if self._pipeline is not None else 0
+        lines.append(f'vortex_pipeline_initialized{{device="{self.device}"}} {initialized}')
+
+        if torch.cuda.is_available():
+            try:
+                device_idx = (
+                    int(self.device.split(":")[-1]) if ":" in self.device else 0
+                )
+                props = torch.cuda.get_device_properties(device_idx)
+                allocated = torch.cuda.memory_allocated(device_idx)
+                total = props.total_memory
+                gpu_name = props.name.replace('"', '\\"')
+
+                # Memory metrics
+                gpu_label = f'gpu="{device_idx}",name="{gpu_name}"'
+                lines.append(f"nvidia_gpu_memory_used_bytes{{{gpu_label}}} {allocated}")
+                lines.append(f"nvidia_gpu_memory_total_bytes{{{gpu_label}}} {total}")
+
+                # Try to get temperature via pynvml
+                try:
+                    import pynvml
+
+                    pynvml.nvmlInit()
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(device_idx)
+                    temp = pynvml.nvmlDeviceGetTemperature(
+                        handle, pynvml.NVML_TEMPERATURE_GPU
+                    )
+                    lines.append(f"nvidia_gpu_temperature_celsius{{{gpu_label}}} {temp}")
+                    pynvml.nvmlShutdown()
+                except Exception:
+                    # pynvml not available or failed - skip temperature metric
+                    pass
+
+            except Exception as e:
+                logger.warning(f"Failed to collect GPU metrics: {e}")
+
+        return HTTPStatus.OK, "\n".join(lines) + "\n"
+
     async def handle_generate(self, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         """Handle video generation request.
 
@@ -244,6 +304,9 @@ class VortexServer:
             return await self.handle_health()
         elif path == "/vram" and method == "GET":
             return await self.handle_vram()
+        elif path == "/metrics" and method == "GET":
+            # Metrics returns (status, str) not (status, dict)
+            return await self.handle_metrics()  # type: ignore[return-value]
         elif path == "/generate" and method == "POST":
             try:
                 parsed_body = json.loads(body) if body else {}
@@ -256,6 +319,7 @@ class VortexServer:
                 "available_endpoints": [
                     "GET /health",
                     "GET /vram",
+                    "GET /metrics",
                     "POST /generate",
                 ],
             }
@@ -302,15 +366,21 @@ class HTTPHandler:
             # Handle request
             status, response = await self.server.handle_request(method, path, body)
 
-            # Send response
-            response_json = json.dumps(response)
+            # Send response - metrics returns text/plain, others return JSON
+            if path == "/metrics":
+                response_body = response  # Already a string
+                content_type = "text/plain; charset=utf-8"
+            else:
+                response_body = json.dumps(response)
+                content_type = "application/json"
+
             http_response = (
                 f"HTTP/1.1 {status} {status.phrase}\r\n"
-                f"Content-Type: application/json\r\n"
-                f"Content-Length: {len(response_json)}\r\n"
+                f"Content-Type: {content_type}\r\n"
+                f"Content-Length: {len(response_body)}\r\n"
                 f"Connection: close\r\n"
                 f"\r\n"
-                f"{response_json}"
+                f"{response_body}"
             )
 
             writer.write(http_response.encode())
