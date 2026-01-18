@@ -1401,4 +1401,87 @@ mod tests {
 
         assert!(service.security.graylist.is_graylisted(&peer_id).await);
     }
+
+    #[tokio::test]
+    async fn test_service_with_webrtc_enabled() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+
+        let mut config = P2pConfig {
+            enable_webrtc: true,
+            webrtc_port: 19003, // Use non-standard port for test
+            data_dir: Some(temp_dir.path().to_path_buf()),
+            ..Default::default()
+        };
+        config.bootstrap.require_signed_manifests = false;
+        config.bootstrap.signer_config.source = crate::SignerSource::Static;
+
+        let result = P2pService::new(config, "ws://127.0.0.1:9944".to_string()).await;
+
+        // Service should create successfully with WebRTC enabled
+        assert!(
+            result.is_ok(),
+            "Service should create with WebRTC enabled: {:?}",
+            result.err()
+        );
+
+        let (service, _cmd_tx) = result.unwrap();
+
+        // Verify local peer ID exists
+        assert!(!service.local_peer_id().to_string().is_empty());
+
+        // Verify certificate was created
+        let cert_path = temp_dir.path().join("webrtc_cert.pem");
+        assert!(cert_path.exists(), "WebRTC certificate should be created");
+    }
+
+    #[tokio::test]
+    async fn test_webrtc_certificate_persists() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cert_path = temp_dir.path().join("webrtc_cert.pem");
+
+        // Create first service - should generate certificate
+        {
+            let mut config = P2pConfig {
+                enable_webrtc: true,
+                webrtc_port: 19004,
+                data_dir: Some(temp_dir.path().to_path_buf()),
+                ..Default::default()
+            };
+            config.bootstrap.require_signed_manifests = false;
+            config.bootstrap.signer_config.source = crate::SignerSource::Static;
+
+            let _ = P2pService::new(config, "ws://127.0.0.1:9944".to_string()).await;
+        }
+
+        // Read certificate content
+        let cert_content_1 =
+            std::fs::read_to_string(&cert_path).expect("Should read certificate");
+
+        // Create second service - should load existing certificate
+        {
+            let mut config = P2pConfig {
+                enable_webrtc: true,
+                webrtc_port: 19005,
+                data_dir: Some(temp_dir.path().to_path_buf()),
+                ..Default::default()
+            };
+            config.bootstrap.require_signed_manifests = false;
+            config.bootstrap.signer_config.source = crate::SignerSource::Static;
+
+            let _ = P2pService::new(config, "ws://127.0.0.1:9944".to_string()).await;
+        }
+
+        // Certificate content should be unchanged
+        let cert_content_2 =
+            std::fs::read_to_string(&cert_path).expect("Should read certificate");
+
+        assert_eq!(
+            cert_content_1, cert_content_2,
+            "Certificate should persist across service instances"
+        );
+    }
 }
