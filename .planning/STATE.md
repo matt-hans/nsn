@@ -2,19 +2,25 @@
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-01-08)
+See: .planning/PROJECT.md (updated 2026-01-18)
 
 **Core value:** End-to-end video generation flow works reliably: prompt in, verified video out, delivered to viewers.
-**Current focus:** Phase 6 complete — All phases finished
+**Current focus:** v1.1 Viewer Networking Integration
+
+## Current Milestone
+
+**Milestone:** v1.1 Viewer Networking Integration
+**Status:** Planning complete, ready for Phase 1
+**Goal:** Wire the viewer to the live NSN testnet by bridging browser to libp2p mesh
 
 ## Current Position
 
-Phase: 6 of 6 (Testnet Deployment Config) - COMPLETE
-Plan: 01-PLAN.md executed
-Status: ✅ Complete
-Last activity: 2026-01-11 — Phase 6 executed
+Phase: 0 of 7 (Not yet started)
+Plan: Awaiting phase selection
+Status: 🔄 Planning
+Last activity: 2026-01-18 — Milestone v1.1 initialized
 
-Progress: ██████████ 100% (All Phases Complete)
+Progress: ░░░░░░░░░░ 0% (7 Phases Defined)
 
 ## Performance Metrics
 
@@ -216,9 +222,28 @@ None yet.
 - `2b445db` feat(6-1): add Prometheus and Grafana configuration
 - `b4999c0` docs(6-1): add deployment documentation and operational scripts
 
+## v1.1 Milestone Overview
+
+**7 Phases Defined:**
+1. Video Bridge Core - Rust crate for mesh subscription
+2. WebSocket Server - Browser connection relay
+3. Viewer WebSocket Client - Replace mock stream
+4. Chain RPC Integration - Director discovery
+5. Live Statistics - Real network data
+6. Docker Integration - Testnet deployment
+7. Testing & Validation - E2E verification
+
+**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 5 → Phase 7
+
+**Research Completed:**
+- STACK.md - Technology recommendations (js-libp2p stack)
+- FEATURES.md - Scope definition (table stakes vs anti-features)
+- ARCHITECTURE.md - Component design and build order
+- PITFALLS.md - 22 documented pitfalls to avoid
+
 ## Session Continuity
 
-Last session: 2026-01-11
-Stopped at: Phase 6 complete
+Last session: 2026-01-18
+Stopped at: Milestone v1.1 planning complete
 Resume file: None
-Next step: All phases complete - ready for testnet deployment
+Next step: Plan Phase 1 (Video Bridge Core) with /gsd:plan-phase
