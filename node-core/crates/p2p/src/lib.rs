@@ -26,6 +26,7 @@ mod behaviour;
 mod bootstrap;
 pub mod cert;
 mod config;
+mod discovery;
 mod connection_manager;
 mod event_handler;
 mod gossipsub;
@@ -49,6 +50,10 @@ mod video;
 // Re-export public API
 pub use autonat::{build_autonat, AutoNatConfig, NatStatus};
 pub use cert::{CertError, CertificateManager};
+pub use discovery::{
+    default_protocols, filter_addresses, is_webrtc_address, P2pFeatures, P2pInfoData,
+    P2pInfoError, P2pInfoErrorPayload, P2pInfoResponse,
+};
 pub use behaviour::{ConnectionTracker, NsnBehaviour};
 pub use bootstrap::{
     deduplicate_and_rank, discover_via_dht, fetch_http_peers, get_hardcoded_peers,
