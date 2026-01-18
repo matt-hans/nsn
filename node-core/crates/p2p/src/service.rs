@@ -796,7 +796,7 @@ impl P2pService {
 
         if self.security.graylist.is_graylisted(peer_id).await {
             debug!("Disconnecting graylisted peer {}", peer_id);
-            let _ = self.swarm.disconnect_peer_id(peer_id.clone());
+            let _ = self.swarm.disconnect_peer_id(*peer_id);
         }
     }
 
@@ -869,7 +869,7 @@ impl P2pService {
             let count = self
                 .security
                 .violation_counts
-                .entry(peer_id.clone())
+                .entry(*peer_id)
                 .or_insert(0);
             *count += 1;
             *count >= self.security.graylist_threshold
@@ -883,9 +883,9 @@ impl P2pService {
     async fn graylist_peer(&mut self, peer_id: &PeerId, reason: &str) {
         self.security
             .graylist
-            .add(peer_id.clone(), reason.to_string())
+            .add(*peer_id, reason.to_string())
             .await;
-        let _ = self.swarm.disconnect_peer_id(peer_id.clone());
+        let _ = self.swarm.disconnect_peer_id(*peer_id);
     }
 
     /// Handle GetPeerCount command

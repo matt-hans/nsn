@@ -67,6 +67,7 @@ pub fn handle_incoming_connection_error(
 }
 
 /// Main swarm event dispatcher
+#[allow(dead_code)]
 pub fn dispatch_swarm_event<TBehaviourEvent, B: NetworkBehaviour>(
     event: SwarmEvent<TBehaviourEvent>,
     connection_manager: &mut ConnectionManager,

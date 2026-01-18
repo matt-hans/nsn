@@ -122,7 +122,7 @@ pub async fn fetch_http_peers(
 
     // Parse peers
     let mut peers = Vec::new();
-    let signature_bytes = signatures.get(0).and_then(|sig| hex::decode(sig).ok());
+    let signature_bytes = signatures.first().and_then(|sig| hex::decode(sig).ok());
 
     for peer_entry in manifest.peers {
         match parse_manifest_peer(peer_entry, signature_bytes.clone()) {
@@ -199,7 +199,7 @@ fn record_manifest_transparency(
         .append(true)
         .open(path)
         .map_err(|e| BootstrapError::HttpFetchFailed(e.to_string()))?;
-    writeln!(file, "{}", entry.to_string())
+    writeln!(file, "{}", entry)
         .map_err(|e| BootstrapError::HttpFetchFailed(e.to_string()))?;
     Ok(())
 }

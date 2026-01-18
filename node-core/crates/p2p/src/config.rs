@@ -157,6 +157,8 @@ mod tests {
             bootstrap: BootstrapConfig::default(),
             enable_webrtc: false,
             webrtc_port: 9003,
+            enable_websocket: false,
+            websocket_port: 9004,
             data_dir: None,
             external_address: None,
         };

@@ -109,7 +109,7 @@ pub fn build_video_chunks(
         return Err(VideoChunkError::InvalidChunkSize);
     }
 
-    let total_chunks = ((payload.len() + config.chunk_size - 1) / config.chunk_size) as u32;
+    let total_chunks = payload.len().div_ceil(config.chunk_size) as u32;
     let signer = keypair.public().encode_protobuf();
 
     let mut chunks = Vec::with_capacity(total_chunks as usize);
@@ -150,6 +150,139 @@ pub fn build_video_chunks(
         }
 
         chunks.push(chunk);
+    }
+
+    Ok(chunks)
+}
+
+/// Build video chunks from IVF-encoded VP9 video data.
+///
+/// Parses the IVF container to extract individual frames, creating one
+/// VideoChunk per VP9 frame. Keyframe detection uses VP9 bitstream analysis.
+///
+/// # Arguments
+/// * `content_id` - Content identifier for the video
+/// * `slot` - Slot number
+/// * `ivf_data` - IVF container bytes (VP9 encoded)
+/// * `keypair` - Signing keypair
+///
+/// # Returns
+/// Vector of signed VideoChunks, one per frame
+#[allow(dead_code)]
+pub fn build_video_chunks_from_ivf(
+    content_id: &str,
+    slot: u64,
+    ivf_data: &[u8],
+    keypair: &Keypair,
+) -> Result<Vec<VideoChunk>, VideoChunkError> {
+    if content_id.trim().is_empty() {
+        return Err(VideoChunkError::EmptyContentId);
+    }
+    if ivf_data.len() < 32 {
+        return Err(VideoChunkError::EmptyPayload);
+    }
+
+    // Verify IVF magic bytes
+    if &ivf_data[0..4] != b"DKIF" {
+        return Err(VideoChunkError::DecodeFailed(
+            "Invalid IVF magic bytes".to_string(),
+        ));
+    }
+
+    let max_allowed = TopicCategory::VideoChunks.max_message_size();
+    let signer = keypair.public().encode_protobuf();
+
+    let mut chunks = Vec::new();
+    let mut pos = 32; // Skip 32-byte IVF file header
+    let mut chunk_index = 0u32;
+
+    // First pass: count total frames
+    let mut count_pos = 32;
+    let mut total_frames = 0u32;
+    while count_pos + 12 <= ivf_data.len() {
+        let frame_size = u32::from_le_bytes([
+            ivf_data[count_pos],
+            ivf_data[count_pos + 1],
+            ivf_data[count_pos + 2],
+            ivf_data[count_pos + 3],
+        ]) as usize;
+        count_pos += 12 + frame_size;
+        total_frames += 1;
+    }
+
+    // Second pass: build chunks
+    while pos + 12 <= ivf_data.len() {
+        // Read 12-byte IVF frame header
+        let frame_size = u32::from_le_bytes([
+            ivf_data[pos],
+            ivf_data[pos + 1],
+            ivf_data[pos + 2],
+            ivf_data[pos + 3],
+        ]) as usize;
+
+        let _timestamp = u64::from_le_bytes([
+            ivf_data[pos + 4],
+            ivf_data[pos + 5],
+            ivf_data[pos + 6],
+            ivf_data[pos + 7],
+            ivf_data[pos + 8],
+            ivf_data[pos + 9],
+            ivf_data[pos + 10],
+            ivf_data[pos + 11],
+        ]);
+
+        let frame_start = pos + 12;
+        let frame_end = frame_start + frame_size;
+
+        if frame_end > ivf_data.len() {
+            break;
+        }
+
+        let payload = &ivf_data[frame_start..frame_end];
+
+        // VP9 keyframe detection: Bit 2 of first byte (0x04)
+        // 0 = keyframe, 1 = inter-frame
+        // NOTE: Original design doc said bit 5 (0x20) which was WRONG
+        let is_keyframe = !payload.is_empty() && (payload[0] & 0x04) == 0;
+
+        let payload_hash = *blake3::hash(payload).as_bytes();
+        let timestamp_ms = now_ms();
+
+        let header = VideoChunkHeader {
+            version: VIDEO_CHUNK_VERSION,
+            slot,
+            content_id: content_id.to_string(),
+            chunk_index,
+            total_chunks: total_frames,
+            timestamp_ms,
+            is_keyframe,
+            payload_hash,
+        };
+
+        let signature = keypair
+            .sign(&signing_payload(&header))
+            .map_err(|_| VideoChunkError::SigningFailed)?;
+
+        let chunk = VideoChunk {
+            header,
+            payload: payload.to_vec(),
+            signer: signer.clone(),
+            signature,
+        };
+
+        let encoded_len = chunk.encode().len();
+        if encoded_len > max_allowed {
+            return Err(VideoChunkError::InvalidChunkSize);
+        }
+
+        chunks.push(chunk);
+
+        pos = frame_end;
+        chunk_index += 1;
+    }
+
+    if chunks.is_empty() {
+        return Err(VideoChunkError::EmptyPayload);
     }
 
     Ok(chunks)
@@ -276,5 +409,23 @@ mod tests {
             let decoded = decode_video_chunk(&encoded).expect("decode");
             assert_eq!(decoded, *chunk);
         }
+    }
+
+    #[test]
+    fn test_build_video_chunks_from_ivf_rejects_invalid_magic() {
+        let keypair = Keypair::generate_ed25519();
+        let invalid_data = vec![0u8; 64]; // Not IVF
+
+        let result = build_video_chunks_from_ivf("QmTest", 1, &invalid_data, &keypair);
+        assert!(matches!(result, Err(VideoChunkError::DecodeFailed(_))));
+    }
+
+    #[test]
+    fn test_build_video_chunks_from_ivf_rejects_short_data() {
+        let keypair = Keypair::generate_ed25519();
+        let short_data = vec![0u8; 16]; // Too short for IVF header
+
+        let result = build_video_chunks_from_ivf("QmTest", 1, &short_data, &keypair);
+        assert!(matches!(result, Err(VideoChunkError::EmptyPayload)));
     }
 }

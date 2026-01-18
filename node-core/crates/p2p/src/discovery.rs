@@ -190,6 +190,7 @@ mod tests {
             protocols: vec!["/nsn/video/1.0.0".to_string()],
             features: P2pFeatures {
                 webrtc_enabled: true,
+                websocket_enabled: false,
                 role: "director".to_string(),
             },
         };
@@ -213,6 +214,7 @@ mod tests {
             protocols: vec!["/nsn/video/1.0.0".to_string(), "/ipfs/id/1.0.0".to_string()],
             features: P2pFeatures {
                 webrtc_enabled: true,
+                websocket_enabled: false,
                 role: "director".to_string(),
             },
         };
