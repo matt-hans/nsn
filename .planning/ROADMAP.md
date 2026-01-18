@@ -11,8 +11,8 @@
 
 | Phase | Name | Status | Dependencies | Complexity | Plans |
 |-------|------|--------|--------------|------------|-------|
-| 1 | Rust Node Core Upgrade | Ready | - | Medium | 2 plans |
-| 2 | Discovery Bridge (HTTP Sidecar) | Pending | Phase 1 | Low | TBD |
+| 1 | Rust Node Core Upgrade | ✅ Complete | - | Medium | 2 plans |
+| 2 | Discovery Bridge (HTTP Sidecar) | Ready | Phase 1 | Low | TBD |
 | 3 | Viewer Implementation | Pending | Phase 2 | Medium | TBD |
 | 4 | Video Streaming Protocol | Pending | Phase 3 | High | TBD |
 | 5 | Chain RPC Integration | Pending | - (parallel) | Medium | TBD |
@@ -30,8 +30,8 @@
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md - Dependencies and certificate persistence
-- [ ] 01-02-PLAN.md - WebRTC transport integration and CLI
+- [x] 01-01-PLAN.md - Dependencies and certificate persistence
+- [x] 01-02-PLAN.md - WebRTC transport integration and CLI
 
 ### Deliverables
 
@@ -98,11 +98,11 @@ Add to `node-core/bin/nsn-node/src/cli.rs`:
 
 ### Acceptance Criteria
 
-- [ ] `cargo build` succeeds with WebRTC feature
-- [ ] Certificate persists across node restarts
-- [ ] Node listens on `/ip4/0.0.0.0/udp/9003/webrtc`
-- [ ] Multiaddr logged includes `certhash`
-- [ ] Unit tests pass for certificate persistence
+- [x] `cargo build` succeeds with WebRTC feature
+- [x] Certificate persists across node restarts
+- [x] Node listens on `/ip4/0.0.0.0/udp/9003/webrtc`
+- [x] Multiaddr logged includes `certhash`
+- [x] Unit tests pass for certificate persistence
 
 ---
 
@@ -511,10 +511,10 @@ ufw allow 9003/udp
 
 | Step | Component | Task | Complexity | Status |
 |------|-----------|------|------------|--------|
-| 1.1 | Rust | Update Cargo.toml with WebRTC feature | Low | Pending |
-| 1.2 | Rust | Implement certificate persistence | Medium | Pending |
-| 1.3 | Rust | Add WebRTC transport to swarm | Medium | Pending |
-| 1.4 | Rust | Add CLI flags | Low | Pending |
+| 1.1 | Rust | Update Cargo.toml with WebRTC feature | Low | ✅ Done |
+| 1.2 | Rust | Implement certificate persistence | Medium | ✅ Done |
+| 1.3 | Rust | Add WebRTC transport to swarm | Medium | ✅ Done |
+| 1.4 | Rust | Add CLI flags | Low | ✅ Done |
 | 2.1 | Rust | Add `/p2p/info` endpoint | Low | Pending |
 | 2.2 | Rust | Configure CORS | Low | Pending |
 | 3.1 | JS | Install libp2p dependencies | Low | Pending |
@@ -567,7 +567,8 @@ Milestone v1.1 is complete when:
 | 1.0 | 2026-01-18 | Initial roadmap (Node.js bridge approach) |
 | 2.0 | 2026-01-18 | Restructured for WebRTC-direct approach |
 | 2.1 | 2026-01-18 | Phase 1 planned: 2 plans in 2 waves |
+| 2.2 | 2026-01-18 | Phase 1 complete: WebRTC transport and CLI |
 
 ---
 
-*Roadmap v2.1 - WebRTC-Direct approach*
+*Roadmap v2.2 - WebRTC-Direct approach*

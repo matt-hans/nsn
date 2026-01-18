@@ -17,15 +17,15 @@ This document defines the requirements for connecting the NSN viewer directly to
 
 ### Rust Node WebRTC Support
 
-| REQ-ID | Requirement | Priority | Acceptance Criteria |
-|--------|-------------|----------|---------------------|
-| REQ-WR-001 | Node SHALL enable WebRTC transport in libp2p | P0 | `libp2p = { features = ["webrtc"] }` compiles |
-| REQ-WR-002 | Node SHALL persist WebRTC certificate to disk | P0 | Certificate survives node restart |
-| REQ-WR-003 | Node SHALL listen on configurable UDP port for WebRTC | P0 | Default 9003, configurable via `--p2p-webrtc-port` |
-| REQ-WR-004 | Node SHALL announce WebRTC multiaddr with certhash | P0 | Multiaddr includes `/webrtc/certhash/<HASH>` |
-| REQ-WR-005 | Node SHALL support hybrid transport (TCP + WebRTC) | P0 | Both mesh peers and browsers can connect |
-| REQ-WR-006 | Node SHALL announce external IP when configured | P1 | `--p2p-external-address` overrides internal IP |
-| REQ-WR-007 | Node SHALL log WebRTC connection events | P1 | Connection/disconnection logged at INFO level |
+| REQ-ID | Requirement | Priority | Acceptance Criteria | Status |
+|--------|-------------|----------|---------------------|--------|
+| REQ-WR-001 | Node SHALL enable WebRTC transport in libp2p | P0 | `libp2p = { features = ["webrtc"] }` compiles | ✅ Complete |
+| REQ-WR-002 | Node SHALL persist WebRTC certificate to disk | P0 | Certificate survives node restart | ✅ Complete |
+| REQ-WR-003 | Node SHALL listen on configurable UDP port for WebRTC | P0 | Default 9003, configurable via `--p2p-webrtc-port` | ✅ Complete |
+| REQ-WR-004 | Node SHALL announce WebRTC multiaddr with certhash | P0 | Multiaddr includes `/webrtc/certhash/<HASH>` | ✅ Complete |
+| REQ-WR-005 | Node SHALL support hybrid transport (TCP + WebRTC) | P0 | Both mesh peers and browsers can connect | ✅ Complete |
+| REQ-WR-006 | Node SHALL announce external IP when configured | P1 | `--p2p-external-address` overrides internal IP | ✅ Complete |
+| REQ-WR-007 | Node SHALL log WebRTC connection events | P1 | Connection/disconnection logged at INFO level | ✅ Complete |
 
 ### Discovery Endpoint
 
@@ -170,7 +170,8 @@ This document defines the requirements for connecting the NSN viewer directly to
 |---------|------|---------|
 | 1.0 | 2026-01-18 | Initial requirements (Node.js bridge approach) |
 | 2.0 | 2026-01-18 | Revised for WebRTC-direct approach |
+| 2.1 | 2026-01-18 | Phase 1 requirements (REQ-WR-*) marked Complete |
 
 ---
 
-*Requirements document v2.0 - WebRTC-Direct approach*
+*Requirements document v2.1 - WebRTC-Direct approach*
