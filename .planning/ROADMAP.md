@@ -9,15 +9,15 @@
 
 ## Phase Overview
 
-| Phase | Name | Status | Dependencies | Complexity |
-|-------|------|--------|--------------|------------|
-| 1 | Rust Node Core Upgrade | Pending | - | Medium |
-| 2 | Discovery Bridge (HTTP Sidecar) | Pending | Phase 1 | Low |
-| 3 | Viewer Implementation | Pending | Phase 2 | Medium |
-| 4 | Video Streaming Protocol | Pending | Phase 3 | High |
-| 5 | Chain RPC Integration | Pending | - (parallel) | Medium |
-| 6 | Docker & Operations | Pending | Phase 2 | Low |
-| 7 | Testing & Validation | Pending | All phases | Medium |
+| Phase | Name | Status | Dependencies | Complexity | Plans |
+|-------|------|--------|--------------|------------|-------|
+| 1 | Rust Node Core Upgrade | Ready | - | Medium | 2 plans |
+| 2 | Discovery Bridge (HTTP Sidecar) | Pending | Phase 1 | Low | TBD |
+| 3 | Viewer Implementation | Pending | Phase 2 | Medium | TBD |
+| 4 | Video Streaming Protocol | Pending | Phase 3 | High | TBD |
+| 5 | Chain RPC Integration | Pending | - (parallel) | Medium | TBD |
+| 6 | Docker & Operations | Pending | Phase 2 | Low | TBD |
+| 7 | Testing & Validation | Pending | All phases | Medium | TBD |
 
 ---
 
@@ -26,6 +26,12 @@
 **Goal:** Enable Director and Validator nodes to accept incoming WebRTC connections from browsers.
 
 **Requirements:** REQ-WR-001 through REQ-WR-007
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 01-01-PLAN.md - Dependencies and certificate persistence
+- [ ] 01-02-PLAN.md - WebRTC transport integration and CLI
 
 ### Deliverables
 
@@ -560,7 +566,8 @@ Milestone v1.1 is complete when:
 |---------|------|---------|
 | 1.0 | 2026-01-18 | Initial roadmap (Node.js bridge approach) |
 | 2.0 | 2026-01-18 | Restructured for WebRTC-direct approach |
+| 2.1 | 2026-01-18 | Phase 1 planned: 2 plans in 2 waves |
 
 ---
 
-*Roadmap v2.0 - WebRTC-Direct approach*
+*Roadmap v2.1 - WebRTC-Direct approach*
