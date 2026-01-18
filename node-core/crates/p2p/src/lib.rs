@@ -24,6 +24,7 @@
 mod autonat;
 mod behaviour;
 mod bootstrap;
+pub mod cert;
 mod config;
 mod connection_manager;
 mod event_handler;
@@ -47,6 +48,7 @@ mod video;
 
 // Re-export public API
 pub use autonat::{build_autonat, AutoNatConfig, NatStatus};
+pub use cert::{CertError, CertificateManager};
 pub use behaviour::{ConnectionTracker, NsnBehaviour};
 pub use bootstrap::{
     deduplicate_and_rank, discover_via_dht, fetch_http_peers, get_hardcoded_peers,
