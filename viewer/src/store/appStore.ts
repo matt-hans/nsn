@@ -4,6 +4,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export interface BootstrapProgress {
+	phase: "idle" | "discovering" | "connecting" | "subscribing" | "ready" | "error";
+	message: string;
+	startedAt: number | null;
+}
+
 export interface AppState {
 	// Playback state
 	currentSlot: number;
@@ -16,6 +22,13 @@ export interface AppState {
 	connectionStatus: "disconnected" | "connecting" | "connected" | "error";
 	connectedRelay: string | null;
 	relayRegion: string | null;
+
+	// P2P connection details
+	connectedPeerId: string | null;
+	meshPeerCount: number;
+	connectionError: string | null;
+	lastConnectedNodeUrl: string | null;
+	bootstrapProgress: BootstrapProgress;
 
 	// Playback stats
 	bitrate: number; // Mbps
@@ -47,6 +60,14 @@ export interface AppState {
 	setQuality: (quality: AppState["quality"]) => void;
 	setConnectionStatus: (status: AppState["connectionStatus"]) => void;
 	setConnectedRelay: (relay: string, region: string) => void;
+	setConnectedPeerId: (peerId: string | null) => void;
+	setMeshPeerCount: (count: number) => void;
+	setConnectionError: (error: string | null) => void;
+	setLastConnectedNodeUrl: (url: string | null) => void;
+	setBootstrapProgress: (
+		phase: BootstrapProgress["phase"],
+		message: string,
+	) => void;
 	updateStats: (
 		stats: Partial<
 			Pick<AppState, "bitrate" | "latency" | "connectedPeers" | "bufferSeconds">
@@ -64,7 +85,7 @@ export interface AppState {
 
 export const useAppStore = create<AppState>()(
 	persist(
-		(set) => ({
+		(set, get) => ({
 			// Initial state
 			currentSlot: 0,
 			playbackState: "idle",
@@ -74,6 +95,16 @@ export const useAppStore = create<AppState>()(
 			connectionStatus: "disconnected",
 			connectedRelay: null,
 			relayRegion: null,
+			// P2P connection details
+			connectedPeerId: null,
+			meshPeerCount: 0,
+			connectionError: null,
+			lastConnectedNodeUrl: null,
+			bootstrapProgress: {
+				phase: "idle",
+				message: "",
+				startedAt: null,
+			},
 			bitrate: 0,
 			latency: 0,
 			connectedPeers: 0,
@@ -98,6 +129,21 @@ export const useAppStore = create<AppState>()(
 			setConnectionStatus: (status) => set({ connectionStatus: status }),
 			setConnectedRelay: (relay, region) =>
 				set({ connectedRelay: relay, relayRegion: region }),
+			setConnectedPeerId: (peerId) => set({ connectedPeerId: peerId }),
+			setMeshPeerCount: (count) => set({ meshPeerCount: count }),
+			setConnectionError: (error) => set({ connectionError: error }),
+			setLastConnectedNodeUrl: (url) => set({ lastConnectedNodeUrl: url }),
+			setBootstrapProgress: (phase, message) =>
+				set({
+					bootstrapProgress: {
+						phase,
+						message,
+						startedAt:
+							phase === "discovering"
+								? Date.now()
+								: get().bootstrapProgress.startedAt,
+					},
+				}),
 			updateStats: (stats) => set((s) => ({ ...s, ...stats })),
 			updatePlaybackTime: (time, duration) =>
 				set({ currentTime: time, duration }),
@@ -118,6 +164,7 @@ export const useAppStore = create<AppState>()(
 				quality: state.quality,
 				seedingEnabled: state.seedingEnabled,
 				currentSlot: state.currentSlot,
+				lastConnectedNodeUrl: state.lastConnectedNodeUrl,
 			}),
 		},
 	),
