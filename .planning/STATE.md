@@ -16,21 +16,21 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 
 ## Current Position
 
-Phase: 0 of 7 (Not yet started)
-Plan: Awaiting phase selection
-Status: 🔄 Planning
-Last activity: 2026-01-18 — Milestone v1.1 initialized
+Phase: 1 of 7 (Rust Node Core Upgrade)
+Plan: 1 of 2 complete
+Status: In progress
+Last activity: 2026-01-18 — Completed 01-01-PLAN.md
 
-Progress: ░░░░░░░░░░ 0% (7 Phases Defined)
+Progress: █░░░░░░░░░ 7% (1/14 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
+- Total plans completed: 7
 - Average duration: ~1 session
-- Total execution time: 6 sessions
+- Total execution time: 7 sessions
 
-**By Phase:**
+**By Phase (v1.0):**
 
 | Phase | Plans | Total | Status |
 |-------|-------|-------|--------|
@@ -41,9 +41,15 @@ Progress: ░░░░░░░░░░ 0% (7 Phases Defined)
 | Phase 5 | 1/1 | 24 tests | ✅ Complete |
 | Phase 6 | 1/1 | 8 tasks | ✅ Complete |
 
+**By Phase (v1.1 WebRTC-Direct):**
+
+| Phase | Plans | Tests Added | Status |
+|-------|-------|-------------|--------|
+| Phase 1 | 1/2 | 8 tests | 🔄 In Progress |
+
 **Recent Trend:**
-- Last 6 plans: 6 completed
-- Trend: All phases complete
+- Last 7 plans: 7 completed
+- Trend: Steady progress
 
 ## Accumulated Context
 
@@ -60,6 +66,7 @@ Recent decisions affecting current work:
 - Lane 0 consensus threshold: 3-of-5 directors, cosine similarity ≥ 0.85
 - Lane 1 execution timeout: 300,000ms (5 minutes) default
 - Lane 1 serial execution: 1 task at a time for MVP
+- WebRTC alpha version: Use libp2p-webrtc v0.9.0-alpha.1 (latest available)
 
 ### Deferred Issues
 
@@ -248,9 +255,30 @@ None yet.
 - HTTP discovery endpoint for browser bootstrap
 - Browser decodes SCALE directly (no format translation)
 
+## v1.1 Phase 1 Plan 01 Summary
+
+**Completed:** 2026-01-18
+
+**Deliverables:**
+- libp2p-webrtc v0.9.0-alpha.1 dependency added to workspace
+- CertificateManager module for WebRTC certificate persistence
+- P2pConfig extended with WebRTC configuration fields
+- 8 new tests (5 cert + 3 config)
+
+**Components implemented:**
+1. ✅ libp2p-webrtc workspace dependency
+2. ✅ CertificateManager (load_or_generate, PEM persistence)
+3. ✅ CertError (Io, Generation, Parse variants)
+4. ✅ P2pConfig WebRTC fields (enable_webrtc, webrtc_port, data_dir, external_address)
+
+**Commits:**
+- `f4dd233` feat(01-01): add libp2p-webrtc dependency for WebRTC transport
+- `dc36778` feat(01-01): add WebRTC certificate persistence module
+- `dbd2e1f` feat(01-01): extend P2pConfig with WebRTC transport fields
+
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: WebRTC-direct approach planning complete
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None
-Next step: Plan Phase 1 (Rust Node Core Upgrade) with /gsd:plan-phase
+Next step: Execute 01-02-PLAN.md (WebRTC transport setup)
