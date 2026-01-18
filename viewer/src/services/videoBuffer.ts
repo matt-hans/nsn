@@ -5,6 +5,7 @@ export interface VideoChunk {
 	chunk_index: number;
 	data: Uint8Array;
 	timestamp: number;
+	is_keyframe: boolean;
 }
 
 export class VideoBuffer {
