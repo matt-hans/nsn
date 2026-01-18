@@ -39,7 +39,7 @@ subxt = "0.34"
 
 # P2P
 libp2p = { version = "0.53", features = ["tokio", "gossipsub", "kad", "identify", "noise", "tcp", "quic", "yamux", "request-response"] }
-libp2p-webrtc = { version = "0.9.0-alpha.1", features = ["tokio", "pem"] }
+libp2p-webrtc = { version = "0.7.1-alpha", features = ["tokio", "pem"] }
 
 # Logging
 tracing = "0.1"

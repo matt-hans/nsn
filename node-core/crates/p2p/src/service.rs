@@ -5,6 +5,7 @@
 
 use super::behaviour::NsnBehaviour;
 use super::bootstrap::{resolve_trusted_signers, BootstrapProtocol, PeerInfo, TrustedSignerSet};
+use super::cert::CertificateManager;
 use super::config::P2pConfig;
 use super::connection_manager::ConnectionManager;
 use super::event_handler;
@@ -20,6 +21,9 @@ use super::security::{
 };
 use super::topics::TopicCategory;
 use super::video::{chunk_latency_ms, decode_video_chunk, verify_video_chunk};
+use libp2p::core::muxing::StreamMuxerBox;
+use libp2p::core::Transport as LibTransport;
+use libp2p_webrtc as webrtc;
 use futures::StreamExt;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Request, Response, Server};
@@ -227,6 +231,21 @@ impl P2pService {
         let local_peer_id = PeerId::from(keypair.public());
         info!("Local PeerId: {}", local_peer_id);
 
+        // Load or generate WebRTC certificate if enabled
+        let webrtc_cert = if config.enable_webrtc {
+            let data_dir = config.data_dir.clone().unwrap_or_else(|| {
+                std::env::temp_dir().join("nsn-p2p")
+            });
+            let cert_manager = CertificateManager::new(&data_dir);
+            Some(
+                cert_manager
+                    .load_or_generate()
+                    .map_err(|e| ServiceError::Transport(format!("WebRTC certificate error: {}", e)))?,
+            )
+        } else {
+            None
+        };
+
         // Create metrics
         let metrics = Arc::new(P2pMetrics::new().expect("Failed to create metrics"));
         metrics.connection_limit.set(config.max_connections as f64);
@@ -327,7 +346,7 @@ impl P2pService {
 
         // Build swarm with TCP and QUIC transports
         // TCP transport is needed for compatibility with chain-advertised WebSocket addresses
-        let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+        let swarm_builder = SwarmBuilder::with_existing_identity(keypair)
             .with_tokio()
             .with_tcp(
                 libp2p::tcp::Config::default(),
@@ -335,11 +354,31 @@ impl P2pService {
                 libp2p::yamux::Config::default,
             )
             .map_err(|e| ServiceError::Swarm(format!("TCP transport error: {}", e)))?
-            .with_quic()
-            .with_behaviour(|_| behaviour)
-            .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
-            .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
-            .build();
+            .with_quic();
+
+        // Conditionally add WebRTC transport
+        let mut swarm = if let Some(cert) = webrtc_cert {
+            info!(
+                "Enabling WebRTC transport with certificate fingerprint: {:?}",
+                cert.fingerprint()
+            );
+            swarm_builder
+                .with_other_transport(|id_keys| {
+                    Ok(webrtc::tokio::Transport::new(id_keys.clone(), cert.clone())
+                        .map(|(peer_id, conn), _| (peer_id, StreamMuxerBox::new(conn))))
+                })
+                .map_err(|e| ServiceError::Swarm(format!("WebRTC transport error: {}", e)))?
+                .with_behaviour(|_| behaviour)
+                .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
+                .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
+                .build()
+        } else {
+            swarm_builder
+                .with_behaviour(|_| behaviour)
+                .map_err(|e| ServiceError::Swarm(format!("Failed to create behaviour: {}", e)))?
+                .with_swarm_config(|cfg| cfg.with_idle_connection_timeout(config.connection_timeout))
+                .build()
+        };
 
         // Dial bootstrap peers
         for target in &bootstrap_targets {
@@ -462,6 +501,36 @@ impl P2pService {
             quic_addr, tcp_addr
         );
 
+        // Start WebRTC listener if enabled
+        if self.config.enable_webrtc {
+            let webrtc_addr: Multiaddr =
+                format!("/ip4/0.0.0.0/udp/{}/webrtc-direct", self.config.webrtc_port)
+                    .parse()
+                    .map_err(|e| ServiceError::Transport(format!("Invalid WebRTC address: {}", e)))?;
+
+            self.swarm
+                .listen_on(webrtc_addr.clone())
+                .map_err(|e| ServiceError::Transport(format!("Failed to listen on WebRTC: {}", e)))?;
+
+            info!(
+                "P2P service listening on {} (WebRTC) for browser connections",
+                webrtc_addr
+            );
+        }
+
+        // Advertise external WebRTC address if configured (for NAT/Docker environments)
+        if let Some(ref external_addr_str) = self.config.external_address {
+            match external_addr_str.parse::<Multiaddr>() {
+                Ok(external_addr) => {
+                    self.swarm.add_external_address(external_addr.clone());
+                    info!("Advertising external address: {}", external_addr);
+                }
+                Err(e) => {
+                    warn!("Invalid external address '{}': {}", external_addr_str, e);
+                }
+            }
+        }
+
         // Advertise external addresses (STUN/UPnP)
         if let Err(err) = self.configure_nat().await {
             warn!("NAT configuration failed: {}", err);
@@ -537,7 +606,12 @@ impl P2pService {
                             event_handler::handle_connection_closed(peer_id, cause, &mut self.connection_manager);
                         }
                         SwarmEvent::NewListenAddr { address, .. } => {
-                            event_handler::handle_new_listen_addr(&address);
+                            // Log with emphasis if it's a WebRTC address (contains certhash)
+                            if address.to_string().contains("webrtc") {
+                                info!("WebRTC listening address (for browsers): {}", address);
+                            } else {
+                                event_handler::handle_new_listen_addr(&address);
+                            }
                         }
                         SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                             event_handler::handle_outgoing_connection_error(peer_id, &error, &self.connection_manager);
