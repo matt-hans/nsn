@@ -17,11 +17,11 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 1 of 7 (Rust Node Core Upgrade)
-Plan: 1 of 2 complete
-Status: In progress
-Last activity: 2026-01-18 — Completed 01-01-PLAN.md
+Plan: 2 of 2 complete
+Status: Phase complete
+Last activity: 2026-01-18 — Completed 01-02-PLAN.md
 
-Progress: █░░░░░░░░░ 7% (1/14 plans complete)
+Progress: ██░░░░░░░░ 14% (2/14 plans complete)
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: █░░░░░░░░░ 7% (1/14 plans complete)
 
 | Phase | Plans | Tests Added | Status |
 |-------|-------|-------------|--------|
-| Phase 1 | 1/2 | 8 tests | 🔄 In Progress |
+| Phase 1 | 2/2 | 10 tests | ✅ Complete |
 
 **Recent Trend:**
 - Last 7 plans: 7 completed
@@ -66,7 +66,7 @@ Recent decisions affecting current work:
 - Lane 0 consensus threshold: 3-of-5 directors, cosine similarity ≥ 0.85
 - Lane 1 execution timeout: 300,000ms (5 minutes) default
 - Lane 1 serial execution: 1 task at a time for MVP
-- WebRTC alpha version: Use libp2p-webrtc v0.9.0-alpha.1 (latest available)
+- WebRTC alpha version: Use libp2p-webrtc v0.7.1-alpha (compatible with libp2p 0.53)
 
 ### Deferred Issues
 
@@ -276,9 +276,33 @@ None yet.
 - `dc36778` feat(01-01): add WebRTC certificate persistence module
 - `dbd2e1f` feat(01-01): extend P2pConfig with WebRTC transport fields
 
+## v1.1 Phase 1 Plan 02 Summary
+
+**Completed:** 2026-01-18
+
+**Deliverables:**
+- WebRTC transport integrated into P2pService swarm
+- CLI flags for WebRTC configuration
+- 2 integration tests for WebRTC transport
+
+**Components implemented:**
+1. ✅ WebRTC transport composition with SwarmBuilder
+2. ✅ Certificate loading via CertificateManager
+3. ✅ WebRTC listener on configurable UDP port
+4. ✅ External address advertisement for NAT/Docker
+5. ✅ CLI flags (--p2p-enable-webrtc, --p2p-webrtc-port, --p2p-external-address, --data-dir)
+
+**Commits:**
+- `e800730` feat(01-02): add WebRTC transport to P2pService swarm
+- `6575642` feat(01-02): add CLI flags for WebRTC configuration
+- `ed95ee0` test(01-02): add integration tests for WebRTC transport
+
+**Deviations:**
+- Downgraded libp2p-webrtc from 0.9.0-alpha.1 to 0.7.1-alpha for libp2p-core 0.41 compatibility
+
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Completed 01-01-PLAN.md
+Stopped at: Completed 01-02-PLAN.md (Phase 1 complete)
 Resume file: None
-Next step: Execute 01-02-PLAN.md (WebRTC transport setup)
+Next step: Execute Phase 2 (02-01-PLAN.md - Discovery Bridge)
