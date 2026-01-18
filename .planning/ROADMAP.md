@@ -13,7 +13,7 @@
 |-------|------|--------|--------------|------------|-------|
 | 1 | Rust Node Core Upgrade | ✅ Complete | - | Medium | 2 plans |
 | 2 | Discovery Bridge (HTTP Sidecar) | ✅ Complete | Phase 1 | Low | 1 plan |
-| 3 | Viewer Implementation | Pending | Phase 2 | Medium | TBD |
+| 3 | Viewer Implementation | Planned | Phase 2 | Medium | 5 plans |
 | 4 | Video Streaming Protocol | Pending | Phase 3 | High | TBD |
 | 5 | Chain RPC Integration | Pending | - (parallel) | Medium | TBD |
 | 6 | Docker & Operations | Pending | Phase 2 | Low | TBD |
@@ -184,6 +184,15 @@ headers.insert("Cache-Control", "no-store, max-age=0");
 **Goal:** Transform viewer into a lightweight P2P node that connects directly to mesh.
 
 **Requirements:** REQ-VI-001 through REQ-VI-009
+
+**Plans:** 5 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Install libp2p dependencies and create P2PClient service
+- [ ] 03-02-PLAN.md — Create discovery service and SCALE VideoChunk codec
+- [ ] 03-03-PLAN.md — Wire GossipSub to video pipeline
+- [ ] 03-04-PLAN.md — Connection state, useP2PConnection hook, NetworkStatus widget
+- [ ] 03-05-PLAN.md — Remove mocks, integrate into App, bootstrap overlay
 
 ### Deliverables
 
@@ -580,7 +589,8 @@ Milestone v1.1 is complete when:
 | 2.2 | 2026-01-18 | Phase 1 complete: WebRTC transport and CLI |
 | 2.3 | 2026-01-18 | Phase 2 planned: 1 plan for discovery endpoint |
 | 2.4 | 2026-01-18 | Phase 2 complete: HTTP discovery endpoint with CORS |
+| 2.5 | 2026-01-18 | Phase 3 planned: 5 plans in 4 waves |
 
 ---
 
-*Roadmap v2.4 - WebRTC-Direct approach*
+*Roadmap v2.5 - WebRTC-Direct approach*
