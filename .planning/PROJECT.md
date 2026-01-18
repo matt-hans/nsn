@@ -8,6 +8,16 @@ NSN is a decentralized AI compute marketplace built as a Polkadot SDK solochain 
 
 End-to-end video generation flow works reliably: prompt in, verified video out, delivered to viewers.
 
+## Current Milestone: v1.1 Viewer Networking Integration
+
+**Goal:** Wire the viewer to the live NSN testnet by bridging browser WebRTC to libp2p mesh.
+
+**Target features:**
+- Video bridge service (js-libp2p → GossipSub → WebSocket relay)
+- Chain RPC client for director discovery (@polkadot/api)
+- Real video chunk reception (remove mock stream)
+- Live network statistics (actual bitrate, latency, peer count)
+
 ## Requirements
 
 ### Validated
@@ -29,31 +39,35 @@ End-to-end video generation flow works reliably: prompt in, verified video out, 
 - ✓ Kokoro TTS audio synthesis — existing
 - ✓ CLIP ensemble semantic verification — existing
 - ✓ React/TypeScript viewer scaffold — existing
+- ✓ Cross-pallet integration tests (55 tests) — v1.0
+- ✓ Lane 0 pipeline stitching crate (49 tests) — v1.0
+- ✓ Lane 1 pipeline stitching crate (29 tests) — v1.0
+- ✓ Viewer web extraction with WebRTC signaling — v1.0
+- ✓ Multi-node E2E simulation harness (24 tests) — v1.0
+- ✓ Docker Compose testnet deployment config — v1.0
 
 ### Active
 
-<!-- Current scope for testnet launch -->
+<!-- Current scope for v1.1 -->
 
-- [ ] Complete end-to-end Lane 0 video flow (prompt → generation → BFT → delivery → playback)
-- [ ] Complete end-to-end Lane 1 task marketplace flow
-- [ ] Web-based viewer client (extract from Tauri, use WebRTC for P2P)
-- [ ] E2E network simulation testing with multi-node scenarios
-- [ ] Docker Compose deployment configuration for testnet
-- [ ] Cross-pallet integration tests
-- [ ] Aggregate remaining 24 tasks into prioritized phases
+- [ ] Video bridge service connecting js-libp2p to NSN mesh
+- [ ] Chain RPC queries for elected directors and relay nodes
+- [ ] Real video chunk reception from GossipSub via bridge
+- [ ] Live network statistics (bitrate, latency, connected peers)
+- [ ] Remove mock video stream and hardcoded stats
 
 ### Out of Scope
 
-<!-- Explicit boundaries for testnet -->
+<!-- Explicit boundaries for v1.1 -->
 
-- Parachain migration — stay solochain for testnet, defer Cumulus integration
-- Native desktop app — web-based viewer for lower friction during testnet
-- Production security audit — testnet with test tokens, audit before mainnet
-- Mobile clients — desktop/web only for testnet
+- Parachain migration — stay solochain for testnet
+- Rust libp2p WebRTC — alpha maturity (0.9.0-alpha.1), defer to future milestone
+- Direct browser-to-mesh libp2p — requires WebRTC in Rust nodes
+- Mobile clients — desktop/web only
 
 ## Context
 
-**Project Status:** 64 total tasks in manifest, 40 completed (62.5%), 24 pending.
+**Project Status:** v1.0 testnet deployment complete. v1.1 focuses on viewer-to-network integration.
 
 **Architecture:** Four-layer system:
 1. On-chain (nsn-chain): Polkadot SDK blockchain with 9 custom pallets
@@ -65,27 +79,41 @@ End-to-end video generation flow works reliably: prompt in, verified video out, 
 - Rust 2021 (nsn-chain, node-core) with Polkadot SDK 2512.0.0
 - Python 3.11+ (vortex) with PyTorch 2.1+
 - TypeScript 5.6+ (viewer) with React 18, Vite 6
+- Node.js (video-bridge) with js-libp2p
+
+**Protocol Bridge Architecture (v1.1):**
+```
+NSN Mesh (Rust libp2p)
+    ↓ GossipSub /nsn/video/1.0.0
+Video Bridge (Node.js js-libp2p)
+    ↓ SCALE decode → simple binary
+    ↓ WebSocket
+Browser Viewer (React)
+```
 
 **Known Technical Debt:**
-- Cross-pallet integration tests needed
-- P2P network simulation testing gap
+- Viewer uses simple binary chunk format, not SCALE — bridge translates
 - 11.8GB VRAM requirement limits hardware compatibility
+- WebRTC-direct deferred until rust-libp2p-webrtc stabilizes
 
 ## Constraints
 
 - **Team Capacity**: Solo/limited contributors — prioritize ruthlessly, avoid scope creep
 - **GPU Requirements**: RTX 3060 12GB minimum for Lane 0 validators
 - **Deployment**: Docker Compose based — no Kubernetes for testnet
+- **Protocol Gap**: Browser cannot speak libp2p directly — requires bridge
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Solochain for testnet | Faster iteration, defer parachain complexity | — Pending |
-| Web-based viewer | Lower friction for testers, WebRTC for P2P | — Pending |
-| Both lanes for testnet | Demonstrate full capability, not partial product | — Pending |
-| E2E simulation required | Catch integration issues before public testnet | — Pending |
-| Aggregate tasks into phases | Use gsd:plan-phase to organize remaining work | — Pending |
+| Solochain for testnet | Faster iteration, defer parachain complexity | ✅ v1.0 |
+| Web-based viewer | Lower friction for testers | ✅ v1.0 |
+| Both lanes for testnet | Demonstrate full capability | ✅ v1.0 |
+| E2E simulation required | Catch integration issues | ✅ v1.0 |
+| Node.js bridge over Rust WebRTC | js-libp2p stable, rust-libp2p-webrtc alpha | v1.1 |
+| Separate bridge service | Single Responsibility — signaling stays focused | v1.1 |
+| Chain RPC for discovery | Viewer queries nsn-director pallet for directors | v1.1 |
 
 ---
-*Last updated: 2026-01-08 after initialization*
+*Last updated: 2026-01-18 after v1.1 milestone initialization*
