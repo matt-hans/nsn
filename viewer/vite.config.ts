@@ -36,7 +36,14 @@ export default defineConfig({
 			output: {
 				manualChunks: {
 					vendor: ["react", "react-dom", "zustand"],
-					p2p: ["simple-peer"],
+					libp2p: [
+						"libp2p",
+						"@libp2p/webrtc",
+						"@chainsafe/libp2p-noise",
+						"@chainsafe/libp2p-yamux",
+						"@chainsafe/libp2p-gossipsub",
+					],
+					polkadot: ["@polkadot/types", "@polkadot/types-codec"],
 				},
 			},
 		},

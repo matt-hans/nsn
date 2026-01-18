@@ -2,7 +2,7 @@
 // Comprehensive test coverage for video pipeline orchestration
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { VideoChunkMessage } from "./p2p";
+import type { VideoChunkMessage } from "./types";
 import {
 	VideoPipeline,
 	destroyVideoPipeline,

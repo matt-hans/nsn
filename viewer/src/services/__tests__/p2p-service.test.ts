@@ -1,5 +1,8 @@
 // ICN Viewer Client - P2P Service Unit Tests
+// DISABLED: Legacy P2PService removed during libp2p migration
+// Tests for new P2PClient should be added separately
 
+/*
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { P2PService, type VideoChunkMessage } from "../p2p";
 
@@ -136,3 +139,4 @@ describe("P2PService", () => {
 		});
 	});
 });
+*/

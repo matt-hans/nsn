@@ -11,6 +11,12 @@ import { multiaddr } from "@multiformats/multiaddr";
 import { type Libp2p, createLibp2p } from "libp2p";
 
 /**
+ * Video topic for GossipSub
+ * Matches Rust node topic for video chunk distribution
+ */
+export const VIDEO_TOPIC = "/nsn/video/1.0.0";
+
+/**
  * P2PClient: Web-native P2P client for direct browser-to-mesh connectivity
  * Uses libp2p with WebRTC-Direct transport for outbound connections
  */
@@ -131,9 +137,69 @@ export class P2PClient {
 	}
 
 	/**
+	 * Subscribe to video topic for chunk delivery
+	 * Handler receives raw Uint8Array of SCALE-encoded VideoChunk
+	 *
+	 * @param handler - Callback for video chunk data
+	 * @throws Error if node not initialized
+	 */
+	subscribeToVideoTopic(handler: (data: Uint8Array) => void): void {
+		if (!this.node) {
+			throw new Error("P2PClient not initialized. Call initialize() first.");
+		}
+
+		if (!this.gossipSub) {
+			throw new Error("PubSub service not available");
+		}
+
+		// Subscribe to video topic
+		this.gossipSub.subscribe(VIDEO_TOPIC);
+
+		// Add message listener for video topic
+		const videoHandler = (evt: any) => {
+			const message = evt.detail;
+			if (message.topic === VIDEO_TOPIC) {
+				// Ensure data is Uint8Array
+				const data =
+					message.data instanceof Uint8Array
+						? message.data
+						: new Uint8Array(message.data);
+				handler(data);
+			}
+		};
+
+		this.gossipSub.addEventListener("message", videoHandler);
+
+		// Store listener reference for cleanup
+		this.messageHandlers.set(VIDEO_TOPIC, videoHandler as any);
+	}
+
+	/**
+	 * Unsubscribe from video topic
+	 */
+	unsubscribeFromVideoTopic(): void {
+		if (!this.node || !this.gossipSub) {
+			return;
+		}
+
+		// Remove event listener
+		const handler = this.messageHandlers.get(VIDEO_TOPIC);
+		if (handler) {
+			this.gossipSub.removeEventListener("message", handler as any);
+			this.messageHandlers.delete(VIDEO_TOPIC);
+		}
+
+		// Unsubscribe from topic
+		this.gossipSub.unsubscribe(VIDEO_TOPIC);
+	}
+
+	/**
 	 * Stop the libp2p node and cleanup resources
 	 */
 	async stop(): Promise<void> {
+		// Unsubscribe from video topic first
+		this.unsubscribeFromVideoTopic();
+
 		if (this.node) {
 			await this.node.stop();
 			this.node = null;

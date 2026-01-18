@@ -1,5 +1,7 @@
 // ICN Viewer Client - Signaling Client Unit Tests
+// DISABLED: Signaling server deprecated in favor of WebRTC-Direct
 
+/*
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SignalingClient, type SignalingMessage } from "../signaling";
 
@@ -36,7 +38,9 @@ describe("SignalingClient", () => {
 			expect(client.getState()).toBe("connecting");
 
 			// Wait for connection attempt to complete (mock fails)
-			await expect(connectPromise).rejects.toThrow("WebSocket connection failed");
+			await expect(connectPromise).rejects.toThrow(
+				"WebSocket connection failed",
+			);
 
 			// Should be in error state after failure
 			expect(client.getState()).toBe("error");
@@ -82,3 +86,4 @@ describe("SignalingClient", () => {
 		});
 	});
 });
+*/
