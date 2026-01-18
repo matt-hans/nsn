@@ -12,6 +12,7 @@ futures = { workspace = true }
 
 # P2P networking
 libp2p = { workspace = true, features = ["macros", "relay", "dcutr", "autonat", "kad", "mdns", "tokio", "tcp", "noise", "yamux"] }
+libp2p-webrtc = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
