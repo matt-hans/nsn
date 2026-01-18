@@ -1,212 +1,240 @@
-# Research Summary: v1.1 Viewer Networking Integration
+# Research Summary: v1.1 Viewer Networking Integration (WebRTC-Direct)
 
 **Research completed:** 2026-01-18
 **Sources:** STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md
+**Approach:** WebRTC-Direct (browser connects directly to mesh nodes)
 
 ---
 
 ## Executive Summary
 
-The v1.1 milestone requires bridging the browser-based viewer to the NSN libp2p mesh. Browsers cannot speak libp2p directly, so a Node.js bridge service using js-libp2p will subscribe to GossipSub and relay video chunks to viewers via WebSocket. The approach is well-supported by mature libraries with verified cross-implementation interoperability.
+The v1.1 milestone enables direct browser-to-mesh connectivity via WebRTC. By adding WebRTC transport to existing Rust nodes, browsers can connect as first-class libp2p peers without requiring a separate bridge service.
 
-**Reliability Assessment:** HIGH - All core technologies (js-libp2p, @polkadot/types-codec, ws) are production-proven with active maintenance.
+**Key advantages over bridge approach:**
+- Lower latency (direct connection, no relay)
+- Reduced infrastructure (no separate service to deploy)
+- Future-proof (standard libp2p protocol)
+- Same protocol (browser decodes SCALE, no format translation)
 
----
-
-## Recommended Technology Stack
-
-| Component | Library | Version | Confidence |
-|-----------|---------|---------|------------|
-| Core libp2p | `libp2p` | ^3.1.2 | HIGH |
-| Transport | `@libp2p/tcp` | ^9.0.13 | HIGH |
-| Encryption | `@chainsafe/libp2p-noise` | ^16.1.4 | HIGH |
-| Multiplexer | `@chainsafe/libp2p-yamux` | ^7.0.1 | HIGH |
-| PubSub | `@chainsafe/libp2p-gossipsub` | ^14.1.2 | HIGH |
-| SCALE Codec | `@polkadot/types-codec` | ^16.5.4 | HIGH |
-| WebSocket | `ws` | ^8.19.0 | HIGH |
-| Chain RPC | `@polkadot/api` | ^16.x | HIGH |
-
-**Critical:** Use TCP+Noise+Yamux transport stack. QUIC has known js/rust interop issues.
+**Reliability Assessment:** MEDIUM-HIGH
+- rust-libp2p 0.53 WebRTC: Stable, production-ready
+- js-libp2p WebRTC: Well-tested, browser-native
+- Cross-implementation interop: Requires testing but supported
 
 ---
 
-## Architecture Decision
+## Approach Overview
 
-**Selected:** Rust Video Bridge (integrated with existing node-core)
+### The Problem
 
-The bridge will be implemented in Rust, reusing existing P2P infrastructure from node-core. This approach:
-- Reuses `nsn_p2p::P2pService` for mesh connectivity
-- Reuses `nsn_types::VideoChunk` for chunk handling
-- Adds WebSocket server via `tokio-tungstenite`
-- Maintains single codebase language (Rust)
+Browsers cannot speak libp2p directly (no TCP/QUIC sockets). Two approaches exist:
+1. **Bridge service** (original plan): Node.js intermediary translates protocols
+2. **WebRTC-direct** (revised plan): Rust nodes accept WebRTC, browsers dial directly
 
-**Alternative considered:** Node.js bridge with js-libp2p was researched but Rust is preferred for consistency.
+### The Solution
 
----
+Add WebRTC transport to Rust nodes, expose HTTP discovery endpoint, let browser connect directly.
 
-## Scope Summary
-
-### Table Stakes (Must Have)
-
-**Video Bridge Service:**
-1. GossipSub subscription to `/nsn/video/1.0.0`
-2. SCALE decode VideoChunk to browser binary format
-3. WebSocket server for browser connections
-4. Chunk forwarding with preserved header fields
-5. Connection to at least one mesh peer
-6. Health endpoint for Docker healthcheck
-7. Graceful shutdown
-
-**Chain RPC Client:**
-1. Connect to chain RPC endpoint (ws://validator:9944)
-2. Query `NsnDirector::CurrentEpoch`
-3. Query `NsnDirector::ElectedDirectors(slot)`
-4. Query `NsnDirector::NextEpochDirectors`
-5. Subscribe to new blocks for epoch transitions
-6. Graceful error handling
-
-**Live Statistics:**
-1. Connected peer count
-2. Current bitrate (Mbps)
-3. Chunk latency (ms)
-4. Buffer level (seconds)
-5. Current director info
-6. Connection status states
-
-### Out of Scope (Anti-features)
-
-- Full libp2p-in-browser via WebRTC (rust-libp2p-webrtc is alpha)
-- Chunk generation/publishing (bridge is read-only)
-- BFT consensus participation
-- Persistent storage of chunks
-- Authentication/authorization
-- Video transcoding
+```
+NSN Mesh (Rust libp2p 0.53)
+    │ TCP/Noise/Yamux (mesh interconnect)
+    │ UDP/WebRTC (browser clients)
+    ▼
+Director/Validator Nodes
+    │ HTTP /p2p/info → { peer_id, multiaddrs with certhash }
+    ▼
+Browser Viewer (js-libp2p + @libp2p/webrtc)
+    │ Direct WebRTC connection
+    │ GossipSub subscription
+    │ SCALE-encoded VideoChunk
+    ▼
+Video Pipeline
+```
 
 ---
 
-## Critical Pitfalls to Address
+## Technology Stack
 
-### Phase 1: Video Bridge Setup
+### Rust (node-core)
 
-| Pitfall | Mitigation |
-|---------|------------|
-| Topic hashing mismatch | Configure IdentityHash or verify topic strings match exactly |
-| Noise handshake pattern | Use XX pattern explicitly, not default |
-| Insufficient GossipSub peers | Wait for mesh formation, implement ready check |
-| JS-to-Rust stream closure | Proper async handling, connection keepalive |
-| Silent WebSocket failures | Register all event handlers, implement heartbeat |
-| Thundering herd reconnection | Exponential backoff with jitter |
+| Component | Library | Notes |
+|-----------|---------|-------|
+| Core | libp2p 0.53.x | Enable `webrtc` feature |
+| Transport | TCP + WebRTC | Hybrid for mesh + browsers |
+| HTTP | axum or warp | Discovery endpoint |
+| Cert | pem 3.0 | Certificate persistence |
 
-### Phase 2: Chunk Reception
+### Browser (viewer)
 
-| Pitfall | Mitigation |
-|---------|------------|
-| SCALE type definition mismatch | Generate types from chain metadata, validate field order |
-| Sequence number deduplication | Use content-based message ID, not sequence numbers |
-| Background tab throttling | Document as known limitation, buffer recent chunks |
-
-### Phase 3: Chain RPC
-
-| Pitfall | Mitigation |
-|---------|------------|
-| API instance memory leak | Single instance, reuse everywhere |
-| Subscription cleanup | Always store and call unsubscribe |
-| Type clashes across pallets | Use explicit type aliases |
+| Component | Library | Notes |
+|-----------|---------|-------|
+| Core | libp2p 2.0.x | TypeScript-first |
+| Transport | @libp2p/webrtc 5.x | Browser RTCPeerConnection |
+| PubSub | @chainsafe/libp2p-gossipsub 14.x | Video topic subscription |
+| Codec | @polkadot/types-codec 16.x | SCALE decoding |
+| Chain | @polkadot/api 16.x | Director queries |
 
 ---
 
-## Build Order (8 Phases)
+## Critical Design Decisions
 
-| Phase | Component | Depends On | Deliverable |
-|-------|-----------|------------|-------------|
-| 1 | Types crate | - | Shared message definitions |
-| 2 | Chunk Translator | Types | Translation function with tests |
-| 3 | Mesh Subscriber | nsn-p2p, nsn-types | broadcast::Receiver<VideoChunk> |
-| 4 | WebSocket Server | Types, Translator | BridgeServer accepting connections |
-| 5 | Integration | All above | video-bridge binary |
-| 6 | Viewer WebSocket mode | Types | Updated p2p.ts using WebSocket |
-| 7 | Chain RPC (bridge-side) | subxt | Optional epoch updates push |
-| 8 | Chain RPC (viewer-side) | @polkadot/api | Direct chain queries from viewer |
+### 1. Certificate Persistence
 
-**Critical path:** Phases 1-5 are blocking for MVP. Phases 6-8 can be parallelized.
+WebRTC multiaddrs include certificate hash:
+```
+/ip4/192.168.1.50/udp/9003/webrtc/certhash/uEiD...
+```
 
----
+If certificate regenerates on restart, all cached addresses break.
 
-## Message Translation
+**Solution:** Persist certificate to `{data_dir}/webrtc_cert.pem`
 
-**Input (SCALE VideoChunk from mesh):**
-```rust
-VideoChunk {
-    header: VideoChunkHeader {
-        version: u16,
-        slot: u64,
-        content_id: String,
-        chunk_index: u32,
-        total_chunks: u32,
-        timestamp_ms: u64,
-        is_keyframe: bool,
-        payload_hash: [u8; 32],
-    },
-    payload: Vec<u8>,
-    signer: Vec<u8>,
-    signature: Vec<u8>,
+### 2. Discovery Endpoint
+
+Browsers cannot discover WebRTC addresses via mDNS/DHT.
+
+**Solution:** HTTP endpoint `GET /p2p/info` returns:
+```json
+{
+  "peer_id": "12D3KooW...",
+  "multiaddrs": ["/ip4/.../udp/9003/webrtc/certhash/..."],
+  "protocols": ["/nsn/video/1.0.0"]
 }
 ```
 
-**Output (Binary to browser):**
-```
-[slot:4 bytes, big-endian u32]
-[chunk_index:4 bytes, big-endian u32]
-[timestamp:8 bytes, big-endian u64]
-[is_keyframe:1 byte, 0x00 or 0x01]
-[data: remaining bytes]
-```
+### 3. Hybrid Transport
 
-Total header: 17 bytes + payload
+Nodes must support both:
+- TCP/Noise/Yamux for mesh interconnect
+- WebRTC for browser connections
 
----
+### 4. SCALE Decoding in Browser
 
-## Data Flow
+Browser decodes SCALE-encoded VideoChunk directly (no format translation).
 
-```
-NSN Mesh (Rust libp2p)
-    │ GossipSub /nsn/video/1.0.0 (SCALE VideoChunk)
-    ▼
-Video Bridge (Rust)
-    │ Decode SCALE → Binary translation
-    │ WebSocket (ws://bridge:9090/video)
-    ▼
-Browser Viewer (React)
-    │ Parse 17-byte header + payload
-    │ Feed to video pipeline
-    ▼
-Canvas Renderer
-
-Optional:
-NSN Chain ─── @polkadot/api ──► Viewer (Director queries)
-```
+**Benefits:**
+- Same protocol as mesh nodes
+- No bridge complexity
+- Type-safe with @polkadot/types-codec
 
 ---
 
-## Risk Assessment
+## Implementation Phases
 
-| Risk | Likelihood | Impact | Mitigation |
-|------|------------|--------|------------|
-| js/rust libp2p interop issues | Low | High | Verified via multidim-interop suite |
-| SCALE decode failures | Low | High | Type generation from metadata |
-| WebSocket connection instability | Medium | Medium | Heartbeat + reconnection logic |
-| Chain RPC availability | Low | Low | Graceful degradation to cached state |
+| Phase | Name | Key Deliverables |
+|-------|------|------------------|
+| 1 | Rust Node Core Upgrade | WebRTC feature, cert persistence, transport |
+| 2 | Discovery Bridge | `/p2p/info` endpoint, CORS |
+| 3 | Viewer Implementation | js-libp2p WebRTC, discovery fetch |
+| 4 | Video Streaming | GossipSub subscription, SCALE decode |
+| 5 | Chain RPC | @polkadot/api integration (parallel) |
+| 6 | Docker & Operations | UDP port, env vars (parallel) |
+| 7 | Testing & Validation | E2E tests |
 
----
-
-## Recommendations
-
-1. **Start with Rust bridge** - Leverage existing nsn-p2p infrastructure
-2. **Implement health checks early** - Critical for Docker Compose integration
-3. **Test interop incrementally** - Verify each layer before adding next
-4. **Add metrics from start** - Prometheus endpoints for debugging
-5. **Document WebSocket protocol** - Clear contract for viewer integration
+**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 7
 
 ---
 
-*Research synthesis complete. Ready for requirements definition.*
+## Key Pitfalls to Avoid
+
+### Phase 1: Rust Node
+
+| Pitfall | Prevention |
+|---------|------------|
+| Certificate regeneration | Persist to disk on first run |
+| Docker internal IPs announced | Filter 172.x.x.x, use `--p2p-external-address` |
+| Missing WebRTC feature | Add `webrtc` to libp2p features |
+
+### Phase 2: Discovery
+
+| Pitfall | Prevention |
+|---------|------------|
+| CORS blocking | Add `CorsLayer::permissive()` |
+| Missing certhash in response | Filter addresses, include only full WebRTC addr |
+
+### Phase 3: Browser
+
+| Pitfall | Prevention |
+|---------|------------|
+| Hardcoded multiaddr | Always fetch from `/p2p/info` |
+| Noise double encryption | WebRTC uses DTLS, don't add noise |
+| Connection not waiting for mesh | Implement ready check before subscribing |
+
+### Phase 4: Video
+
+| Pitfall | Prevention |
+|---------|------------|
+| SCALE type mismatch | Match exact field order from Rust |
+| GossipSub topic hash mismatch | Use identical topic string |
+
+---
+
+## Comparison: Bridge vs WebRTC-Direct
+
+| Aspect | Bridge | WebRTC-Direct |
+|--------|--------|---------------|
+| Latency | +10-50ms | Minimal |
+| Infrastructure | Extra service | Integrated |
+| Protocol | Translate SCALE→binary | Same (SCALE) |
+| Scalability | Bridge bottleneck | Distributed |
+| Complexity | Medium | Higher (initial) |
+| Maintenance | Two systems | One system |
+
+**Verdict:** WebRTC-Direct is preferred for production. Higher initial complexity pays off with better latency and reduced infrastructure.
+
+---
+
+## Requirements Summary
+
+### P0 (Must Have)
+
+- WebRTC transport in Rust nodes
+- Certificate persistence
+- Discovery endpoint with CORS
+- js-libp2p WebRTC client
+- GossipSub video subscription
+- SCALE VideoChunk decoding
+- Connection status display
+- Remove mock video
+
+### P1 (Should Have)
+
+- External address configuration
+- Connection retry with backoff
+- Chain RPC for directors
+- Live statistics
+
+### P2 (Nice to Have)
+
+- 50+ concurrent connections
+- Prometheus metrics
+
+---
+
+## Definition of Done
+
+Milestone v1.1 is complete when:
+
+1. ✓ Rust nodes accept WebRTC connections
+2. ✓ Certificate persists across restarts
+3. ✓ `/p2p/info` returns valid WebRTC multiaddr
+4. ✓ Browser connects directly via js-libp2p
+5. ✓ GossipSub delivers video chunks
+6. ✓ SCALE decoding works
+7. ✓ Video renders without mock data
+8. ✓ Statistics are real
+9. ✓ Chain queries work
+10. ✓ E2E tests pass
+
+---
+
+## Change Log
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2026-01-18 | Initial summary (Node.js bridge approach) |
+| 2.0 | 2026-01-18 | Revised for WebRTC-direct approach |
+
+---
+
+*Research synthesis v2.0 - WebRTC-Direct approach*

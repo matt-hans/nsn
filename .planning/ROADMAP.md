@@ -1,178 +1,355 @@
-# Roadmap: v1.1 Viewer Networking Integration
+# Roadmap: v1.1 Viewer Networking Integration (WebRTC-Direct)
 
 **Milestone:** v1.1
 **Created:** 2026-01-18
 **Status:** Planning
+**Approach:** WebRTC-Direct (browser connects directly to mesh nodes)
 
 ---
 
 ## Phase Overview
 
-| Phase | Name | Status | Dependencies |
-|-------|------|--------|--------------|
-| 1 | Video Bridge Core | Pending | - |
-| 2 | WebSocket Server | Pending | Phase 1 |
-| 3 | Viewer WebSocket Client | Pending | Phase 2 |
-| 4 | Chain RPC Integration | Pending | - |
-| 5 | Live Statistics | Pending | Phase 3, Phase 4 |
-| 6 | Docker Integration | Pending | Phase 2 |
-| 7 | Testing & Validation | Pending | All phases |
+| Phase | Name | Status | Dependencies | Complexity |
+|-------|------|--------|--------------|------------|
+| 1 | Rust Node Core Upgrade | Pending | - | Medium |
+| 2 | Discovery Bridge (HTTP Sidecar) | Pending | Phase 1 | Low |
+| 3 | Viewer Implementation | Pending | Phase 2 | Medium |
+| 4 | Video Streaming Protocol | Pending | Phase 3 | High |
+| 5 | Chain RPC Integration | Pending | - (parallel) | Medium |
+| 6 | Docker & Operations | Pending | Phase 2 | Low |
+| 7 | Testing & Validation | Pending | All phases | Medium |
 
 ---
 
-## Phase 1: Video Bridge Core
+## Phase 1: Rust Node Core Upgrade
 
-**Goal:** Create Rust crate that subscribes to NSN mesh and receives video chunks.
+**Goal:** Enable Director and Validator nodes to accept incoming WebRTC connections from browsers.
 
-**Requirements:** REQ-VB-001, REQ-VB-002, REQ-VB-003, REQ-VB-004
+**Requirements:** REQ-WR-001 through REQ-WR-007
 
 ### Deliverables
 
-1. `video-bridge` crate in `node-core/crates/`
-2. MeshSubscriber component using existing `nsn_p2p::P2pService`
-3. ChunkTranslator: SCALE VideoChunk → 17-byte binary format
-4. Unit tests for chunk translation
-5. Integration test with mock GossipSub
+1. Update `node-core/crates/p2p/Cargo.toml` with WebRTC feature
+2. Certificate persistence module (`cert.rs`)
+3. Hybrid transport configuration (TCP + WebRTC)
+4. CLI flags for WebRTC configuration
+5. Unit tests for certificate persistence
 
-### Technical Approach
+### 1.1 Dependency Update
 
+Update `node-core/crates/p2p/Cargo.toml`:
+
+```toml
+[dependencies]
+libp2p = { version = "0.53", features = [
+    "tokio", "tcp", "noise", "yamux",
+    "webrtc",  # NEW
+    "dns", "macros", "gossipsub", "identify", "ping"
+] }
+pem = "3.0"  # Certificate serialization
 ```
-node-core/crates/video-bridge/
-├── Cargo.toml
-├── src/
-│   ├── lib.rs
-│   ├── subscriber.rs    # MeshSubscriber
-│   ├── translator.rs    # ChunkTranslator
-│   └── config.rs        # BridgeConfig
-```
 
-**Key interfaces:**
+### 1.2 Certificate Persistence
+
+Create `node-core/crates/p2p/src/cert.rs`:
+
 ```rust
-pub struct MeshSubscriber {
-    p2p_service: P2pService,
-    chunk_tx: broadcast::Sender<VideoChunk>,
+pub struct CertificateManager {
+    data_dir: PathBuf,
 }
 
-pub fn translate_chunk(chunk: &VideoChunk) -> Vec<u8>;
+impl CertificateManager {
+    pub fn load_or_generate(&self) -> Result<Certificate, CertError>;
+}
+```
+
+**Persistence logic:**
+1. Check `{data_dir}/webrtc_cert.pem`
+2. If missing, generate with `Certificate::generate()`
+3. Save PEM to disk
+4. If present, load from file
+
+### 1.3 Transport Configuration
+
+Modify `node-core/crates/p2p/src/transport.rs`:
+
+```rust
+let webrtc_cert = cert_manager.load_or_generate()?;
+
+let transport = tcp_transport
+    .or_transport(webrtc_transport(keypair, webrtc_cert))
+    .boxed();
+```
+
+### 1.4 CLI Flags
+
+Add to `node-core/bin/nsn-node/src/cli.rs`:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--p2p-webrtc-port` | 9003 | UDP port for WebRTC connections |
+| `--p2p-external-address` | None | Override announced address (for NAT) |
+
+### Acceptance Criteria
+
+- [ ] `cargo build` succeeds with WebRTC feature
+- [ ] Certificate persists across node restarts
+- [ ] Node listens on `/ip4/0.0.0.0/udp/9003/webrtc`
+- [ ] Multiaddr logged includes `certhash`
+- [ ] Unit tests pass for certificate persistence
+
+---
+
+## Phase 2: Discovery Bridge (HTTP Sidecar)
+
+**Goal:** Provide HTTP endpoint for browsers to discover WebRTC address.
+
+**Requirements:** REQ-DISC-001 through REQ-DISC-006
+
+### Deliverables
+
+1. New endpoint `GET /p2p/info` on existing HTTP server
+2. Response filtering (exclude internal IPs)
+3. CORS headers for browser access
+4. Integration with swarm state
+
+### 2.1 Endpoint Implementation
+
+Add to existing HTTP server (`node-core/bin/nsn-node/src/http.rs`):
+
+```rust
+#[derive(Serialize)]
+struct P2pInfo {
+    peer_id: String,
+    multiaddrs: Vec<String>,
+    protocols: Vec<String>,
+}
+
+async fn get_p2p_info(State(swarm): State<SharedSwarm>) -> Json<P2pInfo> {
+    // Filter out 127.0.0.1, 172.x.x.x addresses
+    // Include only WebRTC address with certhash
+}
+```
+
+### 2.2 Response Format
+
+```json
+{
+  "peer_id": "12D3KooWExample...",
+  "multiaddrs": [
+    "/ip4/192.168.1.50/tcp/9001",
+    "/ip4/192.168.1.50/udp/9003/webrtc/certhash/uEiD..."
+  ],
+  "protocols": [
+    "/nsn/video/1.0.0",
+    "/meshsub/1.1.0"
+  ]
+}
+```
+
+### 2.3 CORS Configuration
+
+```rust
+.layer(CorsLayer::permissive())
 ```
 
 ### Acceptance Criteria
 
-- [ ] Crate compiles with `cargo build -p video-bridge`
-- [ ] Unit tests pass for chunk translation
-- [ ] MeshSubscriber receives chunks from local mesh
-- [ ] Translated chunks match expected 17-byte header format
+- [ ] `curl http://node:9615/p2p/info` returns valid JSON
+- [ ] Response includes WebRTC address with certhash
+- [ ] No internal Docker IPs in response
+- [ ] Browser can fetch without CORS errors
+- [ ] Same port as existing metrics endpoint
 
 ---
 
-## Phase 2: WebSocket Server
+## Phase 3: Viewer Implementation
 
-**Goal:** Add WebSocket server to video bridge for browser connections.
+**Goal:** Transform viewer into a lightweight P2P node that connects directly to mesh.
 
-**Requirements:** REQ-VB-005, REQ-VB-006, REQ-VB-007, REQ-VB-008, REQ-VB-009, REQ-VB-010
+**Requirements:** REQ-VI-001 through REQ-VI-009
 
 ### Deliverables
 
-1. WebSocket server using `tokio-tungstenite`
-2. Connection management with client tracking
-3. Health HTTP endpoint (`/health`)
-4. Binary message forwarding
-5. Connection limit enforcement
+1. Install js-libp2p dependencies
+2. P2P client service (`viewer/src/services/p2pClient.ts`)
+3. Discovery fetch and multiaddr parsing
+4. GossipSub subscription to video topic
+5. SCALE decoder for VideoChunk
+6. Connection status management
+7. Reconnection with exponential backoff
+8. Remove mock video stream
 
-### Technical Approach
+### 3.1 Dependencies
 
-```rust
-pub struct BridgeServer {
-    chunk_rx: broadcast::Receiver<VideoChunk>,
-    clients: Arc<RwLock<HashMap<ClientId, WebSocketSink>>>,
-    config: BridgeConfig,
-}
-
-impl BridgeServer {
-    pub async fn run(&self, addr: SocketAddr) -> Result<()>;
-    async fn handle_connection(&self, stream: TcpStream);
-    async fn broadcast_chunk(&self, chunk: Vec<u8>);
-}
+```bash
+cd viewer
+pnpm add libp2p @libp2p/webrtc @chainsafe/libp2p-noise @chainsafe/libp2p-gossipsub
+pnpm add @polkadot/types-codec @polkadot/types @multiformats/multiaddr
 ```
 
-### Acceptance Criteria
-
-- [ ] WebSocket server accepts connections on configured port
-- [ ] `/health` returns 200 when mesh connected
-- [ ] Chunks forwarded to all connected clients
-- [ ] Client disconnect doesn't affect other clients
-- [ ] Connection limit enforced (configurable)
-
----
-
-## Phase 3: Viewer WebSocket Client
-
-**Goal:** Update viewer to receive video from bridge instead of mock data.
-
-**Requirements:** REQ-VI-001, REQ-VI-002, REQ-VI-003, REQ-VI-004, REQ-VI-005, REQ-VI-006
-
-### Deliverables
-
-1. WebSocket client in `viewer/src/services/bridgeClient.ts`
-2. Chunk parser for 17-byte header format
-3. Integration with existing video pipeline
-4. Reconnection logic with exponential backoff
-5. Connection status in Zustand store
-6. Remove mock video stream code
-
-### Technical Approach
+### 3.2 P2P Client Service
 
 ```typescript
-// viewer/src/services/bridgeClient.ts
-export class BridgeClient {
-  private ws: WebSocket | null = null;
+// viewer/src/services/p2pClient.ts
+
+export class P2PClient {
+  private node: Libp2p | null = null;
   private reconnectAttempts = 0;
 
-  connect(url: string): void;
-  disconnect(): void;
-  private handleMessage(data: ArrayBuffer): void;
-  private parseChunk(buffer: ArrayBuffer): VideoChunk;
-  private scheduleReconnect(): void;
-}
+  async connect(discoveryUrl: string): Promise<void> {
+    // 1. Create libp2p node with WebRTC transport
+    // 2. Fetch /p2p/info from discoveryUrl
+    // 3. Parse WebRTC multiaddr with certhash
+    // 4. Dial the Rust node
+    // 5. Subscribe to /nsn/video/1.0.0
+  }
 
-interface VideoChunk {
-  slot: number;
-  chunkIndex: number;
-  timestamp: bigint;
-  isKeyframe: boolean;
-  data: Uint8Array;
+  private handleVideoChunk(data: Uint8Array): void {
+    // Decode SCALE-encoded VideoChunk
+    // Feed to video pipeline
+  }
+}
+```
+
+### 3.3 SCALE Decoding
+
+```typescript
+import { TypeRegistry } from '@polkadot/types';
+
+const registry = new TypeRegistry();
+registry.register({
+  VideoChunkHeader: { version: 'u16', slot: 'u64', /* ... */ },
+  VideoChunk: { header: 'VideoChunkHeader', payload: 'Bytes', /* ... */ }
+});
+
+function decodeVideoChunk(data: Uint8Array): VideoChunk {
+  return registry.createType('VideoChunk', data).toJSON();
+}
+```
+
+### 3.4 Connection State Management
+
+Update `viewer/src/store/appStore.ts`:
+
+```typescript
+interface ConnectionState {
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  peerId: string | null;
+  connectedAt: number | null;
+  error: string | null;
+}
+```
+
+### 3.5 Remove Mock Video
+
+Delete or disable:
+- Mock video generator in `p2p.ts`
+- Hardcoded video chunks
+- Fake peer connections
+
+### Acceptance Criteria
+
+- [ ] libp2p node initializes in browser
+- [ ] Fetch `/p2p/info` succeeds
+- [ ] WebRTC connection established to Rust node
+- [ ] GossipSub subscription active
+- [ ] SCALE decoding works for VideoChunk
+- [ ] Video renders from mesh data
+- [ ] Mock video completely removed
+- [ ] Reconnection works after disconnect
+
+---
+
+## Phase 4: Video Streaming Protocol
+
+**Goal:** Establish reliable video chunk delivery from mesh to browser.
+
+**Requirements:** REQ-VI-004, REQ-VI-005, REQ-VI-006, REQ-LS-001, REQ-LS-002
+
+### Deliverables
+
+1. GossipSub message handler in viewer
+2. VideoChunk parsing and validation
+3. Integration with existing video pipeline
+4. Bitrate and latency calculation
+5. Buffer management
+
+### 4.1 GossipSub Handler
+
+```typescript
+node.services.pubsub.addEventListener('message', (evt) => {
+  if (evt.detail.topic === '/nsn/video/1.0.0') {
+    const chunk = decodeVideoChunk(evt.detail.data);
+    this.processChunk(chunk);
+  }
+});
+```
+
+### 4.2 Chunk Processing
+
+```typescript
+private processChunk(chunk: VideoChunk): void {
+  // 1. Validate chunk (hash, signature)
+  // 2. Check if this slot is relevant
+  // 3. Feed to video buffer
+  // 4. Update statistics
+  this.statsCalculator.recordChunk(chunk);
+  this.videoBuffer.append(chunk);
+}
+```
+
+### 4.3 Statistics Calculation
+
+```typescript
+export class StatsCalculator {
+  private chunks: { time: number; size: number }[] = [];
+
+  recordChunk(chunk: VideoChunk): void {
+    this.chunks.push({ time: Date.now(), size: chunk.payload.length });
+    this.prune();
+  }
+
+  getBitrateMbps(): number {
+    // Calculate from last N seconds of chunks
+  }
+
+  getLatencyMs(): number {
+    // chunk.header.timestamp_ms vs now
+  }
 }
 ```
 
 ### Acceptance Criteria
 
-- [ ] Viewer connects to bridge WebSocket
-- [ ] Chunks parsed correctly (17-byte header)
-- [ ] Video renders from real mesh data
-- [ ] Mock video stream removed
-- [ ] Auto-reconnection works with backoff
-- [ ] Connection status displayed in UI
+- [ ] Chunks received via GossipSub
+- [ ] SCALE decoding successful
+- [ ] Video pipeline receives chunks
+- [ ] Canvas renders video frames
+- [ ] Bitrate displayed accurately
+- [ ] Latency calculated from timestamps
 
 ---
 
-## Phase 4: Chain RPC Integration
+## Phase 5: Chain RPC Integration
 
-**Goal:** Query NSN chain for director information.
+**Goal:** Query NSN chain for director and epoch information.
 
-**Requirements:** REQ-RPC-001, REQ-RPC-002, REQ-RPC-003, REQ-RPC-004, REQ-RPC-005, REQ-RPC-006
+**Requirements:** REQ-RPC-001 through REQ-RPC-006
+
+**Note:** Can run in parallel with Phases 3-4.
 
 ### Deliverables
 
-1. Chain client in `viewer/src/services/chainClient.ts`
-2. Type definitions for nsn-director pallet queries
-3. React hook `useChainData()` for component access
+1. Chain client service (`viewer/src/services/chainClient.ts`)
+2. Type definitions for nsn-director pallet
+3. React hook `useChainData()`
 4. Error handling and reconnection
-5. Caching of last known state
+5. State caching
 
-### Technical Approach
+### 5.1 Chain Client
 
 ```typescript
-// viewer/src/services/chainClient.ts
 import { ApiPromise, WsProvider } from '@polkadot/api';
 
 export class ChainClient {
@@ -181,13 +358,18 @@ export class ChainClient {
   async connect(endpoint: string): Promise<void>;
   async getCurrentEpoch(): Promise<Epoch | null>;
   async getElectedDirectors(slot: number): Promise<AccountId[]>;
-  async subscribeToBlocks(callback: (block: Block) => void): Promise<() => void>;
+  async subscribeToBlocks(callback: BlockCallback): Promise<Unsubscribe>;
 }
+```
 
-// viewer/src/hooks/useChainData.ts
+### 5.2 React Hook
+
+```typescript
 export function useChainData() {
   const [epoch, setEpoch] = useState<Epoch | null>(null);
-  const [directors, setDirectors] = useState<AccountId[]>([]);
+  const [directors, setDirectors] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   // ...
 }
 ```
@@ -196,148 +378,85 @@ export function useChainData() {
 
 - [ ] Connects to chain RPC endpoint
 - [ ] Queries CurrentEpoch successfully
-- [ ] Queries ElectedDirectors for slot
+- [ ] Queries ElectedDirectors
 - [ ] Block subscription works
-- [ ] Handles connection errors gracefully
+- [ ] Graceful error handling
 - [ ] Caches last known state
 
 ---
 
-## Phase 5: Live Statistics
+## Phase 6: Docker & Operations
 
-**Goal:** Replace mock statistics with real network data.
+**Goal:** Update deployment configuration for WebRTC support.
 
-**Requirements:** REQ-LS-001, REQ-LS-002, REQ-LS-003, REQ-LS-004, REQ-LS-005, REQ-LS-006
-
-### Deliverables
-
-1. Bitrate calculation from chunk data
-2. Latency calculation from timestamps
-3. Buffer level tracking
-4. Director info from chain queries
-5. Updated stats display components
-6. Remove all mock stat values
-
-### Technical Approach
-
-```typescript
-// viewer/src/services/statsCalculator.ts
-export class StatsCalculator {
-  private chunkSizes: { time: number; size: number }[] = [];
-  private latencies: number[] = [];
-
-  recordChunk(chunk: VideoChunk): void;
-  getBitrateMbps(): number;
-  getAverageLatencyMs(): number;
-}
-
-// Update appStore.ts to use real values
-interface NetworkStats {
-  bitrate: number;        // Real Mbps from chunks
-  latency: number;        // Real ms from timestamps
-  connectedPeers: number; // From bridge or estimate
-  bufferSeconds: number;  // From video pipeline
-  directorPeerId: string; // From chain query
-}
-```
-
-### Acceptance Criteria
-
-- [ ] Bitrate calculated from actual chunk throughput
-- [ ] Latency measured from chunk timestamps
-- [ ] Buffer level reflects actual buffered video
-- [ ] Director info from chain (not hardcoded)
-- [ ] All mock values removed
-- [ ] Stats update smoothly (1-2 second intervals)
-
----
-
-## Phase 6: Docker Integration
-
-**Goal:** Add video bridge to testnet Docker Compose.
-
-**Requirements:** REQ-NF-007, REQ-NF-008, REQ-NF-009
+**Requirements:** REQ-NF-009 through REQ-NF-012
 
 ### Deliverables
 
-1. Dockerfile for video-bridge
-2. Docker Compose service definition
-3. Environment variable configuration
-4. Health check integration
-5. Network configuration for mesh access
+1. Update `docker-compose.yml` with UDP port
+2. Environment variable configuration
+3. Data volume for certificate persistence
+4. Updated documentation
 
-### Technical Approach
-
-```dockerfile
-# docker/video-bridge/Dockerfile
-FROM rust:1.75 as builder
-WORKDIR /app
-COPY . .
-RUN cargo build --release -p video-bridge
-
-FROM debian:bookworm-slim
-COPY --from=builder /app/target/release/video-bridge /usr/local/bin/
-EXPOSE 9090 9091
-HEALTHCHECK CMD curl -f http://localhost:9091/health || exit 1
-ENTRYPOINT ["video-bridge"]
-```
+### 6.1 Docker Compose Update
 
 ```yaml
-# docker/testnet/docker-compose.yml (addition)
-video-bridge:
-  build:
-    context: ../..
-    dockerfile: docker/video-bridge/Dockerfile
-  environment:
-    - MESH_BOOTNODES=/ip4/sidecar-alice/tcp/4001
-    - WS_PORT=9090
-    - HEALTH_PORT=9091
-  ports:
-    - "9090:9090"
-  depends_on:
-    sidecar-alice:
-      condition: service_healthy
-  networks:
-    - nsn-testnet
+services:
+  director-alice:
+    ports:
+      - "9001:9001"       # TCP (mesh)
+      - "9003:9003/udp"   # WebRTC (browsers) - NEW
+      - "9615:9615"       # HTTP (discovery, metrics)
+    environment:
+      - P2P_WEBRTC_PORT=9003
+      - P2P_EXTERNAL_ADDRESS=/ip4/${HOST_IP}/udp/9003/webrtc
+    volumes:
+      - alice-data:/data  # Preserves certificate
+```
+
+### 6.2 Firewall Configuration
+
+```bash
+# Required for WebRTC
+ufw allow 9003/udp
 ```
 
 ### Acceptance Criteria
 
-- [ ] Dockerfile builds successfully
-- [ ] Bridge runs in Docker Compose testnet
-- [ ] Health check passes when mesh connected
-- [ ] Environment variables configure ports and bootnodes
-- [ ] Bridge accessible from host at localhost:9090
+- [ ] UDP port 9003 exposed in Docker
+- [ ] Environment variables configure WebRTC
+- [ ] Certificate persists in volume
+- [ ] External address configuration works
 
 ---
 
 ## Phase 7: Testing & Validation
 
-**Goal:** End-to-end validation of viewer networking.
+**Goal:** End-to-end validation of WebRTC-direct viewer connectivity.
 
-**Requirements:** All REQ-* requirements
+**Requirements:** All
 
 ### Deliverables
 
-1. Integration tests for video bridge
-2. E2E test: mesh → bridge → viewer
-3. Connection failure recovery tests
-4. Performance validation (latency, throughput)
+1. Integration tests for certificate persistence
+2. E2E test: browser → WebRTC → node → GossipSub
+3. Connection recovery tests
+4. Performance validation
 5. Updated documentation
 
 ### Test Scenarios
 
 | Test | Description | Pass Criteria |
 |------|-------------|---------------|
-| T-001 | Bridge connects to mesh | Peer connection established |
-| T-002 | Bridge receives chunks | Chunks logged/counted |
-| T-003 | Browser connects to bridge | WebSocket open event |
-| T-004 | Viewer receives chunks | Chunks parsed correctly |
-| T-005 | Video renders | Canvas displays frames |
-| T-006 | Stats display real values | No mock data visible |
-| T-007 | Bridge reconnects on peer loss | Service restored < 30s |
-| T-008 | Viewer reconnects on WS close | Connection restored |
-| T-009 | Chain queries work | Epoch/director data displayed |
+| T-001 | Certificate persists across restart | Same certhash after restart |
+| T-002 | Discovery endpoint returns valid data | JSON with WebRTC multiaddr |
+| T-003 | Browser connects via WebRTC | Connection established |
+| T-004 | GossipSub subscription works | Chunks received in browser |
+| T-005 | SCALE decoding succeeds | VideoChunk parsed correctly |
+| T-006 | Video renders | Canvas displays frames |
+| T-007 | Statistics are real | No mock values |
+| T-008 | Reconnection works | Connection restored after drop |
+| T-009 | Chain RPC queries work | Epoch/directors displayed |
 | T-010 | Full testnet E2E | Video streams end-to-end |
 
 ### Acceptance Criteria
@@ -345,7 +464,7 @@ video-bridge:
 - [ ] All integration tests pass
 - [ ] E2E test demonstrates full flow
 - [ ] Recovery tests pass
-- [ ] Performance meets REQ-NF-001, REQ-NF-003
+- [ ] Performance meets requirements
 - [ ] Documentation updated
 
 ---
@@ -353,37 +472,67 @@ video-bridge:
 ## Parallel Work Streams
 
 ```
-                    Phase 1: Bridge Core
-                           │
-                           ▼
-                    Phase 2: WebSocket Server ──────┐
-                           │                        │
-              ┌────────────┴────────────┐           │
-              ▼                         ▼           ▼
-    Phase 3: Viewer WS       Phase 4: Chain RPC    Phase 6: Docker
-              │                         │
-              └────────────┬────────────┘
-                           ▼
-                    Phase 5: Live Stats
-                           │
-                           ▼
-                    Phase 7: Testing
+        Phase 1: Rust Node Core Upgrade
+                    │
+                    ▼
+        Phase 2: Discovery Bridge
+                    │
+        ┌───────────┼───────────┐
+        ▼           │           ▼
+    Phase 6:        │       Phase 5:
+    Docker/Ops      │       Chain RPC
+                    ▼           │
+        Phase 3: Viewer         │
+                    │           │
+                    ▼           │
+        Phase 4: Video          │
+                Streaming       │
+                    │           │
+                    └─────┬─────┘
+                          ▼
+                Phase 7: Testing
 ```
 
-**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 5 → Phase 7
+**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 7
 
-**Parallelizable:** Phase 4 and Phase 6 can run alongside Phase 3
+**Parallelizable:**
+- Phase 5 (Chain RPC) can start after Phase 2
+- Phase 6 (Docker) can start after Phase 2
+
+---
+
+## Implementation Checklist
+
+| Step | Component | Task | Complexity | Status |
+|------|-----------|------|------------|--------|
+| 1.1 | Rust | Update Cargo.toml with WebRTC feature | Low | Pending |
+| 1.2 | Rust | Implement certificate persistence | Medium | Pending |
+| 1.3 | Rust | Add WebRTC transport to swarm | Medium | Pending |
+| 1.4 | Rust | Add CLI flags | Low | Pending |
+| 2.1 | Rust | Add `/p2p/info` endpoint | Low | Pending |
+| 2.2 | Rust | Configure CORS | Low | Pending |
+| 3.1 | JS | Install libp2p dependencies | Low | Pending |
+| 3.2 | JS | Implement P2PClient | Medium | Pending |
+| 3.3 | JS | Implement SCALE decoder | Medium | Pending |
+| 3.4 | JS | Remove mock video | Low | Pending |
+| 4.1 | JS | GossipSub handler | Medium | Pending |
+| 4.2 | JS | Video pipeline integration | High | Pending |
+| 4.3 | JS | Statistics calculator | Medium | Pending |
+| 5.1 | JS | Chain RPC client | Medium | Pending |
+| 6.1 | Ops | Update Docker Compose | Low | Pending |
+| 7.1 | Test | E2E validation | Medium | Pending |
 
 ---
 
 ## Risk Mitigation
 
-| Risk | Mitigation | Phase |
-|------|------------|-------|
-| libp2p interop issues | Verify with isolated test first | Phase 1 |
-| SCALE decode failures | Unit tests with real mesh data | Phase 1 |
-| WebSocket stability | Implement heartbeat, test reconnection | Phase 2, 3 |
-| Chain RPC availability | Graceful degradation, caching | Phase 4 |
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| WebRTC interop issues | Medium | High | Test early with minimal setup |
+| Certificate persistence fails | Low | High | Unit tests, integration tests |
+| NAT traversal problems | Medium | Medium | `--p2p-external-address` flag |
+| SCALE decode errors | Low | High | Type registry from metadata |
+| Browser compatibility | Low | Medium | Test major browsers early |
 
 ---
 
@@ -391,14 +540,27 @@ video-bridge:
 
 Milestone v1.1 is complete when:
 
-1. Video bridge runs in Docker Compose testnet
-2. Viewer displays real video from mesh (no mocks)
-3. Statistics show real network data
-4. Chain queries return director information
-5. All acceptance criteria for all phases met
-6. E2E test passes reliably
-7. Documentation updated
+1. Rust nodes accept WebRTC connections from browsers
+2. Certificate persists across restarts (stable certhash)
+3. Discovery endpoint returns valid WebRTC multiaddr
+4. Viewer connects directly to mesh via libp2p WebRTC
+5. GossipSub delivers video chunks to browser
+6. SCALE-encoded chunks decoded correctly
+7. Video renders without mock data
+8. Statistics display real network data
+9. Chain queries return director information
+10. All E2E tests pass reliably
+11. Documentation updated
 
 ---
 
-*Roadmap v1.0 - Ready for phase planning*
+## Change Log
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2026-01-18 | Initial roadmap (Node.js bridge approach) |
+| 2.0 | 2026-01-18 | Restructured for WebRTC-direct approach |
+
+---
+
+*Roadmap v2.0 - WebRTC-Direct approach*

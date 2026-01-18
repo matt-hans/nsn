@@ -10,8 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Milestone
 
 **Milestone:** v1.1 Viewer Networking Integration
-**Status:** Planning complete, ready for Phase 1
-**Goal:** Wire the viewer to the live NSN testnet by bridging browser to libp2p mesh
+**Status:** Planning complete (WebRTC-Direct approach), ready for Phase 1
+**Goal:** Wire the viewer to the live NSN testnet via direct WebRTC-to-libp2p connectivity
+**Approach:** WebRTC-Direct — browser connects directly to Rust mesh nodes
 
 ## Current Position
 
@@ -222,28 +223,34 @@ None yet.
 - `2b445db` feat(6-1): add Prometheus and Grafana configuration
 - `b4999c0` docs(6-1): add deployment documentation and operational scripts
 
-## v1.1 Milestone Overview
+## v1.1 Milestone Overview (WebRTC-Direct Approach)
 
 **7 Phases Defined:**
-1. Video Bridge Core - Rust crate for mesh subscription
-2. WebSocket Server - Browser connection relay
-3. Viewer WebSocket Client - Replace mock stream
-4. Chain RPC Integration - Director discovery
-5. Live Statistics - Real network data
-6. Docker Integration - Testnet deployment
+1. Rust Node Core Upgrade - WebRTC transport, certificate persistence
+2. Discovery Bridge - HTTP `/p2p/info` endpoint
+3. Viewer Implementation - js-libp2p WebRTC client
+4. Video Streaming Protocol - GossipSub + SCALE decoding
+5. Chain RPC Integration - Director discovery (parallel)
+6. Docker & Operations - UDP port, env vars (parallel)
 7. Testing & Validation - E2E verification
 
-**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 5 → Phase 7
+**Critical Path:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 7
 
-**Research Completed:**
-- STACK.md - Technology recommendations (js-libp2p stack)
+**Research Updated for WebRTC-Direct:**
+- STACK.md - Rust libp2p 0.53 WebRTC, js-libp2p 2.0 with @libp2p/webrtc
 - FEATURES.md - Scope definition (table stakes vs anti-features)
-- ARCHITECTURE.md - Component design and build order
-- PITFALLS.md - 22 documented pitfalls to avoid
+- ARCHITECTURE.md - Direct browser-to-mesh connectivity
+- PITFALLS.md - Certificate persistence, discovery endpoint, CORS
+
+**Key Decisions:**
+- WebRTC-direct over Node.js bridge (better latency, no extra service)
+- Certificate persistence for stable certhash
+- HTTP discovery endpoint for browser bootstrap
+- Browser decodes SCALE directly (no format translation)
 
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Milestone v1.1 planning complete
+Stopped at: WebRTC-direct approach planning complete
 Resume file: None
-Next step: Plan Phase 1 (Video Bridge Core) with /gsd:plan-phase
+Next step: Plan Phase 1 (Rust Node Core Upgrade) with /gsd:plan-phase

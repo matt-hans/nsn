@@ -10,12 +10,17 @@ End-to-end video generation flow works reliably: prompt in, verified video out, 
 
 ## Current Milestone: v1.1 Viewer Networking Integration
 
-**Goal:** Wire the viewer to the live NSN testnet by bridging browser WebRTC to libp2p mesh.
+**Goal:** Wire the viewer to the live NSN testnet via direct WebRTC-to-libp2p connectivity.
+
+**Approach:** WebRTC-Direct — browser connects directly to Rust mesh nodes without intermediate bridge.
 
 **Target features:**
-- Video bridge service (js-libp2p → GossipSub → WebSocket relay)
+- Rust node WebRTC transport (libp2p 0.53 `webrtc` feature)
+- Certificate persistence for stable certhash across restarts
+- HTTP discovery endpoint (`/p2p/info`) for browser bootstrap
+- js-libp2p WebRTC in browser connecting directly to mesh
 - Chain RPC client for director discovery (@polkadot/api)
-- Real video chunk reception (remove mock stream)
+- Real video chunk reception via GossipSub (SCALE-encoded)
 - Live network statistics (actual bitrate, latency, peer count)
 
 ## Requirements
@@ -48,11 +53,14 @@ End-to-end video generation flow works reliably: prompt in, verified video out, 
 
 ### Active
 
-<!-- Current scope for v1.1 -->
+<!-- Current scope for v1.1 (WebRTC-Direct approach) -->
 
-- [ ] Video bridge service connecting js-libp2p to NSN mesh
-- [ ] Chain RPC queries for elected directors and relay nodes
-- [ ] Real video chunk reception from GossipSub via bridge
+- [ ] Enable WebRTC transport in Rust nodes (libp2p 0.53 `webrtc` feature)
+- [ ] Persist WebRTC certificates for stable certhash across restarts
+- [ ] HTTP discovery endpoint (`/p2p/info`) returning multiaddrs with certhash
+- [ ] js-libp2p WebRTC client in viewer connecting directly to mesh
+- [ ] SCALE decoding of VideoChunk in browser (@polkadot/types-codec)
+- [ ] Chain RPC queries for elected directors and epoch info
 - [ ] Live network statistics (bitrate, latency, connected peers)
 - [ ] Remove mock video stream and hardcoded stats
 
@@ -61,9 +69,10 @@ End-to-end video generation flow works reliably: prompt in, verified video out, 
 <!-- Explicit boundaries for v1.1 -->
 
 - Parachain migration — stay solochain for testnet
-- Rust libp2p WebRTC — alpha maturity (0.9.0-alpha.1), defer to future milestone
-- Direct browser-to-mesh libp2p — requires WebRTC in Rust nodes
+- Separate bridge service — WebRTC-direct eliminates the need
+- STUN/TURN servers — not needed for testnet with public IPs
 - Mobile clients — desktop/web only
+- Video transcoding — Vortex outputs browser-compatible format
 
 ## Context
 
@@ -76,32 +85,37 @@ End-to-end video generation flow works reliably: prompt in, verified video out, 
 4. Client (viewer): React-based streaming interface
 
 **Tech Stack:**
-- Rust 2021 (nsn-chain, node-core) with Polkadot SDK 2512.0.0
+- Rust 2021 (nsn-chain, node-core) with Polkadot SDK 2512.0.0, libp2p 0.53 with WebRTC
 - Python 3.11+ (vortex) with PyTorch 2.1+
-- TypeScript 5.6+ (viewer) with React 18, Vite 6
-- Node.js (video-bridge) with js-libp2p
+- TypeScript 5.6+ (viewer) with React 18, Vite 6, js-libp2p 2.0 with @libp2p/webrtc
 
-**Protocol Bridge Architecture (v1.1):**
+**WebRTC-Direct Architecture (v1.1):**
 ```
-NSN Mesh (Rust libp2p)
-    ↓ GossipSub /nsn/video/1.0.0
-Video Bridge (Node.js js-libp2p)
-    ↓ SCALE decode → simple binary
-    ↓ WebSocket
-Browser Viewer (React)
+NSN Mesh (Rust libp2p 0.53)
+    │ TCP/Noise/Yamux (mesh interconnect)
+    │ UDP/WebRTC (browser clients)
+    ▼
+Director/Validator Nodes
+    │ HTTP /p2p/info → { peer_id, multiaddrs with certhash }
+    ▼
+Browser Viewer (js-libp2p + @libp2p/webrtc)
+    │ Direct WebRTC connection
+    │ GossipSub /nsn/video/1.0.0
+    │ SCALE-encoded VideoChunk
+    ▼
+Video Pipeline (WebCodecs → Canvas)
 ```
 
 **Known Technical Debt:**
-- Viewer uses simple binary chunk format, not SCALE — bridge translates
 - 11.8GB VRAM requirement limits hardware compatibility
-- WebRTC-direct deferred until rust-libp2p-webrtc stabilizes
+- WebRTC certificate must persist for stable certhash
 
 ## Constraints
 
 - **Team Capacity**: Solo/limited contributors — prioritize ruthlessly, avoid scope creep
 - **GPU Requirements**: RTX 3060 12GB minimum for Lane 0 validators
 - **Deployment**: Docker Compose based — no Kubernetes for testnet
-- **Protocol Gap**: Browser cannot speak libp2p directly — requires bridge
+- **libp2p Version**: Stay on 0.53.x for WebRTC support, no major upgrade
 
 ## Key Decisions
 
@@ -111,9 +125,11 @@ Browser Viewer (React)
 | Web-based viewer | Lower friction for testers | ✅ v1.0 |
 | Both lanes for testnet | Demonstrate full capability | ✅ v1.0 |
 | E2E simulation required | Catch integration issues | ✅ v1.0 |
-| Node.js bridge over Rust WebRTC | js-libp2p stable, rust-libp2p-webrtc alpha | v1.1 |
-| Separate bridge service | Single Responsibility — signaling stays focused | v1.1 |
+| WebRTC-direct over Node.js bridge | Better latency, no extra service, future-proof | v1.1 |
+| HTTP discovery endpoint | Solves certhash bootstrapping problem | v1.1 |
+| Certificate persistence | Stable certhash across node restarts | v1.1 |
+| Browser SCALE decoding | No format translation, same protocol as mesh | v1.1 |
 | Chain RPC for discovery | Viewer queries nsn-director pallet for directors | v1.1 |
 
 ---
-*Last updated: 2026-01-18 after v1.1 milestone initialization*
+*Last updated: 2026-01-18 after v1.1 WebRTC-direct approach decision*
