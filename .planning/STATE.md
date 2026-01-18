@@ -17,11 +17,11 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 3 of 7 (Viewer Implementation)
-Plan: 2 of 5 complete
-Status: Executing Plan 03-03
-Last activity: 2026-01-18 — Completed Plan 03-02 (Discovery Client)
+Plan: 3 of 5 complete
+Status: Ready for Plan 03-03
+Last activity: 2026-01-18 — Completed Plan 03-04 (Connection State Management)
 
-Progress: ████░░░░░░ 29% (5/14 plans complete)
+Progress: █████░░░░░ 36% (6/14 plans complete)
 
 ## Performance Metrics
 
@@ -368,9 +368,35 @@ None yet.
 **Commits:**
 - `2b77b61` feat(03-02): create discovery service and SCALE codec
 
+## v1.1 Phase 3 Plan 04 Summary
+
+**Completed:** 2026-01-18
+
+**Deliverables:**
+- Zustand store extensions for P2P connection state
+- useP2PConnection React hook with exponential backoff reconnection
+- NetworkStatus widget with color-coded health indicator
+- Connection lifecycle management (connect/disconnect)
+
+**Components implemented:**
+1. ✅ BootstrapProgress interface for phase tracking
+2. ✅ P2P state properties (connectedPeerId, meshPeerCount, connectionError, lastConnectedNodeUrl, bootstrapProgress)
+3. ✅ Store actions for P2P state updates
+4. ✅ useP2PConnection hook with connect(), disconnect(), scheduleReconnect()
+5. ✅ Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s max
+6. ✅ NetworkStatus widget (green/yellow/red indicator, hover tooltip)
+7. ✅ useEffect cleanup on unmount
+
+**Commits:**
+- `74c21aa` feat(03-04): extend Zustand store with P2P connection state
+- `102c629` feat(03-04): create useP2PConnection hook with reconnection
+- `f3a2708` feat(03-04): create NetworkStatus widget for connection health
+- `bfc9e0c` fix(03-04): remove unused imports for TypeScript compliance
+- `65c699d` style(03-04): apply biome formatter to appStore.ts
+
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Completed Phase 3 Plan 02 (Discovery Client)
+Stopped at: Completed Phase 3 Plan 04 (Connection State Management)
 Resume file: None
 Next step: Execute Phase 3 Plan 03 (Video Streaming Protocol)
