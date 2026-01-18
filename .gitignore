@@ -64,3 +64,6 @@ secrets/
 # Claude Code plugin directories
 .claude/
 .claude1/
+
+# Worktrees
+.worktrees/
