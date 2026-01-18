@@ -10,7 +10,7 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Milestone
 
 **Milestone:** v1.1 Viewer Networking Integration
-**Status:** Planning complete (WebRTC-Direct approach), ready for Phase 1
+**Status:** Executing (Phase 2 complete)
 **Goal:** Wire the viewer to the live NSN testnet via direct WebRTC-to-libp2p connectivity
 **Approach:** WebRTC-Direct — browser connects directly to Rust mesh nodes
 
@@ -18,8 +18,8 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 
 Phase: 2 of 7 (Discovery Bridge)
 Plan: 1 of 1 complete
-Status: Phase complete
-Last activity: 2026-01-18 — Completed 02-01-PLAN.md
+Status: Phase verified and complete
+Last activity: 2026-01-18 — Verified Phase 2 (6/6 must-haves)
 
 Progress: ███░░░░░░░ 21% (3/14 plans complete)
 

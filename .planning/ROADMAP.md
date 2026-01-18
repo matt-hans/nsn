@@ -12,7 +12,7 @@
 | Phase | Name | Status | Dependencies | Complexity | Plans |
 |-------|------|--------|--------------|------------|-------|
 | 1 | Rust Node Core Upgrade | ✅ Complete | - | Medium | 2 plans |
-| 2 | Discovery Bridge (HTTP Sidecar) | Planned | Phase 1 | Low | 1 plan |
+| 2 | Discovery Bridge (HTTP Sidecar) | ✅ Complete | Phase 1 | Low | 1 plan |
 | 3 | Viewer Implementation | Pending | Phase 2 | Medium | TBD |
 | 4 | Video Streaming Protocol | Pending | Phase 3 | High | TBD |
 | 5 | Chain RPC Integration | Pending | - (parallel) | Medium | TBD |
@@ -115,7 +115,7 @@ Add to `node-core/bin/nsn-node/src/cli.rs`:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 02-01-PLAN.md — Add /p2p/info endpoint with CORS and address filtering
+- [x] 02-01-PLAN.md — Add /p2p/info endpoint with CORS and address filtering
 
 ### Deliverables
 
@@ -171,11 +171,11 @@ headers.insert("Cache-Control", "no-store, max-age=0");
 
 ### Acceptance Criteria
 
-- [ ] `curl http://node:9100/p2p/info` returns valid JSON
-- [ ] Response includes WebRTC address with certhash
-- [ ] No internal Docker IPs in response when external_address set
-- [ ] Browser can fetch without CORS errors
-- [ ] Same port as existing metrics endpoint
+- [x] `curl http://node:9100/p2p/info` returns valid JSON
+- [x] Response includes WebRTC address with certhash
+- [x] No internal Docker IPs in response when external_address set
+- [x] Browser can fetch without CORS errors
+- [x] Same port as existing metrics endpoint
 
 ---
 
@@ -525,8 +525,8 @@ ufw allow 9003/udp
 | 1.2 | Rust | Implement certificate persistence | Medium | ✅ Done |
 | 1.3 | Rust | Add WebRTC transport to swarm | Medium | ✅ Done |
 | 1.4 | Rust | Add CLI flags | Low | ✅ Done |
-| 2.1 | Rust | Add `/p2p/info` endpoint | Low | Pending |
-| 2.2 | Rust | Configure CORS | Low | Pending |
+| 2.1 | Rust | Add `/p2p/info` endpoint | Low | ✅ Done |
+| 2.2 | Rust | Configure CORS | Low | ✅ Done |
 | 3.1 | JS | Install libp2p dependencies | Low | Pending |
 | 3.2 | JS | Implement P2PClient | Medium | Pending |
 | 3.3 | JS | Implement SCALE decoder | Medium | Pending |
@@ -579,7 +579,8 @@ Milestone v1.1 is complete when:
 | 2.1 | 2026-01-18 | Phase 1 planned: 2 plans in 2 waves |
 | 2.2 | 2026-01-18 | Phase 1 complete: WebRTC transport and CLI |
 | 2.3 | 2026-01-18 | Phase 2 planned: 1 plan for discovery endpoint |
+| 2.4 | 2026-01-18 | Phase 2 complete: HTTP discovery endpoint with CORS |
 
 ---
 
-*Roadmap v2.3 - WebRTC-Direct approach*
+*Roadmap v2.4 - WebRTC-Direct approach*
