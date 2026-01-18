@@ -5,7 +5,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 export interface BootstrapProgress {
-	phase: "idle" | "discovering" | "connecting" | "subscribing" | "ready" | "error";
+	phase:
+		| "idle"
+		| "discovering"
+		| "connecting"
+		| "subscribing"
+		| "ready"
+		| "error";
 	message: string;
 	startedAt: number | null;
 }
