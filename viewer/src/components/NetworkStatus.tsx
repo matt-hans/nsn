@@ -1,7 +1,6 @@
 // ICN Viewer Client - Network Status Widget
 // Persistent network health indicator with hover details
 
-import React from "react";
 import { useAppStore } from "../store/appStore";
 
 export interface NetworkStatusProps {

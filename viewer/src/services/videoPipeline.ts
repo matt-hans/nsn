@@ -4,7 +4,7 @@
 import type { P2PClient } from "./p2pClient";
 import type { VideoChunkMessage } from "./types";
 import { AdaptiveBitrateController, VideoBuffer } from "./videoBuffer";
-import { type DecodedVideoChunk, decodeVideoChunk } from "./videoCodec";
+import { decodeVideoChunk } from "./videoCodec";
 import { VideoDecoderService } from "./webcodecs";
 
 export class VideoPipeline {
