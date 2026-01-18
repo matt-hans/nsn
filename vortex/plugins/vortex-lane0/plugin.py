@@ -13,12 +13,9 @@ verification across network validators.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import os
-import tempfile
 import time
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -45,8 +42,6 @@ class VortexLane0Plugin:
         self.manifest = manifest
         self._pipeline = None
         self._device = os.environ.get("VORTEX_DEVICE", "cuda:0")
-        self._output_dir = Path(os.environ.get("VORTEX_OUTPUT_PATH", "/tmp/vortex"))
-        self._output_dir.mkdir(parents=True, exist_ok=True)
 
     async def _ensure_pipeline(self) -> Any:
         """Lazily initialize the VortexPipeline.
@@ -78,8 +73,8 @@ class VortexLane0Plugin:
         Returns:
             Dict with keys:
                 - output_cid: Content identifier for generated output
-                - video_path: Path to generated video frames
-                - audio_path: Path to generated audio
+                - video_data: Base64-encoded VP9/IVF video bytes
+                - audio_waveform: Base64-encoded Opus/OGG audio bytes
                 - clip_embedding: CLIP embedding as list
                 - determinism_proof: Hex-encoded SHA256 hash
                 - generation_time_ms: Total generation time
@@ -99,6 +94,8 @@ class VortexLane0Plugin:
             RuntimeError: If generation fails
             ValueError: If payload is invalid
         """
+        import base64
+
         start_time = time.time()
 
         # Validate payload
@@ -128,22 +125,53 @@ class VortexLane0Plugin:
         if not result.success:
             raise RuntimeError(f"Generation failed: {result.error_msg}")
 
-        # Save outputs to files
-        video_path = self._output_dir / f"slot_{slot_id}_video.npy"
-        audio_path = self._output_dir / f"slot_{slot_id}_audio.npy"
-
-        # Convert tensors to numpy and save
+        # Convert tensors to numpy
         video_np = result.video_frames.cpu().numpy()
         audio_np = result.audio_waveform.cpu().numpy()
         clip_np = result.clip_embedding.cpu().numpy()
 
-        np.save(video_path, video_np)
-        np.save(audio_path, audio_np)
+        # Shape normalization: [T, C, H, W] → [T, H, W, C]
+        if video_np.ndim == 4 and video_np.shape[1] == 3 and video_np.shape[3] != 3:
+            video_np = np.transpose(video_np, (0, 2, 3, 1))
 
-        # Generate content identifier (MVP: use local path, production: IPFS CID)
-        output_cid = f"local://{slot_id}/{result.determinism_proof.hex()[:16]}"
+        # Ensure uint8 for encoder
+        if video_np.dtype != np.uint8:
+            # Assume float [0, 1] range
+            video_np = (video_np * 255).clip(0, 255).astype(np.uint8)
+
+        # Import encoder (lazy to avoid import errors without GPU)
+        from vortex.utils.encoder import encode_audio, encode_video_frames
+
+        # Offload CPU-bound encoding to thread pool
+        fps = recipe.get("slot_params", {}).get("fps", 24)
+
+        try:
+            video_bytes, audio_bytes = await asyncio.gather(
+                asyncio.to_thread(
+                    encode_video_frames,
+                    video_np,
+                    fps=fps,
+                    bitrate=3_000_000,
+                    keyframe_interval=24,
+                ),
+                asyncio.to_thread(
+                    encode_audio,
+                    audio_np,
+                    sample_rate=24000,
+                    bitrate=64000,
+                ),
+            )
+        except Exception as e:
+            raise RuntimeError(f"Encoding pipeline failed: {str(e)}") from e
+
+        # Free large arrays before base64 allocation
+        del video_np
+        del audio_np
 
         generation_time_ms = (time.time() - start_time) * 1000
+
+        # Generate content identifier
+        output_cid = f"local://{slot_id}/{result.determinism_proof.hex()[:16]}"
 
         logger.info(
             f"Lane 0 generation completed for slot {slot_id}",
@@ -151,18 +179,16 @@ class VortexLane0Plugin:
                 "slot_id": slot_id,
                 "generation_time_ms": generation_time_ms,
                 "proof": result.determinism_proof.hex()[:16],
-                "video_shape": video_np.shape,
-                "audio_samples": len(audio_np),
+                "video_bytes": len(video_bytes),
+                "audio_bytes": len(audio_bytes),
             },
         )
 
         return {
             "output_cid": output_cid,
-            "video_path": str(video_path),
-            "audio_path": str(audio_path),
+            "video_data": base64.b64encode(video_bytes).decode("ascii"),
+            "audio_waveform": base64.b64encode(audio_bytes).decode("ascii"),
             "clip_embedding": clip_np.tolist(),
             "determinism_proof": result.determinism_proof.hex(),
             "generation_time_ms": generation_time_ms,
-            "video_shape": list(video_np.shape),
-            "audio_samples": len(audio_np),
         }
