@@ -17,18 +17,18 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 3 of 7 (Viewer Implementation)
-Plan: 1 of 5 complete
-Status: Executing Plan 03-02
-Last activity: 2026-01-18 — Completed Plan 03-01 (P2P Client Foundation)
+Plan: 2 of 5 complete
+Status: Executing Plan 03-03
+Last activity: 2026-01-18 — Completed Plan 03-02 (Discovery Client)
 
-Progress: ███░░░░░░░ 25% (4/14 plans complete)
+Progress: ████░░░░░░ 29% (5/14 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: ~1 session
-- Total execution time: 7 sessions
+- Total execution time: 8 sessions
 
 **By Phase (v1.0):**
 
@@ -47,10 +47,10 @@ Progress: ███░░░░░░░ 25% (4/14 plans complete)
 |-------|-------|-------------|--------|
 | Phase 1 | 2/2 | 10 tests | ✅ Complete |
 | Phase 2 | 1/1 | 13 tests | ✅ Complete |
-| Phase 3 | 1/5 | - | 🔄 Executing |
+| Phase 3 | 2/5 | - | 🔄 Executing |
 
 **Recent Trend:**
-- Last 8 plans: 8 completed
+- Last 9 plans: 9 completed
 - Trend: Steady progress
 
 ## Accumulated Context
@@ -349,9 +349,28 @@ None yet.
 - `ed0d32a` chore(03-01): install js-libp2p dependencies, remove simple-peer
 - `e611067` feat(03-01): create P2PClient service class with libp2p
 
+## v1.1 Phase 3 Plan 02 Summary
+
+**Completed:** 2026-01-18
+
+**Deliverables:**
+- HTTP-based node discovery service with parallel race pattern (258 lines)
+- SCALE VideoChunk decoder matching Rust struct definition (208 lines)
+
+**Components implemented:**
+1. ✅ discovery.ts with discoverNode(), discoverWithRace(), buildCandidateList()
+2. ✅ videoCodec.ts with decodeVideoChunk() using @polkadot/types TypeRegistry
+3. ✅ Tiered configuration: localStorage → settings → env → hardcoded
+4. ✅ WebRTC multiaddr extraction with certhash validation
+5. ✅ 503 retry handling for node initialization
+6. ✅ Hardcoded shuffling to avoid hammering first node
+
+**Commits:**
+- `2b77b61` feat(03-02): create discovery service and SCALE codec
+
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Completed Phase 3 Plan 01 (P2P Client Foundation)
+Stopped at: Completed Phase 3 Plan 02 (Discovery Client)
 Resume file: None
-Next step: Execute Phase 3 Plan 02 (Discovery Client)
+Next step: Execute Phase 3 Plan 03 (Video Streaming Protocol)
