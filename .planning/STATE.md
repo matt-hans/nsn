@@ -16,12 +16,12 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 
 ## Current Position
 
-Phase: 1 of 7 (Rust Node Core Upgrade)
-Plan: 2 of 2 complete
+Phase: 2 of 7 (Discovery Bridge)
+Plan: 1 of 1 complete
 Status: Phase complete
-Last activity: 2026-01-18 — Completed 01-02-PLAN.md
+Last activity: 2026-01-18 — Completed 02-01-PLAN.md
 
-Progress: ██░░░░░░░░ 14% (2/14 plans complete)
+Progress: ███░░░░░░░ 21% (3/14 plans complete)
 
 ## Performance Metrics
 
@@ -46,9 +46,10 @@ Progress: ██░░░░░░░░ 14% (2/14 plans complete)
 | Phase | Plans | Tests Added | Status |
 |-------|-------|-------------|--------|
 | Phase 1 | 2/2 | 10 tests | ✅ Complete |
+| Phase 2 | 1/1 | 13 tests | ✅ Complete |
 
 **Recent Trend:**
-- Last 7 plans: 7 completed
+- Last 8 plans: 8 completed
 - Trend: Steady progress
 
 ## Accumulated Context
@@ -300,9 +301,33 @@ None yet.
 **Deviations:**
 - Downgraded libp2p-webrtc from 0.9.0-alpha.1 to 0.7.1-alpha for libp2p-core 0.41 compatibility
 
+## v1.1 Phase 2 Plan 01 Summary
+
+**Completed:** 2026-01-18
+
+**Deliverables:**
+- P2P discovery module with response types and address filtering
+- HTTP `/p2p/info` endpoint with CORS and 503 handling
+- 13 new tests (10 unit + 3 integration)
+
+**Components implemented:**
+1. ✅ P2pInfoResponse envelope (success/data/error pattern)
+2. ✅ P2pInfoData with peer_id, multiaddrs, protocols, features
+3. ✅ filter_addresses() with external override, IPv6 link-local filtering
+4. ✅ HttpState for shared swarm state with HTTP server
+5. ✅ serve_http() handling /metrics and /p2p/info
+6. ✅ 503 response with Retry-After:5 when swarm not ready
+7. ✅ CORS headers (Access-Control-Allow-Origin: *)
+8. ✅ Cache-Control: no-store, max-age=0
+
+**Commits:**
+- `2a588bf` feat(02-01): add P2P discovery module with types and address filtering
+- `ff07ab1` feat(02-01): add /p2p/info HTTP endpoint with CORS and 503 handling
+- `c764283` test(02-01): add integration tests for discovery endpoint
+
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Phase 1 verified and complete
+Stopped at: Phase 2 verified and complete
 Resume file: None
-Next step: Plan Phase 2 (Discovery Bridge) with /gsd:discuss-phase 2
+Next step: Plan Phase 3 (Viewer Implementation) with /gsd:discuss-phase 3
