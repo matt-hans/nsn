@@ -17,11 +17,11 @@ See: .planning/PROJECT.md (updated 2026-01-18)
 ## Current Position
 
 Phase: 3 of 7 (Viewer Implementation)
-Plan: 3 of 5 complete
-Status: Ready for Plan 03-04
-Last activity: 2026-01-18 — Completed Plan 03-03 (Video Streaming Protocol)
+Plan: 5 of 5 complete (awaiting checkpoint verification)
+Status: Awaiting checkpoint for Plan 03-05
+Last activity: 2026-01-18 — Completed Plan 03-05 (Mock Removal & P2P Integration)
 
-Progress: █████░░░░░ 36% (6/14 plans complete)
+Progress: ███████░░░ 43% (7/14 plans complete)
 
 ## Performance Metrics
 
@@ -47,7 +47,7 @@ Progress: █████░░░░░ 36% (6/14 plans complete)
 |-------|-------|-------------|--------|
 | Phase 1 | 2/2 | 10 tests | ✅ Complete |
 | Phase 2 | 1/1 | 13 tests | ✅ Complete |
-| Phase 3 | 2/5 | - | 🔄 Executing |
+| Phase 3 | 3/5 | - | 🔄 Executing (awaiting checkpoint) |
 
 **Recent Trend:**
 - Last 9 plans: 9 completed
@@ -421,10 +421,36 @@ None yet.
 - `bfc9e0c` fix(03-04): remove unused imports for TypeScript compliance
 - `65c699d` style(03-04): apply biome formatter to appStore.ts
 
+## v1.1 Phase 3 Plan 05 Summary
+
+**Completed:** 2026-01-18
+
+**Deliverables:**
+- Mock video stream completely removed (startMockVideoStream deleted)
+- Signaling service deleted (SignalingClient, signaling.ts removed)
+- P2P integration in App.tsx with auto-connect on mount
+- Bootstrap overlay UI for connection phases (BootstrapOverlay component)
+- NetworkStatus widget in TopBar (replaced old connection-status div)
+
+**Components implemented:**
+1. ✅ Mock video generator removed (startMockVideoStream deleted)
+2. ✅ Signaling service deleted (SignalingClient, signaling.ts)
+3. ✅ Deleted obsolete test files (p2p-service.test.ts, signaling.test.ts, p2p.test.ts)
+4. ✅ Rewrote p2p.ts as compatibility layer (delegates to P2PClient)
+5. ✅ Updated App.tsx to use useP2PConnection hook
+6. ✅ Created BootstrapOverlay component (terminal-style aesthetic)
+7. ✅ Updated TopBar to include NetworkStatus widget
+8. ✅ Updated VideoPlayer to remove P2P connection management
+9. ✅ Updated tests for new architecture
+
+**Commits:**
+- `69cfec5` feat(03-05): remove mock video and delete signaling service
+- `aba7743` feat(03-05): integrate P2P into App and add bootstrap overlay
+
 ## Session Continuity
 
 Last session: 2026-01-18
-Stopped at: Completed Phase 3 Plan 03 (Video Streaming Protocol)
+Stopped at: Completed Phase 3 Plan 05 (Mock Removal & P2P Integration) - awaiting checkpoint
 Resume file: None
-Next step: Execute Phase 3 Plan 04 (Chain RPC Integration)
+Next step: Verify checkpoint for Plan 03-05, then proceed to Phase 4 (Video Streaming Protocol)
 
