@@ -78,6 +78,23 @@ struct Cli {
     #[arg(long)]
     p2p_keypair_path: Option<PathBuf>,
 
+    /// Enable WebRTC transport for browser connections
+    #[arg(long)]
+    p2p_enable_webrtc: bool,
+
+    /// UDP port for WebRTC connections (default: 9003)
+    #[arg(long, default_value = "9003")]
+    p2p_webrtc_port: u16,
+
+    /// External address to advertise for WebRTC (for NAT/Docker)
+    /// Format: /ip4/1.2.3.4/udp/9003/webrtc-direct
+    #[arg(long)]
+    p2p_external_address: Option<String>,
+
+    /// Data directory for persistent state (certificates, etc.)
+    #[arg(long, default_value = "/var/lib/nsn")]
+    data_dir: PathBuf,
+
     /// Storage backend (local or ipfs)
     #[arg(long, value_enum, default_value = "ipfs")]
     storage_backend: StorageBackendMode,
@@ -220,6 +237,20 @@ async fn main() -> Result<()> {
     p2p_config.listen_port = cli.p2p_listen_port;
     p2p_config.metrics_port = cli.p2p_metrics_port;
     p2p_config.keypair_path = cli.p2p_keypair_path.clone();
+    p2p_config.enable_webrtc = cli.p2p_enable_webrtc;
+    p2p_config.webrtc_port = cli.p2p_webrtc_port;
+    p2p_config.data_dir = Some(cli.data_dir.clone());
+    p2p_config.external_address = cli.p2p_external_address.clone();
+
+    if cli.p2p_enable_webrtc {
+        info!(
+            "WebRTC transport enabled on UDP port {}, data dir: {:?}",
+            cli.p2p_webrtc_port, cli.data_dir
+        );
+        if let Some(ref addr) = cli.p2p_external_address {
+            info!("External address for WebRTC: {}", addr);
+        }
+    }
 
     let (mut p2p_service, p2p_cmd_tx) = P2pService::new(p2p_config, cli.rpc_url.clone()).await?;
     let mut latency_rx = latency_config.map(|_| p2p_service.subscribe_video_latency());
