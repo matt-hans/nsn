@@ -1,8 +1,10 @@
 // ICN Viewer Client - Video Pipeline Orchestration
 // Coordinates buffer, decoder, and P2P for playback
 
-import type { VideoChunkMessage } from "./p2p";
+import type { P2PClient } from "./p2pClient";
+import type { VideoChunkMessage } from "./types";
 import { AdaptiveBitrateController, VideoBuffer } from "./videoBuffer";
+import { type DecodedVideoChunk, decodeVideoChunk } from "./videoCodec";
 import { VideoDecoderService } from "./webcodecs";
 
 export class VideoPipeline {
@@ -15,6 +17,7 @@ export class VideoPipeline {
 	private qualityChangeCallback:
 		| ((quality: "1080p" | "720p" | "480p" | "auto") => void)
 		| null = null;
+	private chunkStats: { receivedAt: number; size: number }[] = [];
 
 	constructor(canvas: HTMLCanvasElement, fps = 24) {
 		this.buffer = new VideoBuffer(fps);
@@ -89,6 +92,12 @@ export class VideoPipeline {
 	handleIncomingChunk(message: VideoChunkMessage): void {
 		const startTime = Date.now();
 
+		// Record chunk stats for bitrate calculation
+		this.chunkStats.push({ receivedAt: Date.now(), size: message.data.length });
+		// Prune stats older than 10 seconds
+		const cutoff = Date.now() - 10000;
+		this.chunkStats = this.chunkStats.filter((s) => s.receivedAt > cutoff);
+
 		this.buffer.addChunk({
 			slot: message.slot,
 			chunk_index: message.chunk_index,
@@ -99,6 +108,34 @@ export class VideoPipeline {
 		// Record download speed for ABR
 		const durationMs = Date.now() - startTime;
 		this.abrController.recordDownloadSpeed(message.data.length, durationMs);
+	}
+
+	/**
+	 * Calculate current bitrate in Mbps from recent chunks
+	 */
+	getBitrateMbps(): number {
+		if (this.chunkStats.length < 2) return 0;
+		const now = Date.now();
+		const windowMs = 5000; // 5 second window
+		const recentStats = this.chunkStats.filter(
+			(s) => now - s.receivedAt < windowMs,
+		);
+		if (recentStats.length < 2) return 0;
+
+		const totalBytes = recentStats.reduce((sum, s) => sum + s.size, 0);
+		const totalBits = totalBytes * 8;
+		const mbps = totalBits / windowMs / 1000; // bits/ms = kbps, /1000 = Mbps
+		return Math.round(mbps * 100) / 100;
+	}
+
+	/**
+	 * Calculate latency from chunk timestamp to now
+	 * Uses most recent chunk
+	 */
+	getLatencyMs(): number {
+		// This will be populated when we track chunk timestamps
+		// For now return 0 - will be wired in Plan 04
+		return 0;
 	}
 
 	/**
@@ -181,4 +218,34 @@ export function destroyVideoPipeline(): void {
 		pipeline.destroy();
 		pipeline = null;
 	}
+}
+
+/**
+ * Connect P2P client to video pipeline for chunk delivery.
+ * Decodes SCALE-encoded chunks and feeds to pipeline buffer.
+ *
+ * @param p2pClient - P2PClient instance
+ * @param pipeline - VideoPipeline instance
+ */
+export function connectP2PToPipeline(
+	p2pClient: P2PClient,
+	pipeline: VideoPipeline,
+): void {
+	p2pClient.subscribeToVideoTopic((data: Uint8Array) => {
+		try {
+			const chunk = decodeVideoChunk(data);
+
+			// Adapt DecodedVideoChunk to VideoChunkMessage format
+			pipeline.handleIncomingChunk({
+				slot: Number(chunk.slot),
+				chunk_index: chunk.chunkIndex,
+				data: chunk.payload,
+				timestamp: Number(chunk.timestampMs) * 1000, // ms to microseconds for WebCodecs
+				is_keyframe: chunk.isKeyframe,
+			});
+		} catch (err) {
+			console.error("Failed to decode video chunk:", err);
+			// Don't crash pipeline on single bad chunk - silently drop
+		}
+	});
 }
