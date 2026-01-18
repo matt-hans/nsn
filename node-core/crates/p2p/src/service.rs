@@ -99,6 +99,7 @@ struct HttpState {
     registry: prometheus::Registry,
     peer_id: PeerId,
     webrtc_enabled: bool,
+    websocket_enabled: bool,
     role: String,
     external_address: Option<String>,
     /// Current listening addresses (updated by swarm event loop)
@@ -302,6 +303,7 @@ impl P2pService {
                 registry: metrics.registry.clone(),
                 peer_id: local_peer_id,
                 webrtc_enabled: config.enable_webrtc,
+                websocket_enabled: config.enable_websocket,
                 role: "node".to_string(), // Default role, can be parameterized later
                 external_address: config.external_address.clone(),
                 listeners: http_listeners.clone(),
@@ -564,6 +566,14 @@ impl P2pService {
             );
         }
 
+        // WebSocket listener disabled - use WebRTC-Direct for browser connections
+        // To re-enable WebSocket, add the "websocket" feature to libp2p dependencies
+        if self.config.enable_websocket {
+            warn!(
+                "WebSocket transport requested but not compiled in. Use WebRTC-Direct instead (--p2p-enable-webrtc)."
+            );
+        }
+
         // Advertise external WebRTC address if configured (for NAT/Docker environments)
         if let Some(ref external_addr_str) = self.config.external_address {
             match external_addr_str.parse::<Multiaddr>() {
@@ -662,9 +672,20 @@ impl P2pService {
                             // Mark swarm as ready once we have at least one listener
                             self.swarm_ready.store(true, Ordering::SeqCst);
 
+                            let address_str = address.to_string();
                             // Log with emphasis if it's a WebRTC address (contains certhash)
-                            if address.to_string().contains("webrtc") {
-                                info!("WebRTC listening address (for browsers): {}", address);
+                            if address_str.contains("webrtc") {
+                                info!("WebRTC listening address (for browsers): {}", address_str);
+                                if address_str.contains("/ip4/0.0.0.0/")
+                                    || address_str.contains("/ip6/::/")
+                                {
+                                    warn!(
+                                        "WebRTC listener bound to an unspecified address. \
+                                        Browsers cannot dial 0.0.0.0/::. \
+                                        Set --p2p-external-address to a routable IP \
+                                        (e.g. /ip4/192.168.1.10/udp/9003/webrtc-direct)."
+                                    );
+                                }
                             } else {
                                 event_handler::handle_new_listen_addr(&address);
                             }
@@ -1318,6 +1339,7 @@ async fn serve_http(state: Arc<HttpState>, addr: SocketAddr) -> Result<(), hyper
                                     protocols: state.protocols.clone(),
                                     features: P2pFeatures {
                                         webrtc_enabled: state.webrtc_enabled,
+                                        websocket_enabled: state.websocket_enabled,
                                         role: state.role.clone(),
                                     },
                                 };

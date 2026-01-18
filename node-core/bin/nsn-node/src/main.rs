@@ -86,6 +86,14 @@ struct Cli {
     #[arg(long, default_value = "9003")]
     p2p_webrtc_port: u16,
 
+    /// Enable WebSocket transport for browser connections (via Tailscale, etc.)
+    #[arg(long)]
+    p2p_enable_websocket: bool,
+
+    /// TCP port for WebSocket connections (default: 9004)
+    #[arg(long, default_value = "9004")]
+    p2p_websocket_port: u16,
+
     /// External address to advertise for WebRTC (for NAT/Docker)
     /// Format: /ip4/1.2.3.4/udp/9003/webrtc-direct
     #[arg(long)]
@@ -239,6 +247,8 @@ async fn main() -> Result<()> {
     p2p_config.keypair_path = cli.p2p_keypair_path.clone();
     p2p_config.enable_webrtc = cli.p2p_enable_webrtc;
     p2p_config.webrtc_port = cli.p2p_webrtc_port;
+    p2p_config.enable_websocket = cli.p2p_enable_websocket;
+    p2p_config.websocket_port = cli.p2p_websocket_port;
     p2p_config.data_dir = Some(cli.data_dir.clone());
     p2p_config.external_address = cli.p2p_external_address.clone();
 
@@ -250,6 +260,13 @@ async fn main() -> Result<()> {
         if let Some(ref addr) = cli.p2p_external_address {
             info!("External address for WebRTC: {}", addr);
         }
+    }
+
+    if cli.p2p_enable_websocket {
+        info!(
+            "WebSocket transport enabled on TCP port {}",
+            cli.p2p_websocket_port
+        );
     }
 
     let (mut p2p_service, p2p_cmd_tx) = P2pService::new(p2p_config, cli.rpc_url.clone()).await?;

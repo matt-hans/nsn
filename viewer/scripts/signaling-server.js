@@ -2,10 +2,10 @@
 // Minimal WebSocket signaling server for WebRTC peer discovery
 // Usage: node scripts/signaling-server.js [port]
 
-import { WebSocketServer } from "ws";
 import { createServer } from "http";
+import { WebSocketServer } from "ws";
 
-const PORT = parseInt(process.argv[2] || "8080", 10);
+const PORT = Number.parseInt(process.argv[2] || "8080", 10);
 
 // Create HTTP server for both WebSocket and REST endpoints
 const httpServer = createServer((req, res) => {
@@ -66,13 +66,17 @@ wss.on("connection", (ws) => {
 					console.log(`[JOIN] Peer joined: ${peerId} (total: ${peers.size})`);
 
 					// Send current peer list to new peer
-					const peerList = Array.from(peers.keys()).filter((id) => id !== peerId);
+					const peerList = Array.from(peers.keys()).filter(
+						(id) => id !== peerId,
+					);
 					ws.send(JSON.stringify({ type: "peer-list", payload: peerList }));
 
 					// Notify existing peers about the new peer
 					for (const [id, peerWs] of peers) {
 						if (id !== peerId && peerWs.readyState === 1) {
-							peerWs.send(JSON.stringify({ type: "peer-list", payload: [peerId] }));
+							peerWs.send(
+								JSON.stringify({ type: "peer-list", payload: [peerId] }),
+							);
 						}
 					}
 					break;
@@ -109,7 +113,9 @@ wss.on("connection", (ws) => {
 	ws.on("close", () => {
 		if (peerId) {
 			peers.delete(peerId);
-			console.log(`[DISCONNECT] Peer disconnected: ${peerId} (total: ${peers.size})`);
+			console.log(
+				`[DISCONNECT] Peer disconnected: ${peerId} (total: ${peers.size})`,
+			);
 		}
 	});
 

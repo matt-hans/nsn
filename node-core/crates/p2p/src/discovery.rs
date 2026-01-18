@@ -23,6 +23,9 @@ pub struct P2pFeatures {
     /// Whether WebRTC transport is enabled
     pub webrtc_enabled: bool,
 
+    /// Whether WebSocket transport is enabled
+    pub websocket_enabled: bool,
+
     /// Node role (director, validator, storage, supernode)
     pub role: String,
 }
@@ -96,8 +99,9 @@ impl P2pInfoResponse {
 /// Filtering rules (per CONTEXT.md Decision 4):
 /// 1. If external_address is configured, return ONLY that address
 /// 2. Otherwise, filter out IPv6 link-local addresses (fe80::/10)
-/// 3. Keep localhost (127.x.x.x) for dev mode
-/// 4. Keep RFC1918 private addresses (10.x, 172.16-31.x, 192.168.x)
+/// 3. Filter out unspecified IPs (0.0.0.0, ::)
+/// 4. Keep localhost (127.x.x.x) for dev mode
+/// 5. Keep RFC1918 private addresses (10.x, 172.16-31.x, 192.168.x)
 ///
 /// # Arguments
 /// * `listeners` - Iterator of listening multiaddrs from swarm
@@ -119,6 +123,7 @@ pub fn filter_addresses<'a>(
     let mut addrs: Vec<String> = external_addrs
         .chain(listeners)
         .filter(|addr| !is_link_local_ipv6(addr))
+        .filter(|addr| !is_unspecified_ip(addr))
         .map(|addr| addr.to_string())
         .collect();
 
@@ -140,6 +145,20 @@ fn is_link_local_ipv6(addr: &Multiaddr) -> bool {
             if (segments[0] & 0xffc0) == 0xfe80 {
                 return true;
             }
+        }
+    }
+    false
+}
+
+/// Check if a multiaddr contains an unspecified IP address (0.0.0.0 or ::)
+fn is_unspecified_ip(addr: &Multiaddr) -> bool {
+    use libp2p::multiaddr::Protocol;
+
+    for proto in addr.iter() {
+        match proto {
+            Protocol::Ip4(ip) if ip.is_unspecified() => return true,
+            Protocol::Ip6(ip) if ip.is_unspecified() => return true,
+            _ => {}
         }
     }
     false
@@ -260,6 +279,21 @@ mod tests {
         assert!(result.iter().all(|a| !a.contains("fe80")));
         assert!(result.iter().any(|a| a.contains("127.0.0.1")));
         assert!(result.iter().any(|a| a.contains("2001:db8")));
+    }
+
+    #[test]
+    fn test_filter_removes_unspecified_ips() {
+        let listeners: Vec<Multiaddr> = vec![
+            "/ip4/0.0.0.0/udp/9003/webrtc-direct".parse().unwrap(),
+            "/ip6/::/tcp/9000".parse().unwrap(),
+            "/ip4/127.0.0.1/udp/9003/webrtc-direct".parse().unwrap(),
+        ];
+
+        let result = filter_addresses(listeners.iter(), std::iter::empty(), None);
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].contains("127.0.0.1"));
+        assert!(!result.iter().any(|addr| addr.contains("0.0.0.0")));
     }
 
     #[test]

@@ -15,6 +15,8 @@ export default defineConfig({
 		strictPort: true,
 		// Allow access from local network for mobile testing
 		host: true,
+		// Allow all hostnames (for Tailscale, SSH, etc.)
+		allowedHosts: true,
 	},
 
 	// Preview server configuration

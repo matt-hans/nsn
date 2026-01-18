@@ -60,6 +60,14 @@ pub struct P2pConfig {
     #[serde(default = "default_webrtc_port")]
     pub webrtc_port: u16,
 
+    /// Enable WebSocket transport for browser connections (via Tailscale, etc.)
+    #[serde(default)]
+    pub enable_websocket: bool,
+
+    /// TCP port for WebSocket connections (default: 9004)
+    #[serde(default = "default_websocket_port")]
+    pub websocket_port: u16,
+
     /// Path to data directory for certificate persistence
     /// If None, uses system temp directory (not recommended for production)
     pub data_dir: Option<PathBuf>,
@@ -71,6 +79,10 @@ pub struct P2pConfig {
 
 fn default_webrtc_port() -> u16 {
     9003
+}
+
+fn default_websocket_port() -> u16 {
+    9004
 }
 
 impl Default for P2pConfig {
@@ -94,6 +106,8 @@ impl Default for P2pConfig {
             bootstrap: BootstrapConfig::default(),
             enable_webrtc: false,
             webrtc_port: default_webrtc_port(),
+            enable_websocket: false,
+            websocket_port: default_websocket_port(),
             data_dir: None,
             external_address: None,
         }

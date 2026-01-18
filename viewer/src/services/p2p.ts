@@ -22,8 +22,8 @@ export async function connectToMesh(): Promise<boolean> {
 		const client = getP2PService();
 		await client.initialize();
 		const candidates = buildCandidateList();
-		const multiaddr = await discoverWithRace(candidates);
-		await client.dial(multiaddr);
+		const multiaddrs = await discoverWithRace(candidates);
+		await client.dialAny(multiaddrs);
 		return true;
 	} catch (error) {
 		console.error("Failed to connect to mesh:", error);

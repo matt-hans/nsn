@@ -39,6 +39,22 @@ Neural Sovereign Network (NSN) is a decentralized AI compute marketplace that co
 - **Stake-Weighted Reputation**: Anti-centralization with regional caps and delegation limits
 - **P2P Mesh Network**: libp2p-based peer discovery with GossipSub messaging
 
+### Testnet WebRTC Setup (Viewer Connectivity)
+
+For browser connections to the mesh, each node must advertise a routable WebRTC address and keep its certificate stable.
+
+```bash
+nsn-node \
+  --p2p-enable-webrtc \
+  --p2p-webrtc-port 9003 \
+  --p2p-external-address /ip4/192.168.1.10/udp/9003/webrtc-direct \
+  --data-dir /var/lib/nsn
+```
+
+Notes:
+- Use the node's LAN/public IP in `--p2p-external-address` (do not use `0.0.0.0`).
+- Keep `--data-dir` stable so the WebRTC certificate (certhash) does not change between restarts.
+
 ---
 
 ## Video Generation Pipeline

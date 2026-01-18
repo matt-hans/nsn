@@ -73,10 +73,13 @@ export function useP2PConnection(): P2PConnectionState {
 			// 2. Discover a mesh node
 			const candidates = buildCandidateList();
 			setBootstrapProgress("connecting", "Finding mesh nodes...");
-			const multiaddr = await discoverWithRace(candidates);
+			const multiaddrs = await discoverWithRace(candidates);
+			if (multiaddrs.length === 0) {
+				throw new Error("No WebRTC addresses returned from discovery");
+			}
 
 			// Extract node URL from multiaddr for persistence
-			const urlMatch = multiaddr.match(/ip4\/([^/]+)\//);
+			const urlMatch = multiaddrs[0].match(/ip4\/([^/]+)\//);
 			if (urlMatch) {
 				const nodeUrl = `http://${urlMatch[1]}:9615`;
 				setLastConnectedNodeUrl(nodeUrl);
@@ -84,7 +87,7 @@ export function useP2PConnection(): P2PConnectionState {
 
 			// 3. Dial the discovered node
 			setBootstrapProgress("connecting", "Negotiating NAT traversal...");
-			await client.dial(multiaddr);
+			await client.dialAny(multiaddrs);
 
 			// 4. Subscribe to video topic
 			setBootstrapProgress("subscribing", "Joining video channel...");
