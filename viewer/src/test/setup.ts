@@ -45,7 +45,7 @@ class MockWebSocket {
 globalThis.WebSocket = MockWebSocket;
 
 // ============================================================================
-// RTCPeerConnection Mock (for simple-peer)
+// RTCPeerConnection Mock (for js-libp2p WebRTC)
 // ============================================================================
 
 class MockRTCPeerConnection {
