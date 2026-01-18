@@ -12,7 +12,7 @@
 | Phase | Name | Status | Dependencies | Complexity | Plans |
 |-------|------|--------|--------------|------------|-------|
 | 1 | Rust Node Core Upgrade | ✅ Complete | - | Medium | 2 plans |
-| 2 | Discovery Bridge (HTTP Sidecar) | Ready | Phase 1 | Low | TBD |
+| 2 | Discovery Bridge (HTTP Sidecar) | Planned | Phase 1 | Low | 1 plan |
 | 3 | Viewer Implementation | Pending | Phase 2 | Medium | TBD |
 | 4 | Video Streaming Protocol | Pending | Phase 3 | High | TBD |
 | 5 | Chain RPC Integration | Pending | - (parallel) | Medium | TBD |
@@ -112,6 +112,11 @@ Add to `node-core/bin/nsn-node/src/cli.rs`:
 
 **Requirements:** REQ-DISC-001 through REQ-DISC-006
 
+**Plans:** 1 plan
+
+Plans:
+- [ ] 02-01-PLAN.md — Add /p2p/info endpoint with CORS and address filtering
+
 ### Deliverables
 
 1. New endpoint `GET /p2p/info` on existing HTTP server
@@ -121,7 +126,7 @@ Add to `node-core/bin/nsn-node/src/cli.rs`:
 
 ### 2.1 Endpoint Implementation
 
-Add to existing HTTP server (`node-core/bin/nsn-node/src/http.rs`):
+Add to existing HTTP server (`node-core/crates/p2p/src/service.rs`):
 
 ```rust
 #[derive(Serialize)]
@@ -141,29 +146,34 @@ async fn get_p2p_info(State(swarm): State<SharedSwarm>) -> Json<P2pInfo> {
 
 ```json
 {
-  "peer_id": "12D3KooWExample...",
-  "multiaddrs": [
-    "/ip4/192.168.1.50/tcp/9001",
-    "/ip4/192.168.1.50/udp/9003/webrtc/certhash/uEiD..."
-  ],
-  "protocols": [
-    "/nsn/video/1.0.0",
-    "/meshsub/1.1.0"
-  ]
+  "success": true,
+  "data": {
+    "peer_id": "12D3KooWExample...",
+    "multiaddrs": [
+      "/ip4/192.168.1.50/tcp/9001",
+      "/ip4/192.168.1.50/udp/9003/webrtc-direct/certhash/uEiD..."
+    ],
+    "features": {
+      "webrtc_enabled": true,
+      "role": "director"
+    }
+  }
 }
 ```
 
 ### 2.3 CORS Configuration
 
 ```rust
-.layer(CorsLayer::permissive())
+// Add CORS headers to all responses
+headers.insert("Access-Control-Allow-Origin", "*");
+headers.insert("Cache-Control", "no-store, max-age=0");
 ```
 
 ### Acceptance Criteria
 
-- [ ] `curl http://node:9615/p2p/info` returns valid JSON
+- [ ] `curl http://node:9100/p2p/info` returns valid JSON
 - [ ] Response includes WebRTC address with certhash
-- [ ] No internal Docker IPs in response
+- [ ] No internal Docker IPs in response when external_address set
 - [ ] Browser can fetch without CORS errors
 - [ ] Same port as existing metrics endpoint
 
@@ -568,7 +578,8 @@ Milestone v1.1 is complete when:
 | 2.0 | 2026-01-18 | Restructured for WebRTC-direct approach |
 | 2.1 | 2026-01-18 | Phase 1 planned: 2 plans in 2 waves |
 | 2.2 | 2026-01-18 | Phase 1 complete: WebRTC transport and CLI |
+| 2.3 | 2026-01-18 | Phase 2 planned: 1 plan for discovery endpoint |
 
 ---
 
-*Roadmap v2.2 - WebRTC-Direct approach*
+*Roadmap v2.3 - WebRTC-Direct approach*
