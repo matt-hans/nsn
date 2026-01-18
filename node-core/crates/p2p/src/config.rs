@@ -51,6 +51,26 @@ pub struct P2pConfig {
     /// Bootstrap configuration (DNS/HTTP/DHT)
     #[serde(default)]
     pub bootstrap: BootstrapConfig,
+
+    /// Enable WebRTC transport for browser connections
+    #[serde(default)]
+    pub enable_webrtc: bool,
+
+    /// UDP port for WebRTC connections (default: 9003)
+    #[serde(default = "default_webrtc_port")]
+    pub webrtc_port: u16,
+
+    /// Path to data directory for certificate persistence
+    /// If None, uses system temp directory (not recommended for production)
+    pub data_dir: Option<PathBuf>,
+
+    /// External address to advertise (for NAT/Docker environments)
+    /// Format: Multiaddr string, e.g., "/ip4/1.2.3.4/udp/9003/webrtc-direct"
+    pub external_address: Option<String>,
+}
+
+fn default_webrtc_port() -> u16 {
+    9003
 }
 
 impl Default for P2pConfig {
@@ -72,6 +92,10 @@ impl Default for P2pConfig {
             enable_autonat: true,
             security: SecureP2pConfig::default(),
             bootstrap: BootstrapConfig::default(),
+            enable_webrtc: false,
+            webrtc_port: default_webrtc_port(),
+            data_dir: None,
+            external_address: None,
         }
     }
 }
@@ -95,6 +119,11 @@ mod tests {
         assert_eq!(config.stun_servers.len(), 3);
         assert!(config.enable_autonat);
         assert!(!config.bootstrap.dns_seeds.is_empty());
+        // WebRTC defaults
+        assert!(!config.enable_webrtc);
+        assert_eq!(config.webrtc_port, 9003);
+        assert!(config.data_dir.is_none());
+        assert!(config.external_address.is_none());
     }
 
     #[test]
@@ -112,6 +141,10 @@ mod tests {
             enable_autonat: true,
             security: SecureP2pConfig::default(),
             bootstrap: BootstrapConfig::default(),
+            enable_webrtc: false,
+            webrtc_port: 9003,
+            data_dir: None,
+            external_address: None,
         };
 
         // Serialize to JSON
@@ -129,5 +162,24 @@ mod tests {
             deserialized.keypair_path,
             Some(PathBuf::from("/tmp/test.key"))
         );
+    }
+
+    #[test]
+    fn test_webrtc_config_fields() {
+        let config = P2pConfig {
+            enable_webrtc: true,
+            webrtc_port: 9003,
+            data_dir: Some(PathBuf::from("/var/lib/nsn")),
+            external_address: Some("/ip4/1.2.3.4/udp/9003/webrtc-direct".to_string()),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&config).expect("Failed to serialize");
+        let deserialized: P2pConfig = serde_json::from_str(&json).expect("Failed to deserialize");
+
+        assert!(deserialized.enable_webrtc);
+        assert_eq!(deserialized.webrtc_port, 9003);
+        assert_eq!(deserialized.data_dir, Some(PathBuf::from("/var/lib/nsn")));
+        assert!(deserialized.external_address.is_some());
     }
 }
