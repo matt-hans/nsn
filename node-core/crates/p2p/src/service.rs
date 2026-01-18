@@ -19,6 +19,7 @@ use super::security::{
     BandwidthLimiter, DosDetector, Graylist, RateLimitError, RateLimiter, SecureP2pConfig,
     SecurityMetrics,
 };
+use super::discovery::{default_protocols, filter_addresses, P2pFeatures, P2pInfoData, P2pInfoResponse};
 use super::topics::TopicCategory;
 use super::video::{chunk_latency_ms, decode_video_chunk, verify_video_chunk};
 use libp2p::core::muxing::StreamMuxerBox;
@@ -39,6 +40,7 @@ use prometheus::{Encoder, TextEncoder};
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -90,6 +92,23 @@ struct BootstrapTarget {
     peer_id: PeerId,
     base_addr: Multiaddr,
     dial_addr: Multiaddr,
+}
+
+/// Shared state for HTTP endpoints (metrics + discovery)
+struct HttpState {
+    registry: prometheus::Registry,
+    peer_id: PeerId,
+    webrtc_enabled: bool,
+    role: String,
+    external_address: Option<String>,
+    /// Current listening addresses (updated by swarm event loop)
+    listeners: Arc<tokio::sync::RwLock<Vec<Multiaddr>>>,
+    /// Current external addresses (updated by swarm event loop)
+    external_addrs: Arc<tokio::sync::RwLock<Vec<Multiaddr>>>,
+    /// Flag indicating swarm is ready (has at least one listener)
+    swarm_ready: Arc<AtomicBool>,
+    /// Supported protocols (static list for now)
+    protocols: Vec<String>,
 }
 
 /// Commands that can be sent to the P2P service
@@ -197,6 +216,15 @@ pub struct P2pService {
 
     /// Shutdown flag
     shutdown: bool,
+
+    /// Shared listeners for HTTP discovery endpoint
+    http_listeners: Arc<tokio::sync::RwLock<Vec<Multiaddr>>>,
+
+    /// Shared external addresses for HTTP discovery endpoint
+    http_external_addrs: Arc<tokio::sync::RwLock<Vec<Multiaddr>>>,
+
+    /// Flag indicating swarm is ready (has at least one listener)
+    swarm_ready: Arc<AtomicBool>,
 }
 
 impl P2pService {
@@ -263,17 +291,32 @@ impl P2pService {
                 .map_err(|e| ServiceError::ReputationOracleError(e.to_string()))?,
         );
 
-        // Spawn Prometheus metrics server (after oracle creation)
+        // Create shared state for HTTP discovery endpoint
+        let http_listeners = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+        let http_external_addrs = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+        let swarm_ready = Arc::new(AtomicBool::new(false));
+
+        // Spawn HTTP server for metrics + discovery (after oracle creation)
         if config.metrics_port != 0 {
-            let metrics_registry = metrics.registry.clone();
-            let metrics_addr: SocketAddr = ([0, 0, 0, 0], config.metrics_port).into();
+            let http_state = Arc::new(HttpState {
+                registry: metrics.registry.clone(),
+                peer_id: local_peer_id,
+                webrtc_enabled: config.enable_webrtc,
+                role: "node".to_string(), // Default role, can be parameterized later
+                external_address: config.external_address.clone(),
+                listeners: http_listeners.clone(),
+                external_addrs: http_external_addrs.clone(),
+                swarm_ready: swarm_ready.clone(),
+                protocols: default_protocols(),
+            });
+            let http_addr: SocketAddr = ([0, 0, 0, 0], config.metrics_port).into();
             tokio::spawn(async move {
-                if let Err(err) = serve_metrics(metrics_registry, metrics_addr).await {
-                    error!("Metrics server failed: {}", err);
+                if let Err(err) = serve_http(http_state, http_addr).await {
+                    error!("HTTP server failed: {}", err);
                 }
             });
         } else {
-            info!("Metrics server disabled (metrics_port=0)");
+            info!("HTTP server disabled (metrics_port=0)");
         }
 
         // Spawn reputation oracle sync loop
@@ -447,6 +490,9 @@ impl P2pService {
                 security,
                 video_latency_tx,
                 shutdown: false,
+                http_listeners,
+                http_external_addrs,
+                swarm_ready,
             },
             command_tx,
         ))
@@ -606,6 +652,16 @@ impl P2pService {
                             event_handler::handle_connection_closed(peer_id, cause, &mut self.connection_manager);
                         }
                         SwarmEvent::NewListenAddr { address, .. } => {
+                            // Update shared state for HTTP discovery endpoint
+                            {
+                                let mut listeners = self.http_listeners.write().await;
+                                if !listeners.contains(&address) {
+                                    listeners.push(address.clone());
+                                }
+                            }
+                            // Mark swarm as ready once we have at least one listener
+                            self.swarm_ready.store(true, Ordering::SeqCst);
+
                             // Log with emphasis if it's a WebRTC address (contains certhash)
                             if address.to_string().contains("webrtc") {
                                 info!("WebRTC listening address (for browsers): {}", address);
@@ -1108,8 +1164,15 @@ impl P2pService {
             {
                 Ok(Ok(addr)) => {
                     let addr_str = format!("/ip4/{}/udp/{}/quic-v1", addr.ip(), addr.port());
-                    if let Ok(multiaddr) = addr_str.parse() {
-                        self.swarm.add_external_address(multiaddr);
+                    if let Ok(multiaddr) = addr_str.parse::<Multiaddr>() {
+                        self.swarm.add_external_address(multiaddr.clone());
+                        // Update shared state for HTTP discovery endpoint
+                        {
+                            let mut ext = self.http_external_addrs.write().await;
+                            if !ext.contains(&multiaddr) {
+                                ext.push(multiaddr);
+                            }
+                        }
                         info!("Advertised external address via STUN: {}", addr_str);
                     }
                 }
@@ -1129,8 +1192,15 @@ impl P2pService {
             {
                 Ok(Ok((ip, _tcp_port, udp_port))) => {
                     let addr_str = format!("/ip4/{}/udp/{}/quic-v1", ip, udp_port);
-                    if let Ok(multiaddr) = addr_str.parse() {
-                        self.swarm.add_external_address(multiaddr);
+                    if let Ok(multiaddr) = addr_str.parse::<Multiaddr>() {
+                        self.swarm.add_external_address(multiaddr.clone());
+                        // Update shared state for HTTP discovery endpoint
+                        {
+                            let mut ext = self.http_external_addrs.write().await;
+                            if !ext.contains(&multiaddr) {
+                                ext.push(multiaddr);
+                            }
+                        }
                         info!("Advertised external address via UPnP: {}", addr_str);
                     }
                 }
@@ -1190,36 +1260,121 @@ fn ensure_peer_id(addr: &Multiaddr, peer_id: PeerId) -> Multiaddr {
     }
 }
 
-async fn serve_metrics(
-    registry: prometheus::Registry,
-    addr: SocketAddr,
-) -> Result<(), hyper::Error> {
+/// HTTP server handling both Prometheus metrics and P2P discovery endpoints
+async fn serve_http(state: Arc<HttpState>, addr: SocketAddr) -> Result<(), hyper::Error> {
     let make_svc = make_service_fn(move |_| {
-        let registry = registry.clone();
+        let state = state.clone();
         async move {
-            Ok::<_, Infallible>(service_fn(move |_req: Request<Body>| {
-                let registry = registry.clone();
+            Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
+                let state = state.clone();
                 async move {
-                    let metric_families = registry.gather();
-                    let encoder = TextEncoder::new();
-                    let mut buffer = Vec::new();
-                    encoder
-                        .encode(&metric_families, &mut buffer)
-                        .unwrap_or_default();
-
-                    Ok::<_, Infallible>(
-                        Response::builder()
+                    // Handle CORS preflight
+                    if req.method() == hyper::Method::OPTIONS {
+                        let response = Response::builder()
                             .status(200)
-                            .header(hyper::header::CONTENT_TYPE, encoder.format_type())
-                            .body(Body::from(buffer))
-                            .unwrap_or_else(|_| Response::new(Body::from("metrics unavailable"))),
-                    )
+                            .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                            .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS")
+                            .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+                            .header(hyper::header::CACHE_CONTROL, "no-store, max-age=0")
+                            .body(Body::empty())
+                            .unwrap_or_else(|_| Response::new(Body::empty()));
+                        return Ok::<_, Infallible>(response);
+                    }
+
+                    let path = req.uri().path();
+
+                    let (status, content_type, body, retry_after): (
+                        u16,
+                        String,
+                        String,
+                        Option<&str>,
+                    ) = match path {
+                        "/p2p/info" => {
+                            // Check if swarm is ready (has listeners)
+                            if !state.swarm_ready.load(Ordering::SeqCst) {
+                                let response = P2pInfoResponse::error(
+                                    "NODE_INITIALIZING",
+                                    "Swarm not ready, please retry",
+                                );
+                                let json = serde_json::to_string(&response).unwrap_or_else(|_| {
+                                    r#"{"success":false,"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize response"}}"#.to_string()
+                                });
+                                // Return 503 with Retry-After: 5 header
+                                (503, "application/json".to_string(), json, Some("5"))
+                            } else {
+                                // Get current addresses
+                                let listeners = state.listeners.read().await;
+                                let external_addrs = state.external_addrs.read().await;
+
+                                let multiaddrs = filter_addresses(
+                                    listeners.iter(),
+                                    external_addrs.iter(),
+                                    state.external_address.as_deref(),
+                                );
+
+                                let data = P2pInfoData {
+                                    peer_id: state.peer_id.to_string(),
+                                    multiaddrs,
+                                    protocols: state.protocols.clone(),
+                                    features: P2pFeatures {
+                                        webrtc_enabled: state.webrtc_enabled,
+                                        role: state.role.clone(),
+                                    },
+                                };
+
+                                let response = P2pInfoResponse::success(data);
+                                let json = serde_json::to_string(&response).unwrap_or_else(|_| {
+                                    r#"{"success":false,"error":{"code":"SERIALIZATION_ERROR","message":"Failed to serialize response"}}"#.to_string()
+                                });
+
+                                (200, "application/json".to_string(), json, None)
+                            }
+                        }
+                        "/metrics" | "/" => {
+                            // Prometheus metrics
+                            let metric_families = state.registry.gather();
+                            let encoder = TextEncoder::new();
+                            let mut buffer = Vec::new();
+                            encoder.encode(&metric_families, &mut buffer).unwrap_or_default();
+                            let content_type = encoder.format_type().to_string();
+
+                            (
+                                200,
+                                content_type,
+                                String::from_utf8(buffer).unwrap_or_default(),
+                                None,
+                            )
+                        }
+                        _ => (404, "text/plain".to_string(), "Not Found".to_string(), None),
+                    };
+
+                    let mut builder = Response::builder()
+                        .status(status)
+                        .header(hyper::header::CONTENT_TYPE, content_type)
+                        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                        .header(hyper::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS")
+                        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+                        .header(hyper::header::CACHE_CONTROL, "no-store, max-age=0");
+
+                    // Add Retry-After header for 503 responses
+                    if let Some(seconds) = retry_after {
+                        builder = builder.header("retry-after", seconds);
+                    }
+
+                    let response = builder
+                        .body(Body::from(body))
+                        .unwrap_or_else(|_| Response::new(Body::from("Internal error")));
+
+                    Ok::<_, Infallible>(response)
                 }
             }))
         }
     });
 
-    info!("Prometheus metrics listening on http://{}", addr);
+    info!(
+        "HTTP server listening on http://{} (metrics: /metrics, discovery: /p2p/info)",
+        addr
+    );
     Server::bind(&addr).serve(make_svc).await
 }
 
