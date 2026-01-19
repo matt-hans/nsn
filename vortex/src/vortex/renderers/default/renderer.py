@@ -9,9 +9,13 @@ Architecture:
     - Flux-Schnell (NF4, 6.0GB): Generates actor images from prompts
     - LivePortrait (FP16, 3.5GB): Animates images with audio-driven lip-sync
     - Kokoro-82M (FP32, 0.4GB): Text-to-speech synthesis
-    - CLIP ViT-B-32 + ViT-L-14 (INT8, 0.9GB): Dual ensemble semantic verification
+    - CLIP ViT-B-32 + ViT-L-14 (FP16, 0.6GB): Dual ensemble semantic verification
 
-Total VRAM: 11.8GB (fits RTX 3060 12GB with 500MB safety margin)
+VRAM Modes:
+    - Static residency (default): All models stay on GPU (~11.8GB peak)
+    - Sequential offloading: Models moved to CPU between stages (~6.5GB peak)
+
+The sequential offloading mode is automatically enabled for GPUs with <12GB VRAM.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import torch
 import torch.nn as nn
@@ -34,6 +38,7 @@ from vortex.renderers.base import DeterministicVideoRenderer
 from vortex.renderers.recipe_schema import merge_with_defaults, validate_recipe
 from vortex.renderers.types import RendererManifest, RenderResult
 from vortex.utils.memory import get_current_vram_usage, get_vram_stats, log_vram_snapshot
+from vortex.utils.offloader import ModelOffloader
 
 logger = logging.getLogger(__name__)
 
@@ -53,32 +58,88 @@ class MemoryPressureError(Exception):
 class _ModelRegistry:
     """Registry for loaded models with get_model() interface.
 
-    Internal class for managing model lifecycle. Models are loaded once
-    and remain in VRAM (static residency).
+    Supports two VRAM modes:
+    - Static residency: All models stay on GPU (default for >=12GB VRAM)
+    - Sequential offloading: Models moved to CPU between stages (<12GB VRAM)
     """
 
-    def __init__(self, device: str, precision_overrides: dict[ModelName, str] | None = None):
+    def __init__(
+        self,
+        device: str,
+        precision_overrides: dict[ModelName, str] | None = None,
+        offloading_mode: str = "auto",
+    ):
         self.device = device
         self.precision_overrides = precision_overrides or {}
         self._models: dict[ModelName, nn.Module] = {}
+        self._offloading_mode = offloading_mode
+        self._offloader: Optional[ModelOffloader] = None
+
+        # Determine if offloading should be enabled
+        self._offloading_enabled = self._should_enable_offloading()
+
+        if self._offloading_enabled:
+            self._offloader = ModelOffloader(gpu_device=device, enabled=True)
+            logger.info(
+                "Model offloading ENABLED (sequential loading to reduce VRAM)",
+                extra={"mode": offloading_mode}
+            )
+        else:
+            logger.info(
+                "Model offloading DISABLED (static residency)",
+                extra={"mode": offloading_mode}
+            )
+
+    def _should_enable_offloading(self) -> bool:
+        """Determine if offloading should be enabled based on mode and VRAM."""
+        if self._offloading_mode == "always":
+            return True
+        if self._offloading_mode == "never":
+            return False
+        # Auto mode: enable if VRAM < 12GB
+        if torch.cuda.is_available():
+            total_vram_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+            should_offload = total_vram_gb < 12.0
+            logger.info(
+                f"Auto offloading: VRAM={total_vram_gb:.1f}GB, offloading={'enabled' if should_offload else 'disabled'}"
+            )
+            return should_offload
+        return False
 
     def load_all_models(self) -> None:
         """Load all models into registry."""
-        # Load individual models (flux, liveportrait, kokoro)
         single_models: list[ModelName] = ["flux", "liveportrait", "kokoro"]
 
         try:
             for name in single_models:
                 logger.info(f"Loading model: {name}")
                 precision = self.precision_overrides.get(name)
-                model = load_model(name, device=self.device, precision=precision)
-                self._models[name] = model
+
+                # With offloading, load to CPU first to avoid VRAM spike
+                if self._offloading_enabled:
+                    model = load_model(name, device="cpu", precision=precision)
+                    self._models[name] = model
+                    if self._offloader:
+                        self._offloader.register(name, model, initial_device="cpu")
+                else:
+                    model = load_model(name, device=self.device, precision=precision)
+                    self._models[name] = model
+
                 log_vram_snapshot(f"after_{name}_load")
 
-            # Load ClipEnsemble (handles both clip_b and clip_l internally)
+            # Load ClipEnsemble
             logger.info("Loading model: clip_ensemble")
-            clip_ensemble = load_clip_ensemble(device=self.device)
-            self._models["clip_ensemble"] = clip_ensemble
+            clip_precision = self.precision_overrides.get("clip_b", "fp16")
+
+            if self._offloading_enabled:
+                clip_ensemble = load_clip_ensemble(device="cpu", precision=clip_precision)
+                self._models["clip_ensemble"] = clip_ensemble
+                if self._offloader:
+                    self._offloader.register("clip_ensemble", clip_ensemble, initial_device="cpu")
+            else:
+                clip_ensemble = load_clip_ensemble(device=self.device, precision=clip_precision)
+                self._models["clip_ensemble"] = clip_ensemble
+
             log_vram_snapshot("after_clip_ensemble_load")
 
             logger.info(
@@ -86,6 +147,7 @@ class _ModelRegistry:
                 extra={
                     "total_models": len(self._models),
                     "vram_gb": get_vram_stats()["allocated_gb"],
+                    "offloading_enabled": self._offloading_enabled,
                 },
             )
 
@@ -95,7 +157,7 @@ class _ModelRegistry:
                 f"CUDA OOM during model loading. "
                 f"Allocated: {stats['allocated_gb']:.2f}GB, "
                 f"Total: {stats['total_gb']:.2f}GB. "
-                f"Remediation: Upgrade to GPU with >=12GB VRAM (RTX 3060 minimum)."
+                f"Try enabling offloading with models.offloading='always' in config."
             )
             logger.error(error_msg, exc_info=True)
             self._models.clear()
@@ -107,8 +169,35 @@ class _ModelRegistry:
             raise KeyError(f"Model '{name}' not found. Available: {list(self._models.keys())}")
         return self._models[name]
 
+    def prepare_for_stage(self, stage: str) -> None:
+        """Prepare models for a pipeline stage (offload others if enabled).
+
+        Args:
+            stage: Stage name ("audio", "image", "video", "clip")
+        """
+        if not self._offloading_enabled or not self._offloader:
+            return
+
+        # Map stages to required models
+        stage_models = {
+            "audio": "kokoro",
+            "image": "flux",
+            "video": "liveportrait",
+            "clip": "clip_ensemble",
+        }
+
+        model_name = stage_models.get(stage)
+        if model_name:
+            logger.info(f"Preparing for stage '{stage}': loading {model_name} to GPU")
+            self._offloader.offload_all_except(model_name)
+
     def __contains__(self, name: ModelName) -> bool:
         return name in self._models
+
+    @property
+    def offloading_enabled(self) -> bool:
+        """Check if offloading is enabled."""
+        return self._offloading_enabled
 
 
 class _VRAMMonitor:
@@ -200,8 +289,15 @@ class DefaultRenderer(DeterministicVideoRenderer):
         logger.info(f"Initializing DefaultRenderer on device: {device}")
 
         # Initialize model registry and load models
-        precision_overrides = config.get("models", {}).get("precision", {})
-        self._model_registry = _ModelRegistry(device, precision_overrides)
+        models_config = config.get("models", {})
+        precision_overrides = models_config.get("precision", {})
+        offloading_mode = models_config.get("offloading", "auto")
+
+        self._model_registry = _ModelRegistry(
+            device,
+            precision_overrides,
+            offloading_mode=offloading_mode,
+        )
         self._model_registry.load_all_models()
 
         # Initialize VRAM monitor
@@ -233,10 +329,11 @@ class DefaultRenderer(DeterministicVideoRenderer):
             dtype=torch.float32,
         )
 
-        # Video buffer (1080 frames × 512x512x3)
+        # Video buffer - reduced from 1080 to 300 frames (10s @ 30fps)
+        # This saves ~2.5GB VRAM for LivePortrait CLI subprocess
         video_cfg = buf_cfg.get("video", {})
         self._video_buffer = torch.zeros(
-            video_cfg.get("frames", 1080),
+            video_cfg.get("frames", 300),  # 10 seconds @ 30fps (was 1080 = 45s @ 24fps)
             video_cfg.get("channels", 3),
             video_cfg.get("height", 512),
             video_cfg.get("width", 512),
@@ -302,6 +399,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
         try:
             # Check VRAM before starting
             assert self._vram_monitor is not None
+            assert self._model_registry is not None
             self._vram_monitor.check()
 
             # Set deterministic seed for reproducibility
@@ -309,20 +407,37 @@ class DefaultRenderer(DeterministicVideoRenderer):
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
 
-            # Phase 1: Parallel audio + actor generation
-            audio_task = asyncio.create_task(self._generate_audio(recipe, seed))
-            actor_task = asyncio.create_task(self._generate_actor(recipe, seed))
+            # Check if offloading is enabled (affects parallelization strategy)
+            offloading_enabled = self._model_registry.offloading_enabled
 
-            audio_result, actor_result = await asyncio.gather(audio_task, actor_task)
+            if offloading_enabled:
+                # Sequential mode: one model on GPU at a time
+                logger.info("Using sequential generation (offloading enabled)")
 
-            # Check deadline after parallel phase
+                # Phase 1a: Audio generation (Kokoro)
+                self._model_registry.prepare_for_stage("audio")
+                audio_result = await self._generate_audio(recipe, seed)
+
+                # Phase 1b: Actor image generation (Flux)
+                self._model_registry.prepare_for_stage("image")
+                actor_result = await self._generate_actor(recipe, seed)
+            else:
+                # Parallel mode: all models resident (default for >=12GB VRAM)
+                logger.info("Using parallel generation (static residency)")
+                audio_task = asyncio.create_task(self._generate_audio(recipe, seed))
+                actor_task = asyncio.create_task(self._generate_actor(recipe, seed))
+                audio_result, actor_result = await asyncio.gather(audio_task, actor_task)
+
+            # Check deadline after audio + actor phase
             time_remaining = deadline - time.time()
             if time_remaining < 10.0:  # Need at least 10s for video + CLIP
                 raise TimeoutError(
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 2: Sequential video warping
+            # Phase 2: Sequential video warping (LivePortrait)
+            if offloading_enabled:
+                self._model_registry.prepare_for_stage("video")
             video_result = await self._generate_video(actor_result, audio_result, recipe, seed)
 
             # Check deadline before CLIP
@@ -333,6 +448,8 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 )
 
             # Phase 3: CLIP verification
+            if offloading_enabled:
+                self._model_registry.prepare_for_stage("clip")
             clip_embedding = await self._verify_semantic(video_result, recipe)
 
             # Compute generation time

@@ -428,12 +428,14 @@ class ClipEnsemble:
 def load_clip_ensemble(
     device: str = "cuda",
     cache_dir: Path | None = None,
+    precision: str = "fp16",
 ) -> ClipEnsemble:
-    """Load dual CLIP models with INT8 quantization.
+    """Load dual CLIP models with configurable precision.
 
     Args:
         device: Target device ("cuda" or "cpu")
         cache_dir: Model cache directory (default: ~/.cache/vortex/clip)
+        precision: Model precision - "fp16" (default, recommended), "fp32", or "bf16"
 
     Returns:
         ClipEnsemble instance with both models loaded
@@ -443,12 +445,12 @@ def load_clip_ensemble(
         RuntimeError: If model loading fails
 
     VRAM Usage:
-        - CLIP-ViT-B-32 (INT8): ~0.3 GB
-        - CLIP-ViT-L-14 (INT8): ~0.6 GB
-        - Total: ~0.9 GB
+        - CLIP-ViT-B-32 (FP16): ~0.2 GB
+        - CLIP-ViT-L-14 (FP16): ~0.4 GB
+        - Total: ~0.6 GB (FP16) vs ~1.2 GB (FP32)
 
     Example:
-        >>> ensemble = load_clip_ensemble(device="cuda")
+        >>> ensemble = load_clip_ensemble(device="cuda", precision="fp16")
         >>> result = ensemble.verify(video_frames, "a scientist")
         >>> print(f"Ensemble score: {result.ensemble_score:.3f}")
     """
@@ -463,53 +465,63 @@ def load_clip_ensemble(
         cache_dir = Path.home() / ".cache" / "vortex" / "clip"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # Validate and normalize precision
+    precision = precision.lower()
+    if precision not in ("fp16", "fp32", "bf16"):
+        logger.warning(f"Unknown precision '{precision}', defaulting to fp16")
+        precision = "fp16"
+
+    # Use FP16 by default to save VRAM (~50% reduction vs FP32)
+    # This is the recommended configuration for RTX 3060 12GB
+    use_fp16 = precision == "fp16"
+    use_bf16 = precision == "bf16"
+
     logger.info(
         "Loading CLIP ensemble",
-        extra={"device": device, "cache_dir": str(cache_dir)},
+        extra={"device": device, "cache_dir": str(cache_dir), "precision": precision},
     )
 
-    # Determine if we should apply INT8 quantization
-    # INT8 quantization disabled - causes compatibility issues with open_clip's
-    # transformer layers (get_weight_dtype fails on quantized Linear).
-    # Using FP32/FP16 for now; consider bitsandbytes for future optimization.
-    should_quantize = False
+    # Determine torch dtype for model loading
+    if use_fp16:
+        torch_precision = "fp16"
+    elif use_bf16:
+        torch_precision = "bf16"
+    else:
+        torch_precision = "fp32"
 
-    # Load ViT-B-32
-    precision_str = "INT8" if should_quantize else "FP32"
-    logger.info(f"Loading CLIP-ViT-B-32 ({precision_str})")
+    # Load ViT-B-32 with specified precision
+    logger.info(f"Loading CLIP-ViT-B-32 ({precision.upper()})")
     clip_b, _, preprocess_b = open_clip.create_model_and_transforms(
         "ViT-B-32",
         pretrained="openai",
         device=device,
+        precision=torch_precision,
         cache_dir=str(cache_dir),
     )
     clip_b.eval()
     tokenizer_b = open_clip.get_tokenizer("ViT-B-32")
 
-    # Apply INT8 quantization to ViT-B-32 (CUDA only)
-    if should_quantize:
-        clip_b = torch.quantization.quantize_dynamic(
-            clip_b, {torch.nn.Linear}, dtype=torch.qint8
-        )
-
-    # Load ViT-L-14
-    logger.info(f"Loading CLIP-ViT-L-14 ({precision_str})")
+    # Load ViT-L-14 with specified precision
+    logger.info(f"Loading CLIP-ViT-L-14 ({precision.upper()})")
     clip_l, _, preprocess_l = open_clip.create_model_and_transforms(
         "ViT-L-14",
         pretrained="openai",
         device=device,
+        precision=torch_precision,
         cache_dir=str(cache_dir),
     )
     clip_l.eval()
     tokenizer_l = open_clip.get_tokenizer("ViT-L-14")
 
-    # Apply INT8 quantization to ViT-L-14 (CUDA only)
-    if should_quantize:
-        clip_l = torch.quantization.quantize_dynamic(
-            clip_l, {torch.nn.Linear}, dtype=torch.qint8
+    # Log VRAM usage after loading
+    if torch.cuda.is_available():
+        allocated_gb = torch.cuda.memory_allocated() / 1e9
+        logger.info(
+            "CLIP ensemble loaded successfully",
+            extra={"vram_allocated_gb": allocated_gb, "precision": precision}
         )
-
-    logger.info("CLIP ensemble loaded successfully")
+    else:
+        logger.info("CLIP ensemble loaded successfully")
 
     return ClipEnsemble(
         clip_b=clip_b,

@@ -1,28 +1,23 @@
-# CLIP Model INT8 Quantization Configuration
-# Enables efficient VRAM usage for dual CLIP ensemble
+# CLIP Model Configuration
+# Uses FP16 precision for VRAM efficiency (INT8 disabled due to open_clip compatibility)
+# Total VRAM: ~0.6 GB (FP16) vs ~1.2 GB (FP32)
 
 models:
   clip_vit_b_32:
     architecture: "ViT-B-32"
     pretrained: "openai"
-    precision: "int8"
-    vram_budget_gb: 0.3
-    cache_path: "~/.cache/vortex/clip_b32_int8.pt"
-    quantization:
-      method: "dynamic"  # PyTorch dynamic quantization
-      dtype: "qint8"
-      layers: ["Linear"]  # Quantize Linear layers only
+    # INT8 disabled - causes compatibility issues with open_clip's transformer layers
+    # (get_weight_dtype fails on quantized Linear). Using FP16 instead.
+    precision: "fp16"
+    vram_budget_gb: 0.2
+    cache_path: "~/.cache/vortex/clip"
 
   clip_vit_l_14:
     architecture: "ViT-L-14"
     pretrained: "openai"
-    precision: "int8"
-    vram_budget_gb: 0.6
-    cache_path: "~/.cache/vortex/clip_l14_int8.pt"
-    quantization:
-      method: "dynamic"
-      dtype: "qint8"
-      layers: ["Linear"]
+    precision: "fp16"
+    vram_budget_gb: 0.4
+    cache_path: "~/.cache/vortex/clip"
 
 ensemble:
   weight_b32: 0.4  # Weight for ViT-B-32
@@ -41,9 +36,10 @@ ensemble:
 
 performance:
   target_latency_p99_ms: 1000  # <1s P99 for 5-frame verification
-  target_vram_total_gb: 0.9    # Combined VRAM budget
+  target_vram_total_gb: 0.6    # Combined VRAM budget (FP16)
 
 notes: |
-  INT8 quantization reduces VRAM by ~60% vs FP16 with <3% accuracy loss.
+  FP16 precision reduces VRAM by ~50% vs FP32 with negligible accuracy loss.
+  INT8 quantization disabled due to open_clip compatibility issues.
   Dual ensemble reduces false positives/negatives by ~40% vs single model.
   Self-check thresholds prevent wasted BFT rounds on low-quality content.

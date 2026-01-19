@@ -168,7 +168,6 @@ pub fn build_video_chunks(
 ///
 /// # Returns
 /// Vector of signed VideoChunks, one per frame
-#[allow(dead_code)]
 pub fn build_video_chunks_from_ivf(
     content_id: &str,
     slot: u64,
@@ -427,5 +426,87 @@ mod tests {
 
         let result = build_video_chunks_from_ivf("QmTest", 1, &short_data, &keypair);
         assert!(matches!(result, Err(VideoChunkError::EmptyPayload)));
+    }
+
+    #[test]
+    fn test_build_video_chunks_from_ivf_with_synthetic_ivf() {
+        // Create a synthetic IVF file with 3 frames
+        // IVF header (32 bytes):
+        // - Bytes 0-3: "DKIF" magic
+        // - Bytes 4-5: version (0x0000)
+        // - Bytes 6-7: header length (32)
+        // - Bytes 8-11: FourCC codec (VP90)
+        // - Bytes 12-13: width (640)
+        // - Bytes 14-15: height (480)
+        // - Bytes 16-19: time base denominator
+        // - Bytes 20-23: time base numerator
+        // - Bytes 24-27: frame count
+        // - Bytes 28-31: unused
+
+        let mut ivf_data = Vec::new();
+
+        // File header (32 bytes)
+        ivf_data.extend_from_slice(b"DKIF"); // magic
+        ivf_data.extend_from_slice(&0u16.to_le_bytes()); // version
+        ivf_data.extend_from_slice(&32u16.to_le_bytes()); // header length
+        ivf_data.extend_from_slice(b"VP90"); // FourCC
+        ivf_data.extend_from_slice(&640u16.to_le_bytes()); // width
+        ivf_data.extend_from_slice(&480u16.to_le_bytes()); // height
+        ivf_data.extend_from_slice(&24u32.to_le_bytes()); // time base denom (fps)
+        ivf_data.extend_from_slice(&1u32.to_le_bytes()); // time base num
+        ivf_data.extend_from_slice(&3u32.to_le_bytes()); // frame count
+        ivf_data.extend_from_slice(&0u32.to_le_bytes()); // unused
+
+        assert_eq!(ivf_data.len(), 32, "IVF header should be 32 bytes");
+
+        // Frame 0: Keyframe (bit 2 = 0 means keyframe)
+        // VP9 frame header: first byte with bit 2 clear = keyframe
+        let keyframe_data = vec![0x00; 100]; // Bit 2 is 0 = keyframe
+        ivf_data.extend_from_slice(&(keyframe_data.len() as u32).to_le_bytes()); // frame size
+        ivf_data.extend_from_slice(&0u64.to_le_bytes()); // timestamp
+        ivf_data.extend_from_slice(&keyframe_data);
+
+        // Frame 1: Inter-frame (bit 2 = 1 means non-keyframe)
+        let interframe_data = vec![0x04; 50]; // Bit 2 is 1 = inter-frame
+        ivf_data.extend_from_slice(&(interframe_data.len() as u32).to_le_bytes());
+        ivf_data.extend_from_slice(&1u64.to_le_bytes()); // timestamp
+        ivf_data.extend_from_slice(&interframe_data);
+
+        // Frame 2: Another inter-frame
+        let interframe_data2 = vec![0x04; 75];
+        ivf_data.extend_from_slice(&(interframe_data2.len() as u32).to_le_bytes());
+        ivf_data.extend_from_slice(&2u64.to_le_bytes()); // timestamp
+        ivf_data.extend_from_slice(&interframe_data2);
+
+        let keypair = Keypair::generate_ed25519();
+        let chunks =
+            build_video_chunks_from_ivf("QmTest", 1, &ivf_data, &keypair).expect("should parse");
+
+        assert_eq!(chunks.len(), 3, "Should have 3 chunks (one per frame)");
+        assert_eq!(chunks[0].header.total_chunks, 3);
+        assert_eq!(chunks[0].header.chunk_index, 0);
+        assert_eq!(chunks[1].header.chunk_index, 1);
+        assert_eq!(chunks[2].header.chunk_index, 2);
+
+        // Verify keyframe detection
+        assert!(chunks[0].header.is_keyframe, "Frame 0 should be keyframe");
+        assert!(
+            !chunks[1].header.is_keyframe,
+            "Frame 1 should be inter-frame"
+        );
+        assert!(
+            !chunks[2].header.is_keyframe,
+            "Frame 2 should be inter-frame"
+        );
+
+        // Verify payload sizes
+        assert_eq!(chunks[0].payload.len(), 100);
+        assert_eq!(chunks[1].payload.len(), 50);
+        assert_eq!(chunks[2].payload.len(), 75);
+
+        // Verify all chunks are valid (signature + hash)
+        for chunk in &chunks {
+            verify_video_chunk(chunk).expect("chunk should be valid");
+        }
     }
 }

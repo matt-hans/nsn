@@ -7,25 +7,32 @@ realistic video sequences.
 
 Key Features:
 - FP16 precision to fit 3.5GB VRAM budget
+- In-process GPU loading (preferred) to avoid VRAM doubling from subprocess
 - Audio-driven lip-sync with ±2 frame accuracy
 - Expression presets (neutral, excited, manic, calm)
 - Expression sequence transitions
 - Pre-allocated video buffer output (no fragmentation)
 - Deterministic generation with seed control
 
+Backends (priority order):
+1. "gpu" - In-process FP16 loading, shares CUDA context (recommended)
+2. "cli" - Subprocess-based, spawns separate process (doubles VRAM)
+
+NOTE: LivePortrait must be installed. Video generation will fail with a clear
+error message and installation instructions if LivePortrait is not available.
+
 VRAM Budget: ~3.5 GB (3.0-4.0GB measured)
 Latency Target: <8s P99 on RTX 3060 for 45s video
 """
 
 import logging
-import math
 import os
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any
 
 import torch
 import torch.nn.functional as F
@@ -35,6 +42,9 @@ from vortex.utils.lipsync import audio_to_visemes
 
 logger = logging.getLogger(__name__)
 
+# Global flag to cache whether in-process GPU loading is available
+_GPU_BACKEND_AVAILABLE: Optional[bool] = None
+
 
 class VortexInitializationError(Exception):
     """Raised when LivePortrait model initialization fails (e.g., CUDA OOM)."""
@@ -42,16 +52,173 @@ class VortexInitializationError(Exception):
     pass
 
 
-class _FallbackWarp:
-    """Deterministic CPU/GPU fallback warper for audio-driven lip motion.
+class LivePortraitNotInstalledError(VortexInitializationError):
+    """Raised when LivePortrait is required but not installed."""
 
-    This is used when LivePortrait is not available locally. It does NOT
-    replicate LivePortrait quality, but provides deterministic, audio-driven
-    mouth motion for testing and CI.
+    INSTALLATION_INSTRUCTIONS = """
+================================================================================
+LivePortrait is required for video animation but is not installed.
+================================================================================
+
+QUICK SETUP:
+
+1. Clone LivePortrait repository:
+   git clone https://github.com/KwaiVGI/LivePortrait
+   cd LivePortrait
+
+2. Download pretrained weights from HuggingFace:
+   pip install -U "huggingface_hub[cli]"
+   huggingface-cli download KwaiVGI/LivePortrait --local-dir pretrained_weights \\
+       --exclude "*.git*" "README.md" "docs"
+
+3. Install dependencies:
+   pip install -r requirements.txt
+
+4. Set environment variable pointing to the repo:
+   export LIVEPORTRAIT_HOME=/path/to/LivePortrait
+
+5. (Optional) For audio-driven animation, you also need a driving video template.
+   Set: export LIVEPORTRAIT_DRIVING_SOURCE=/path/to/driving_video.mp4
+   Or use motion templates (.pkl files) from the assets/examples/driving/ folder.
+
+REQUIRED DIRECTORY STRUCTURE:
+   pretrained_weights/
+   ├── insightface/models/buffalo_l/
+   │   ├── 2d106det.onnx
+   │   └── det_10g.onnx
+   └── liveportrait/
+       ├── base_models/
+       │   ├── appearance_feature_extractor.pth
+       │   ├── motion_extractor.pth
+       │   ├── spade_generator.pth
+       │   └── warping_module.pth
+       ├── landmark.onnx
+       └── retargeting_models/
+           └── stitching_retargeting_module.pth
+
+For more details: https://github.com/KwaiVGI/LivePortrait
+HuggingFace models: https://huggingface.co/KwaiVGI/LivePortrait
+================================================================================
+"""
+
+    def __init__(self, message: str = "LivePortrait is not installed"):
+        full_message = f"{message}\n{self.INSTALLATION_INSTRUCTIONS}"
+        super().__init__(full_message)
+
+
+def _check_gpu_backend_available(repo_path: Optional[Path] = None) -> bool:
+    """Check if in-process GPU backend is available.
+
+    Attempts to import LivePortrait modules directly. Caches result.
+
+    Args:
+        repo_path: Path to LivePortrait repository (adds to sys.path)
+
+    Returns:
+        True if GPU backend can be loaded, False otherwise
+    """
+    global _GPU_BACKEND_AVAILABLE
+
+    if _GPU_BACKEND_AVAILABLE is not None:
+        return _GPU_BACKEND_AVAILABLE
+
+    # Try adding repo path to sys.path if provided
+    if repo_path and repo_path.exists():
+        repo_str = str(repo_path)
+        if repo_str not in sys.path:
+            sys.path.insert(0, repo_str)
+
+    try:
+        # Try importing LivePortrait core modules
+        from liveportrait.live_portrait_pipeline import LivePortraitPipeline as LPPipeline
+        _GPU_BACKEND_AVAILABLE = True
+        logger.info("LivePortrait GPU backend available (in-process loading enabled)")
+        return True
+    except ImportError as e:
+        logger.debug(f"LivePortrait import failed: {e}")
+        _GPU_BACKEND_AVAILABLE = False
+        return False
+
+
+class _InProcessGPUBackend:
+    """In-process GPU backend for LivePortrait.
+
+    Loads LivePortrait models directly into the current CUDA context,
+    avoiding the VRAM doubling that occurs with subprocess-based CLI backend.
+
+    This backend:
+    - Shares GPU memory with Flux, Kokoro, and CLIP
+    - Uses FP16 precision for 3.5GB VRAM budget
+    - Provides better performance than CLI (no subprocess overhead)
+    - Maintains determinism with seed control
+
+    VRAM Usage: ~3.5GB (vs ~7GB+ with CLI subprocess)
     """
 
-    def __init__(self, mouth_region: tuple[float, float, float, float]):
-        self.mouth_region = mouth_region  # (y0, y1, x0, x1) in relative coords
+    def __init__(
+        self,
+        device: str = "cuda:0",
+        dtype: torch.dtype = torch.float16,
+        repo_path: Optional[Path] = None,
+    ):
+        """Initialize in-process GPU backend.
+
+        Args:
+            device: CUDA device string
+            dtype: Model precision (torch.float16 recommended)
+            repo_path: Path to LivePortrait repository
+        """
+        self.device = device
+        self.dtype = dtype
+        self.repo_path = repo_path
+        self._pipeline = None
+        self._loaded = False
+
+        # Add repo to path if needed
+        if repo_path and repo_path.exists():
+            repo_str = str(repo_path)
+            if repo_str not in sys.path:
+                sys.path.insert(0, repo_str)
+
+    def load(self) -> bool:
+        """Load LivePortrait models into GPU memory.
+
+        Returns:
+            True if loading succeeded, False otherwise
+        """
+        if self._loaded:
+            return True
+
+        try:
+            from liveportrait.live_portrait_pipeline import LivePortraitPipeline as LPPipeline
+            from liveportrait.config.inference_config import InferenceConfig
+
+            # Configure for FP16 to fit VRAM budget
+            inference_cfg = InferenceConfig(
+                flag_use_half_precision=True,  # CRITICAL: Use FP16
+                device_id=int(self.device.split(":")[-1]) if ":" in self.device else 0,
+            )
+
+            logger.info("Loading LivePortrait in-process (FP16, device=%s)", self.device)
+            self._pipeline = LPPipeline(inference_cfg=inference_cfg)
+            self._loaded = True
+
+            # Log VRAM after loading
+            if torch.cuda.is_available():
+                allocated_gb = torch.cuda.memory_allocated() / 1e9
+                logger.info(
+                    "LivePortrait loaded in-process",
+                    extra={"vram_allocated_gb": allocated_gb}
+                )
+
+            return True
+
+        except ImportError as e:
+            logger.warning(f"Failed to import LivePortrait: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to load LivePortrait in-process: {e}", exc_info=True)
+            return False
 
     def warp_sequence(
         self,
@@ -59,90 +226,139 @@ class _FallbackWarp:
         visemes: List[torch.Tensor],
         expression_params: List[torch.Tensor],
         num_frames: int,
+        driving_source: Optional[Path] = None,
     ) -> torch.Tensor:
-        source = source_image.float()
-        channels, height, width = source.shape
-        y0 = int(self.mouth_region[0] * height)
-        y1 = int(self.mouth_region[1] * height)
-        x0 = int(self.mouth_region[2] * width)
-        x1 = int(self.mouth_region[3] * width)
+        """Generate video frames using in-process GPU inference.
 
-        base_patch = source[:, y0:y1, x0:x1]
-        output = torch.empty(
-            (num_frames, channels, height, width), device=source.device, dtype=torch.float32
-        )
+        Args:
+            source_image: Source actor image [3, 512, 512]
+            visemes: Per-frame viseme parameters (for lip-sync)
+            expression_params: Per-frame expression parameters
+            num_frames: Number of frames to generate
+            driving_source: Driving video path for motion transfer
 
-        for idx in range(num_frames):
-            viseme = visemes[min(idx, len(visemes) - 1)]
-            expr = expression_params[min(idx, len(expression_params) - 1)]
-            frame = output[idx]
-            frame.copy_(source)
+        Returns:
+            Video tensor [num_frames, 3, 512, 512]
+        """
+        if not self._loaded:
+            if not self.load():
+                raise RuntimeError("Failed to load LivePortrait GPU backend")
 
-            warped_patch = self._warp_patch(base_patch, viseme, expr)
-            frame[:, y0:y1, x0:x1] = warped_patch
+        if driving_source is None:
+            raise ValueError("driving_source is required for GPU backend")
 
-            head_motion = float(expr[3].clamp(0.0, 1.0))
-            if head_motion > 0:
-                shift_x = int(math.sin(idx / max(num_frames, 1) * math.tau) * head_motion * 4)
-                shift_y = int(math.cos(idx / max(num_frames, 1) * math.tau) * head_motion * 3)
-                frame.copy_(torch.roll(frame, shifts=(shift_y, shift_x), dims=(1, 2)))
+        try:
+            # Save source image to temp file (LivePortrait expects file path)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                self._save_image(source_image, tmp_path)
 
-        return output
+            try:
+                # Run inference
+                result = self._pipeline.execute(
+                    source_path=str(tmp_path),
+                    driving_path=str(driving_source),
+                    flag_relative_motion=True,  # Fix "static head" issue
+                    flag_pasteback=True,
+                )
 
-    def _warp_patch(
-        self, patch: torch.Tensor, viseme: torch.Tensor, expr: torch.Tensor
-    ) -> torch.Tensor:
-        jaw_open = float(viseme[0].clamp(0.0, 1.0))
-        lip_width = float(viseme[1].clamp(0.0, 1.0))
-        lip_rounding = float(viseme[2].clamp(0.0, 1.0))
-        mouth_scale = float(expr[2].clamp(0.5, 1.5))
+                # Convert result to tensor
+                if result is not None and hasattr(result, 'frames'):
+                    frames = result.frames
+                    if isinstance(frames, list):
+                        frames = torch.stack([
+                            torch.from_numpy(f).permute(2, 0, 1).float() / 255.0
+                            for f in frames
+                        ])
+                    return frames.to(device=self.device)
+                else:
+                    # Return from video file output
+                    output_path = self._find_output_video()
+                    if output_path:
+                        return self._load_video_to_tensor(output_path)
 
-        patch_h, patch_w = patch.shape[1], patch.shape[2]
-        scale_y = 1.0 + jaw_open * 0.5 * mouth_scale
-        scale_x = 1.0 + (lip_width - 0.5) * 0.4 * mouth_scale
-        scale_x *= 1.0 - (lip_rounding - 0.5) * 0.2
+            finally:
+                # Cleanup temp file
+                if tmp_path.exists():
+                    tmp_path.unlink()
 
-        new_h = max(1, int(patch_h * scale_y))
-        new_w = max(1, int(patch_w * scale_x))
+        except Exception as e:
+            logger.error(f"GPU backend warp_sequence failed: {e}", exc_info=True)
+            raise
 
-        resized = F.interpolate(
-            patch.unsqueeze(0),
-            size=(new_h, new_w),
-            mode="bilinear",
-            align_corners=False,
-        ).squeeze(0)
+        raise RuntimeError("LivePortrait GPU backend produced no output")
 
-        return self._center_crop_or_pad(resized, patch_h, patch_w)
+    def _save_image(self, image: torch.Tensor, path: Path) -> None:
+        """Save tensor image to file."""
+        image = image.detach().float().clamp(0.0, 1.0).cpu()
+        image = (image * 255.0).to(torch.uint8)
+        image = image.permute(1, 2, 0).numpy()
 
-    def _center_crop_or_pad(
-        self, patch: torch.Tensor, target_h: int, target_w: int
-    ) -> torch.Tensor:
-        _, height, width = patch.shape
+        try:
+            from PIL import Image
+        except ImportError as exc:
+            raise RuntimeError("Pillow required for LivePortrait") from exc
 
-        if height > target_h:
-            start_y = (height - target_h) // 2
-            patch = patch[:, start_y : start_y + target_h, :]
-        if width > target_w:
-            start_x = (width - target_w) // 2
-            patch = patch[:, :, start_x : start_x + target_w]
+        Image.fromarray(image).save(path)
 
-        pad_h = target_h - patch.shape[1]
-        pad_w = target_w - patch.shape[2]
-        if pad_h > 0 or pad_w > 0:
-            pad_top = pad_h // 2
-            pad_bottom = pad_h - pad_top
-            pad_left = pad_w // 2
-            pad_right = pad_w - pad_left
-            patch = F.pad(patch, (pad_left, pad_right, pad_top, pad_bottom), mode="replicate")
+    def _find_output_video(self) -> Optional[Path]:
+        """Find the most recent output video from LivePortrait."""
+        if not self.repo_path:
+            return None
 
-        return patch
+        output_dirs = [
+            self.repo_path / "animations",
+            self.repo_path / "outputs",
+            self.repo_path / "output",
+        ]
+
+        for directory in output_dirs:
+            if directory.exists():
+                videos = list(directory.glob("**/*.mp4"))
+                if videos:
+                    return max(videos, key=lambda p: p.stat().st_mtime)
+
+        return None
+
+    def _load_video_to_tensor(self, path: Path) -> torch.Tensor:
+        """Load video file to tensor."""
+        try:
+            import cv2
+        except ImportError as exc:
+            raise RuntimeError("opencv-python required") from exc
+
+        cap = cv2.VideoCapture(str(path))
+        if not cap.isOpened():
+            raise RuntimeError(f"Failed to open video: {path}")
+
+        frames = []
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if frame.shape[0] != 512 or frame.shape[1] != 512:
+                frame = cv2.resize(frame, (512, 512), interpolation=cv2.INTER_AREA)
+            frames.append(torch.from_numpy(frame))
+        cap.release()
+
+        if not frames:
+            raise RuntimeError("Video contained no frames")
+
+        stacked = torch.stack(frames).to(torch.float32) / 255.0
+        stacked = stacked.permute(0, 3, 1, 2).to(device=self.device)
+        return stacked.contiguous()
 
 
 class LivePortraitPipeline:
     """LivePortrait pipeline adapter.
 
-    Uses a local LivePortrait checkout via CLI when available, otherwise falls
-    back to a deterministic warper for testing environments.
+    Supports two backends:
+    - gpu: In-process FP16 loading, shares CUDA context (recommended, saves ~3.5GB)
+    - cli: Subprocess-based, spawns separate process (doubles VRAM, legacy)
+
+    LivePortrait must be installed. Without it, video generation will fail with
+    a clear error message and installation instructions.
     """
 
     def __init__(
@@ -164,7 +380,7 @@ class LivePortraitPipeline:
         self.crop_driving_video = crop_driving_video
         self.relative_motion = relative_motion
         self.use_output_dir_flag = use_output_dir_flag
-        self._fallback = _FallbackWarp(mouth_region=(0.60, 0.85, 0.30, 0.70))
+        self._gpu_backend: Optional[_InProcessGPUBackend] = None
         self.dtype = torch.float16
         self.device = "cpu"
 
@@ -220,19 +436,44 @@ class LivePortraitPipeline:
         relative_motion = bool(runtime_cfg.get("relative_motion", True))
         use_output_dir_flag = bool(runtime_cfg.get("use_output_dir_flag", False))
 
+        # Backend selection priority: gpu > cli (no fallback - require real LivePortrait)
+        # GPU backend saves ~3.5GB VRAM by sharing CUDA context
         backend = runtime_cfg.get("backend", "auto")
+
         if backend == "auto":
+            # Priority 1: Try in-process GPU backend (avoids VRAM doubling)
+            if _check_gpu_backend_available(repo_path):
+                backend = "gpu"
+                logger.info("Using GPU backend (in-process FP16, VRAM-efficient)")
+            # Priority 2: CLI backend (subprocess, doubles VRAM)
+            elif repo_path and (repo_path / "inference.py").exists():
+                backend = "cli"
+                logger.warning(
+                    "GPU backend unavailable, using CLI backend (subprocess). "
+                    "This doubles VRAM usage. Consider installing LivePortrait package."
+                )
+            # No fallback - LivePortrait must be installed
+            else:
+                raise LivePortraitNotInstalledError(
+                    "LivePortrait not found. Set LIVEPORTRAIT_HOME environment variable "
+                    "or install the liveportrait package."
+                )
+
+        # Validate backend availability
+        if backend == "gpu" and not _check_gpu_backend_available(repo_path):
+            logger.warning("GPU backend requested but unavailable; trying CLI backend")
             if repo_path and (repo_path / "inference.py").exists():
                 backend = "cli"
             else:
-                backend = "fallback"
+                raise LivePortraitNotInstalledError(
+                    "GPU backend requested but LivePortrait package not importable, "
+                    "and CLI backend not available (inference.py not found)."
+                )
 
         if backend == "cli" and not (repo_path and (repo_path / "inference.py").exists()):
-            logger.warning(
-                "LivePortrait repo not found for CLI backend; falling back",
-                extra={"repo_path": str(repo_path) if repo_path else None},
+            raise LivePortraitNotInstalledError(
+                f"CLI backend requested but LivePortrait repo not found at: {repo_path}"
             )
-            backend = "fallback"
 
         instance = cls(
             backend=backend,
@@ -245,6 +486,19 @@ class LivePortraitPipeline:
             use_output_dir_flag=use_output_dir_flag,
         )
         instance.dtype = torch_dtype
+
+        # Initialize GPU backend if selected
+        if backend == "gpu":
+            device = "cuda:0"
+            if device_map and "" in device_map:
+                device = device_map[""]
+            instance._gpu_backend = _InProcessGPUBackend(
+                device=device,
+                dtype=torch_dtype,
+                repo_path=repo_path,
+            )
+            instance.device = device
+
         logger.info("LivePortrait pipeline backend: %s", backend)
         return instance
 
@@ -268,21 +522,50 @@ class LivePortraitPipeline:
             visemes: Per-frame viseme parameters
             expression_params: Per-frame expression parameters
             num_frames: Number of frames to generate
-            driving_source: Optional driving video or motion template path
+            driving_source: Driving video or motion template path (required)
 
         Returns:
             Video tensor [num_frames, 3, 512, 512]
-        """
-        if self.backend == "cli":
-            driving_path = driving_source or self.default_driving_source
-            if driving_path is None:
-                logger.warning("No driving source provided; using fallback warper")
-                return self._fallback.warp_sequence(
-                    source_image, visemes, expression_params, num_frames
-                )
-            return self._run_cli(source_image, driving_path)
 
-        return self._fallback.warp_sequence(source_image, visemes, expression_params, num_frames)
+        Raises:
+            LivePortraitNotInstalledError: If LivePortrait is not available
+            ValueError: If no driving source is provided
+        """
+        driving_path = driving_source or self.default_driving_source
+
+        if driving_path is None:
+            raise ValueError(
+                "No driving source provided for LivePortrait animation. "
+                "Set LIVEPORTRAIT_DRIVING_SOURCE environment variable or provide "
+                "driving_source parameter. You can use a driving video (.mp4) or "
+                "a motion template (.pkl) from LivePortrait's assets/examples/driving/ folder."
+            )
+
+        # Priority 1: GPU backend (in-process, VRAM-efficient)
+        if self.backend == "gpu" and self._gpu_backend is not None:
+            try:
+                return self._gpu_backend.warp_sequence(
+                    source_image, visemes, expression_params, num_frames, driving_path
+                )
+            except Exception as e:
+                logger.warning(f"GPU backend failed: {e}; trying CLI backend")
+                # Fall through to CLI if GPU fails
+
+        # Priority 2: CLI backend (subprocess)
+        if self.backend == "cli" or (self.backend == "gpu" and self._gpu_backend is None):
+            try:
+                return self._run_cli(source_image, driving_path)
+            except Exception as e:
+                raise RuntimeError(
+                    f"LivePortrait CLI backend failed: {e}. "
+                    "Check that LivePortrait is properly installed and "
+                    "LIVEPORTRAIT_HOME points to the repository root."
+                ) from e
+
+        # Should not reach here - raise error
+        raise LivePortraitNotInstalledError(
+            f"No valid LivePortrait backend available (backend={self.backend})"
+        )
 
     def _run_cli(self, source_image: torch.Tensor, driving_source: Path) -> torch.Tensor:
         if not self.repo_path:
@@ -317,14 +600,35 @@ class LivePortraitPipeline:
 
             start_time = time.time()
             logger.info("Running LivePortrait CLI", extra={"cmd": " ".join(cmd)})
-            subprocess.run(
+
+            # Ensure ffmpeg is in PATH (use imageio-ffmpeg bundled binary)
+            env = os.environ.copy()
+            try:
+                import imageio_ffmpeg
+
+                ffmpeg_dir = str(Path(imageio_ffmpeg.get_ffmpeg_exe()).parent)
+                env["PATH"] = f"{ffmpeg_dir}:{env.get('PATH', '')}"
+            except ImportError:
+                pass  # imageio-ffmpeg not available, rely on system ffmpeg
+
+            result = subprocess.run(
                 cmd,
                 cwd=str(self.repo_path),
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
+                env=env,
             )
+            if result.returncode != 0:
+                # Log full error output for debugging
+                logger.error(
+                    "LivePortrait CLI failed with returncode=%d\nSTDOUT:\n%s\nSTDERR:\n%s",
+                    result.returncode,
+                    result.stdout[-2000:] if result.stdout else "(empty)",
+                    result.stderr[-2000:] if result.stderr else "(empty)",
+                )
+                raise subprocess.CalledProcessError(
+                    result.returncode, cmd, result.stdout, result.stderr
+                )
 
             output_video = self._find_latest_output(start_time)
             if output_video is None:

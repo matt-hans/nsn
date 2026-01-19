@@ -125,9 +125,11 @@ cache:
 
 # Runtime integration settings
 runtime:
-  backend: "auto"  # auto, cli, fallback
-  repo_path: "~/.cache/vortex/liveportrait/LivePortrait"
-  driving_source: null  # Optional driving video (.mp4) or motion template (.pkl)
+  backend: "auto"  # auto, cli (no fallback - requires real LivePortrait)
+  # Set via LIVEPORTRAIT_HOME env var, or override here:
+  repo_path: "/home/matt/nsn/LivePortrait"
+  # Use d7.pkl which has proper c_d_eyes_lst/c_d_lip_lst keys (talking.pkl lacks these)
+  driving_source: "/home/matt/nsn/LivePortrait/assets/examples/driving/d7.pkl"
   output_dirs:
     - "~/.cache/vortex/liveportrait/outputs"
   animation_region: "lip"

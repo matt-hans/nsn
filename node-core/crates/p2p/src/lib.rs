@@ -97,7 +97,7 @@ pub use stun::{discover_external_with_fallback, StunClient};
 pub use topics::{all_topics, lane_0_topics, lane_1_topics, parse_topic, TopicCategory};
 pub use upnp::{setup_p2p_port_mapping, UpnpMapper};
 pub use video::{
-    build_video_chunks, chunk_latency_ms, decode_video_chunk, publish_video_chunks,
-    verify_video_chunk, VideoChunkConfig, VideoChunkError, VideoPublishReport,
-    DEFAULT_CHUNK_SIZE_BYTES, VIDEO_CHUNK_VERSION,
+    build_video_chunks, build_video_chunks_from_ivf, chunk_latency_ms, decode_video_chunk,
+    publish_video_chunks, verify_video_chunk, VideoChunkConfig, VideoChunkError,
+    VideoPublishReport, DEFAULT_CHUNK_SIZE_BYTES, VIDEO_CHUNK_VERSION,
 };

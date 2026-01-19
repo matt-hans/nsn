@@ -5,7 +5,8 @@ from text prompts. Flux-Schnell is optimized for fast inference (4 steps) with
 NF4 quantization to fit within 6GB VRAM budget.
 
 Key Features:
-- NF4 4-bit quantization via bitsandbytes
+- NF4 4-bit quantization via bitsandbytes PipelineQuantizationConfig
+- Quantizes BOTH transformer AND text_encoder_2 (T5) for full VRAM savings
 - 4-step inference (Schnell fast variant)
 - Guidance scale 0.0 (unconditional for speed)
 - Disabled safety checker (CLIP handles content verification)
@@ -19,7 +20,10 @@ import logging
 
 import torch
 from diffusers import FluxPipeline
-from diffusers.quantizers import PipelineQuantizationConfig
+from diffusers import BitsAndBytesConfig as DiffusersBitsAndBytesConfig
+from diffusers.models import AutoencoderKL, FluxTransformer2DModel
+from transformers import BitsAndBytesConfig as TransformersBitsAndBytesConfig
+from transformers import T5EncoderModel
 
 logger = logging.getLogger(__name__)
 
@@ -195,38 +199,67 @@ def load_flux_schnell(
     )
 
     try:
-        # Configure NF4 quantization using PipelineQuantizationConfig
-        if quantization == "nf4":
-            quant_config = PipelineQuantizationConfig(
-                quant_backend="bitsandbytes_4bit",
-                quant_kwargs={
-                    "load_in_4bit": True,
-                    "bnb_4bit_quant_type": "nf4",
-                    "bnb_4bit_compute_dtype": torch.bfloat16,
-                    "bnb_4bit_use_double_quant": False,  # Single quantization for speed
-                },
-                components_to_quantize=["transformer"],  # Only quantize transformer
-            )
-            logger.info("Using NF4 4-bit quantization via PipelineQuantizationConfig")
-        else:
+        if quantization != "nf4":
             raise ValueError(f"Unsupported quantization: {quantization}. Only 'nf4' supported.")
 
-        # Load pipeline with quantization
-        # Note: Don't use device_map with quantization - use .to(device) after loading
-        pipeline = FluxPipeline.from_pretrained(
+        # CRITICAL: Must load transformer AND text_encoder_2 (T5) separately with quantization
+        # FluxPipeline doesn't support PipelineQuantizationConfig directly
+        # Without quantizing T5, it uses ~10GB alone!
+
+        # Step 1: Load T5 text encoder with NF4 quantization (transformers config)
+        t5_quant_config = TransformersBitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        logger.info("Loading T5 text_encoder_2 with NF4 quantization...")
+        # NOTE: For 4-bit quantized models, do NOT specify device_map
+        # bitsandbytes handles device placement automatically during quantization
+        # Specifying device_map causes accelerate to call .to() which fails
+        text_encoder_2 = T5EncoderModel.from_pretrained(
             "black-forest-labs/FLUX.1-schnell",
-            quantization_config=quant_config,
-            torch_dtype=torch.bfloat16,
+            subfolder="text_encoder_2",
+            quantization_config=t5_quant_config,
+            torch_dtype=torch.float16,
+            cache_dir=cache_dir,
+        )
+        logger.info("T5 text_encoder_2 loaded with NF4 quantization")
+
+        # Step 2: Load transformer with NF4 quantization (diffusers config)
+        transformer_quant_config = DiffusersBitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        logger.info("Loading FluxTransformer2DModel with NF4 quantization...")
+        transformer = FluxTransformer2DModel.from_pretrained(
+            "black-forest-labs/FLUX.1-schnell",
+            subfolder="transformer",
+            quantization_config=transformer_quant_config,
+            torch_dtype=torch.float16,
             use_safetensors=True,
             cache_dir=cache_dir,
         )
+        logger.info("FluxTransformer2DModel loaded with NF4 quantization")
+
+        # Step 3: Load full pipeline with pre-quantized components
+        logger.info("Loading FluxPipeline with quantized components...")
+        pipeline = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-schnell",
+            transformer=transformer,
+            text_encoder_2=text_encoder_2,
+            torch_dtype=torch.float16,
+            use_safetensors=True,
+            cache_dir=cache_dir,
+            device_map="cuda",  # Required for quantized models
+        )
+        logger.info("FluxPipeline loaded with NF4 quantization")
 
         # Disable safety checker (CLIP semantic verification handles content policy)
         pipeline.safety_checker = None
         logger.info("Disabled safety checker (CLIP handles content verification)")
 
-        # Move to target device
-        pipeline.to(device)
+        # NOTE: Do NOT call .to(device) - device_map already handles placement
 
         logger.info("Flux-Schnell loaded successfully")
 

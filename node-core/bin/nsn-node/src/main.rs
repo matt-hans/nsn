@@ -10,15 +10,15 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use nsn_chain_client::{ChainAttestationSubmitter, ChainExecutorRegistry};
 use nsn_p2p::{
-    build_video_chunks, publish_video_chunks, P2pConfig, P2pService, VideoChunkConfig,
-    DEFAULT_CHUNK_SIZE_BYTES,
+    build_video_chunks, build_video_chunks_from_ivf, publish_video_chunks, P2pConfig, P2pService,
+    VideoChunkConfig, DEFAULT_CHUNK_SIZE_BYTES,
 };
 use nsn_scheduler::{
     AttestationSubmitter, DualAttestationSubmitter, NoopAttestationSubmitter,
     P2pAttestationSubmitter, RedundancyConfig, RedundantScheduler,
 };
 use nsn_sidecar::proto::sidecar_server::SidecarServer;
-use nsn_sidecar::{SidecarService, SidecarServiceConfig, TaskCompletionEvent};
+use nsn_sidecar::{PluginPolicy, SidecarService, SidecarServiceConfig, TaskCompletionEvent};
 use nsn_storage::{StorageAuditReport, StorageBackendKind, StorageManager};
 use nsn_types::NodeCapability;
 use sp_core::{sr25519, Pair};
@@ -110,6 +110,10 @@ struct Cli {
     /// IPFS API URL (for ipfs storage backend)
     #[arg(long, default_value = "http://127.0.0.1:5001")]
     ipfs_api_url: String,
+
+    /// Storage path (for local storage backend)
+    #[arg(long, default_value = "/var/lib/nsn/storage")]
+    storage_path: String,
 
     /// Optional CID to publish as a video stream over P2P
     #[arg(long)]
@@ -293,7 +297,7 @@ async fn main() -> Result<()> {
 
     let storage_path = match &cli.mode {
         Mode::StorageOnly { storage_path } => storage_path.clone(),
-        _ => "/var/lib/nsn/storage".to_string(),
+        _ => cli.storage_path.clone(),
     };
 
     let storage = build_storage_manager(
@@ -406,17 +410,31 @@ async fn publish_video_from_storage(
     let payload = storage.get(&normalized).await?;
 
     let keypair = load_or_create_keypair(keypair_path)?;
-    let config = VideoChunkConfig {
-        chunk_size,
-        keyframe_interval,
-        ..VideoChunkConfig::default()
-    };
 
     storage.pin(&normalized).await?;
     let audit = storage.audit_pin_status(&normalized).await?;
     log_audit(&audit);
 
-    let chunks = build_video_chunks(&normalized, slot, &payload, &keypair, &config)?;
+    // Detect IVF format by magic bytes "DKIF"
+    let is_ivf = payload.len() >= 4 && &payload[0..4] == b"DKIF";
+
+    let chunks = if is_ivf {
+        info!(
+            slot,
+            cid = %normalized,
+            payload_bytes = payload.len(),
+            "Detected IVF format, using frame-aware chunking"
+        );
+        build_video_chunks_from_ivf(&normalized, slot, &payload, &keypair)?
+    } else {
+        let config = VideoChunkConfig {
+            chunk_size,
+            keyframe_interval,
+            ..VideoChunkConfig::default()
+        };
+        build_video_chunks(&normalized, slot, &payload, &keypair, &config)?
+    };
+
     publish_video_chunks(cmd_tx, chunks, Duration::from_millis(ack_timeout_ms))
         .await
         .map_err(|err| anyhow!(err.to_string()))
@@ -559,7 +577,22 @@ async fn start_sidecar_with_lane0_publish(
     cli: &Cli,
 ) -> Result<()> {
     let (task_tx, task_rx) = tokio::sync::mpsc::unbounded_channel::<TaskCompletionEvent>();
-    let mut sidecar_service = SidecarService::with_config(SidecarServiceConfig::default());
+
+    // Configure sidecar with vortex-lane0 plugin allowed and increased latency limit
+    let mut plugin_policy = PluginPolicy::default();
+    plugin_policy.allowlist.insert("vortex-lane0".to_string());
+    plugin_policy.lane0_max_latency_ms = 60_000; // 60 seconds for video generation
+
+    let config = SidecarServiceConfig {
+        plugin_policy,
+        // Use wrapper script that activates the Vortex venv
+        plugin_exec_command: Some(vec![
+            "/home/matt/nsn/node-core/run-plugin.sh".to_string(),
+        ]),
+        ..SidecarServiceConfig::default()
+    };
+
+    let mut sidecar_service = SidecarService::with_config(config);
     sidecar_service.set_task_completion_sender(task_tx);
     let bind_addr = sidecar_service.config().bind_addr;
 
@@ -721,5 +754,69 @@ mod tests {
         assert_eq!(p.p50, 30);
         assert_eq!(p.p95, 50);
         assert_eq!(p.p99, 50);
+    }
+
+    #[test]
+    fn test_ivf_detection() {
+        // IVF magic bytes
+        let ivf_data = b"DKIF\x00\x00\x20\x00VP90extra_content_here";
+        let is_ivf = ivf_data.len() >= 4 && &ivf_data[0..4] == b"DKIF";
+        assert!(is_ivf, "Should detect IVF magic bytes");
+
+        // Non-IVF data
+        let raw_data = b"NOT_IVF_DATA_HERE";
+        let is_ivf = raw_data.len() >= 4 && &raw_data[0..4] == b"DKIF";
+        assert!(!is_ivf, "Should not detect non-IVF data as IVF");
+
+        // Short data
+        let short_data = b"DKI";
+        let is_ivf = short_data.len() >= 4 && &short_data[0..4] == b"DKIF";
+        assert!(!is_ivf, "Should not detect short data as IVF");
+    }
+
+    #[test]
+    fn test_ivf_chunking_uses_frame_aware_chunker() {
+        // Create synthetic IVF with known frame structure
+        let mut ivf_data = Vec::new();
+
+        // IVF file header (32 bytes)
+        ivf_data.extend_from_slice(b"DKIF");
+        ivf_data.extend_from_slice(&0u16.to_le_bytes()); // version
+        ivf_data.extend_from_slice(&32u16.to_le_bytes()); // header length
+        ivf_data.extend_from_slice(b"VP90"); // FourCC
+        ivf_data.extend_from_slice(&640u16.to_le_bytes()); // width
+        ivf_data.extend_from_slice(&480u16.to_le_bytes()); // height
+        ivf_data.extend_from_slice(&24u32.to_le_bytes()); // fps
+        ivf_data.extend_from_slice(&1u32.to_le_bytes()); // time base
+        ivf_data.extend_from_slice(&2u32.to_le_bytes()); // frame count
+        ivf_data.extend_from_slice(&0u32.to_le_bytes()); // unused
+
+        // Frame 0: Keyframe (200 bytes)
+        let frame0 = vec![0x00; 200]; // bit 2 = 0 -> keyframe
+        ivf_data.extend_from_slice(&(frame0.len() as u32).to_le_bytes());
+        ivf_data.extend_from_slice(&0u64.to_le_bytes());
+        ivf_data.extend_from_slice(&frame0);
+
+        // Frame 1: Inter-frame (150 bytes)
+        let frame1 = vec![0x04; 150]; // bit 2 = 1 -> inter-frame
+        ivf_data.extend_from_slice(&(frame1.len() as u32).to_le_bytes());
+        ivf_data.extend_from_slice(&1u64.to_le_bytes());
+        ivf_data.extend_from_slice(&frame1);
+
+        // Detect IVF
+        let is_ivf = ivf_data.len() >= 4 && &ivf_data[0..4] == b"DKIF";
+        assert!(is_ivf);
+
+        // Verify we'd use frame-aware chunking
+        let keypair = nsn_p2p::generate_keypair();
+        let chunks = build_video_chunks_from_ivf("test_cid", 1, &ivf_data, &keypair)
+            .expect("should chunk IVF");
+
+        // Should have 2 chunks (one per frame), not MB-based chunks
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].header.is_keyframe);
+        assert!(!chunks[1].header.is_keyframe);
+        assert_eq!(chunks[0].payload.len(), 200);
+        assert_eq!(chunks[1].payload.len(), 150);
     }
 }

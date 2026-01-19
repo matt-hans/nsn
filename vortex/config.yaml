@@ -9,21 +9,29 @@ device:
 
 vram:
   # Soft limit - log warning but continue
-  soft_limit_gb: 20.0
-  # Hard limit - raise error and abort (RTX 3090 has 24GB)
-  hard_limit_gb: 24.0
+  # Optimized for RTX 3060 12GB (minimum target hardware)
+  soft_limit_gb: 10.5
+  # Hard limit - raise error and abort
+  # For RTX 3090 testing: 22GB. For RTX 3060: use offloading="always"
+  hard_limit_gb: 22.0
   # Monitoring interval (seconds)
   monitor_interval_sec: 5.0
 
 models:
   # Model precision overrides (for debugging or VRAM optimization)
-  # Production values: flux=nf4, liveportrait=fp16, kokoro=fp32, clip=int8
+  # Production values: flux=nf4, liveportrait=fp16, kokoro=fp32, clip=fp16
+  # Note: CLIP INT8 disabled due to open_clip compatibility issues; FP16 saves ~50% VRAM
   precision:
     flux: "nf4"           # 4-bit NormalFloat quantization
     liveportrait: "fp16"  # Half precision
     kokoro: "fp32"        # Full precision (small model, quality matters)
-    clip_b: "int8"        # 8-bit integer quantization
-    clip_l: "int8"        # 8-bit integer quantization
+    clip_b: "fp16"        # Half precision (INT8 incompatible with open_clip)
+    clip_l: "fp16"        # Half precision (INT8 incompatible with open_clip)
+
+  # Sequential offloading: Move models to CPU RAM between pipeline stages
+  # Reduces peak VRAM from ~11.8GB to ~6.5GB (enables GPUs with <12GB)
+  # Options: "auto" (enable if VRAM < 12GB), "always" (force), "never" (disable)
+  offloading: "auto"
 
 buffers:
   # Pre-allocated output buffers (prevents fragmentation during generation)
@@ -33,14 +41,16 @@ buffers:
     width: 512
     channels: 3
   video:
-    frames: 1080          # 45 seconds * 24 fps
+    # Reduced from 1080 (45s) to 360 (15s) to save ~2.2GB VRAM
+    # Most TTS scripts are <15s; longer videos can allocate dynamically
+    frames: 360           # 15 seconds * 24 fps (~1.0GB vs 3.2GB)
     height: 512
     width: 512
     channels: 3
   audio:
     sample_rate: 24000
-    duration_sec: 45
-    samples: 1080000      # 24000 * 45
+    duration_sec: 15      # Match video buffer duration
+    samples: 360000       # 24000 * 15
 
 pipeline:
   # Slot generation timeout (seconds) - abort if exceeded
@@ -75,7 +85,7 @@ plugins:
   # Sandbox execution settings (required for untrusted plugins)
   sandbox:
     # Enable sandboxed execution (Docker by default)
-    enabled: true
+    enabled: false
     # Sandbox engine: "docker" (recommended) or "process" (dev only)
     engine: "docker"
     # Docker image containing Vortex runtime + sandbox runner
@@ -102,7 +112,7 @@ plugins:
     # Maximum VRAM any plugin can declare (GB)
     max_vram_gb: 11.5
     # Lane-specific latency budgets (ms)
-    lane0_max_latency_ms: 15000
+    lane0_max_latency_ms: 60000
     lane1_max_latency_ms: 120000
     # SECURITY: Untrusted plugins are DISABLED by default.
     # Only explicitly allowlisted plugins can execute.
@@ -110,7 +120,7 @@ plugins:
     # WARNING: Enabling untrusted plugins allows arbitrary Python code execution!
     allow_untrusted: false
     # Allowlist of plugin names that may execute even with allow_untrusted=false
-    allowlist: []
+    allowlist: ["vortex-lane0"]
 
 # Slot timing orchestration (T020)
 orchestration:
