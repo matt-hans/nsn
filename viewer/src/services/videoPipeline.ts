@@ -103,6 +103,7 @@ export class VideoPipeline {
 			chunk_index: message.chunk_index,
 			data: message.data,
 			timestamp: message.timestamp,
+			is_keyframe: message.is_keyframe,
 		});
 
 		// Record download speed for ABR
@@ -167,10 +168,16 @@ export class VideoPipeline {
 		chunk_index: number;
 		data: Uint8Array;
 		timestamp: number;
+		is_keyframe: boolean;
 	}): void {
+		// Calculate timestamp from frame index for consistent timing
+		// WebCodecs expects microseconds
+		const frameDurationUs = 1_000_000 / 24; // 24 fps
+		const timestamp = chunk.chunk_index * frameDurationUs;
+
 		const encodedChunk = new EncodedVideoChunk({
-			type: chunk.chunk_index === 0 ? "key" : "delta",
-			timestamp: chunk.timestamp,
+			type: chunk.is_keyframe ? "key" : "delta",
+			timestamp: timestamp,
 			data: chunk.data,
 		});
 

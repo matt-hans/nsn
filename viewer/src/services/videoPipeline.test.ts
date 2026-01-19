@@ -142,6 +142,7 @@ describe("VideoPipeline", () => {
 				chunk_index: 0,
 				data: message.data,
 				timestamp: 1000000,
+				is_keyframe: true,
 			});
 
 			expect(abrController.recordDownloadSpeed).toHaveBeenCalledWith(
@@ -184,6 +185,7 @@ describe("VideoPipeline", () => {
 				chunk_index: 0,
 				data: new Uint8Array([1, 2, 3]),
 				timestamp: 1000000,
+				is_keyframe: true,
 			});
 
 			pipeline.start();
@@ -225,6 +227,7 @@ describe("VideoPipeline", () => {
 				chunk_index: 0,
 				data: new Uint8Array([1, 2, 3]),
 				timestamp: 1000000,
+				is_keyframe: true,
 			});
 
 			pipeline.start();
@@ -246,6 +249,7 @@ describe("VideoPipeline", () => {
 				chunk_index: 5,
 				data: new Uint8Array([1, 2, 3]),
 				timestamp: 2000000,
+				is_keyframe: false,
 			});
 
 			pipeline.start();

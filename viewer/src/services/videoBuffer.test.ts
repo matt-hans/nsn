@@ -20,6 +20,7 @@ describe("VideoBuffer", () => {
 			chunk_index: 0,
 			data: new Uint8Array([1, 2, 3]),
 			timestamp: Date.now(),
+			is_keyframe: true,
 		};
 		buffer.addChunk(chunk);
 		expect(buffer.getNextChunk()).toEqual(chunk);
@@ -31,18 +32,21 @@ describe("VideoBuffer", () => {
 			chunk_index: 2,
 			data: new Uint8Array([1]),
 			timestamp: Date.now(),
+			is_keyframe: false,
 		};
 		const chunk2: VideoChunk = {
 			slot: 1,
 			chunk_index: 0,
 			data: new Uint8Array([2]),
 			timestamp: Date.now(),
+			is_keyframe: true,
 		};
 		const chunk3: VideoChunk = {
 			slot: 1,
 			chunk_index: 1,
 			data: new Uint8Array([3]),
 			timestamp: Date.now(),
+			is_keyframe: false,
 		};
 
 		buffer.addChunk(chunk1);
@@ -68,6 +72,7 @@ describe("VideoBuffer", () => {
 				chunk_index: i,
 				data: new Uint8Array([i]),
 				timestamp: Date.now(),
+				is_keyframe: i === 0, // First frame is keyframe
 			});
 		}
 
@@ -82,6 +87,7 @@ describe("VideoBuffer", () => {
 				chunk_index: i,
 				data: new Uint8Array([i]),
 				timestamp: Date.now(),
+				is_keyframe: i === 0, // First frame is keyframe
 			});
 		}
 
@@ -94,6 +100,7 @@ describe("VideoBuffer", () => {
 			chunk_index: 0,
 			data: new Uint8Array([1]),
 			timestamp: Date.now(),
+			is_keyframe: true,
 		});
 		buffer.clear();
 		expect(buffer.getNextChunk()).toBeNull();
