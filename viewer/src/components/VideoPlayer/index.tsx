@@ -51,8 +51,8 @@ export default function VideoPlayer() {
 					throw new Error("Failed to create video pipeline");
 				}
 
-				// Initialize decoder
-				await pipeline.init("vp09.00.10.08");
+				// Initialize decoder with VP9 Level 4.1 (supports 3Mbps, 4K)
+				await pipeline.init("vp09.00.41.08");
 
 				// P2P connection and video chunk handling is now managed by useP2PConnection hook
 				// The hook calls connectP2PToPipeline() which subscribes to video topic

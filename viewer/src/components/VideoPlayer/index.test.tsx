@@ -136,11 +136,12 @@ describe("VideoPlayer", () => {
 			});
 		});
 
-		it("should initialize decoder with VP9 codec", async () => {
+		it("should initialize decoder with VP9 Level 4.1 codec", async () => {
 			render(<VideoPlayer />);
 
 			await waitFor(() => {
-				expect(mockPipeline.init).toHaveBeenCalledWith("vp09.00.10.08");
+				// VP9 Level 4.1 supports 3Mbps and 4K resolution
+				expect(mockPipeline.init).toHaveBeenCalledWith("vp09.00.41.08");
 			});
 		});
 
