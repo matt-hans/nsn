@@ -2,10 +2,24 @@
 // Hardware-accelerated video decoding
 
 export class VideoDecoderService {
+	private static isSupported: boolean | null = null;
 	private decoder: VideoDecoder | null = null;
 	private canvas: HTMLCanvasElement;
 	private ctx: CanvasRenderingContext2D;
 	private isConfigured = false;
+
+	/**
+	 * Check if WebCodecs VideoDecoder is available.
+	 * Caches result for performance.
+	 */
+	static checkSupport(): boolean {
+		if (VideoDecoderService.isSupported === null) {
+			VideoDecoderService.isSupported =
+				typeof VideoDecoder !== "undefined" &&
+				typeof EncodedVideoChunk !== "undefined";
+		}
+		return VideoDecoderService.isSupported;
+	}
 
 	constructor(canvas: HTMLCanvasElement) {
 		this.canvas = canvas;
@@ -17,6 +31,13 @@ export class VideoDecoderService {
 	 * Initialize decoder with codec
 	 */
 	async init(codec: string): Promise<void> {
+		if (!VideoDecoderService.checkSupport()) {
+			throw new Error(
+				"WebCodecs not supported in this browser. " +
+					"Requires Chrome 94+, Edge 94+, or Firefox 130+ with secure context (HTTPS/localhost).",
+			);
+		}
+
 		const config: VideoDecoderConfig = {
 			codec, // e.g., 'vp09.00.10.08' for VP9
 			optimizeForLatency: true,
