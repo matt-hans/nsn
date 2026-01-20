@@ -27,6 +27,7 @@ Latency Target: <8s P99 on RTX 3060 for 45s video
 
 import logging
 import os
+import pickle
 import subprocess
 import sys
 import tempfile
@@ -34,6 +35,7 @@ import time
 from pathlib import Path
 from typing import List, Optional, Any
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
@@ -160,6 +162,18 @@ class _InProcessGPUBackend:
         device: str = "cuda:0",
         dtype: torch.dtype = torch.float16,
         repo_path: Optional[Path] = None,
+        animation_region: str = "all",
+        relative_motion: bool = True,
+        flag_pasteback: bool = True,
+        flag_do_crop: bool = True,
+        crop_driving_video: bool = False,
+        driving_multiplier: float = 1.0,
+        crop_scale: float = 2.3,
+        crop_vx_ratio: float = 0.0,
+        crop_vy_ratio: float = -0.125,
+        expression_scale: float = 1.3,
+        noise_threshold: float = 0.02,
+        driving_smooth_observation_variance: float = 3e-7,
     ):
         """Initialize in-process GPU backend.
 
@@ -167,12 +181,28 @@ class _InProcessGPUBackend:
             device: CUDA device string
             dtype: Model precision (torch.float16 recommended)
             repo_path: Path to LivePortrait repository
+            expression_scale: Amplification factor for speech movements
+            noise_threshold: Suppress micro-movements below this magnitude
+            driving_smooth_observation_variance: LivePortrait jitter filter param
         """
         self.device = device
         self.dtype = dtype
         self.repo_path = repo_path
+        self.animation_region = animation_region
+        self.relative_motion = relative_motion
+        self.flag_pasteback = flag_pasteback
+        self.flag_do_crop = flag_do_crop
+        self.crop_driving_video = crop_driving_video
+        self.driving_multiplier = driving_multiplier
+        self.crop_scale = crop_scale
+        self.crop_vx_ratio = crop_vx_ratio
+        self.crop_vy_ratio = crop_vy_ratio
+        self._expression_scale = expression_scale
+        self._noise_threshold = noise_threshold
+        self._driving_smooth_variance = driving_smooth_observation_variance
         self._pipeline = None
         self._loaded = False
+        self._lip_indices = (6, 12, 14, 17, 19, 20)
 
         # Add repo to path if needed
         if repo_path and repo_path.exists():
@@ -190,17 +220,84 @@ class _InProcessGPUBackend:
             return True
 
         try:
-            from liveportrait.live_portrait_pipeline import LivePortraitPipeline as LPPipeline
+            from liveportrait.config.crop_config import CropConfig
             from liveportrait.config.inference_config import InferenceConfig
+            from liveportrait.live_portrait_pipeline import LivePortraitPipeline as LPPipeline
 
-            # Configure for FP16 to fit VRAM budget
-            inference_cfg = InferenceConfig(
-                flag_use_half_precision=True,  # CRITICAL: Use FP16
-                device_id=int(self.device.split(":")[-1]) if ":" in self.device else 0,
-            )
+            device_id = int(self.device.split(":")[-1]) if ":" in self.device else 0
+            flag_force_cpu = self.device.startswith("cpu")
+
+            inference_cfg = InferenceConfig()
+            inference_cfg.flag_use_half_precision = self.dtype == torch.float16
+            inference_cfg.device_id = device_id
+            inference_cfg.flag_force_cpu = flag_force_cpu
+            inference_cfg.flag_relative_motion = self.relative_motion
+            inference_cfg.flag_pasteback = self.flag_pasteback
+            inference_cfg.flag_do_crop = self.flag_do_crop
+            inference_cfg.flag_crop_driving_video = self.crop_driving_video
+            inference_cfg.animation_region = self.animation_region
+            inference_cfg.driving_multiplier = self.driving_multiplier
+
+            crop_cfg = CropConfig()
+            crop_cfg.device_id = device_id
+            crop_cfg.flag_force_cpu = flag_force_cpu
+            crop_cfg.scale = self.crop_scale
+            crop_cfg.vx_ratio = self.crop_vx_ratio
+            crop_cfg.vy_ratio = self.crop_vy_ratio
+
+            if self.repo_path:
+                weights_dir = self.repo_path / "pretrained_weights"
+                inference_cfg.models_config = str(
+                    self.repo_path / "src" / "config" / "models.yaml"
+                )
+                inference_cfg.checkpoint_F = str(
+                    weights_dir
+                    / "liveportrait"
+                    / "base_models"
+                    / "appearance_feature_extractor.pth"
+                )
+                inference_cfg.checkpoint_M = str(
+                    weights_dir / "liveportrait" / "base_models" / "motion_extractor.pth"
+                )
+                inference_cfg.checkpoint_G = str(
+                    weights_dir / "liveportrait" / "base_models" / "spade_generator.pth"
+                )
+                inference_cfg.checkpoint_W = str(
+                    weights_dir / "liveportrait" / "base_models" / "warping_module.pth"
+                )
+                inference_cfg.checkpoint_S = str(
+                    weights_dir
+                    / "liveportrait"
+                    / "retargeting_models"
+                    / "stitching_retargeting_module.pth"
+                )
+
+                crop_cfg.insightface_root = str(weights_dir / "insightface")
+                crop_cfg.landmark_ckpt_path = str(
+                    weights_dir / "liveportrait/landmark.onnx"
+                )
+                crop_cfg.xpose_config_file_path = str(
+                    self.repo_path
+                    / "src"
+                    / "utils"
+                    / "dependencies"
+                    / "XPose"
+                    / "config_model"
+                    / "UniPose_SwinT.py"
+                )
+                crop_cfg.xpose_embedding_cache_path = str(
+                    self.repo_path
+                    / "src"
+                    / "utils"
+                    / "resources"
+                    / "clip_embedding"
+                )
+                crop_cfg.xpose_ckpt_path = str(
+                    weights_dir / "liveportrait_animals/xpose.pth"
+                )
 
             logger.info("Loading LivePortrait in-process (FP16, device=%s)", self.device)
-            self._pipeline = LPPipeline(inference_cfg=inference_cfg)
+            self._pipeline = LPPipeline(inference_cfg=inference_cfg, crop_cfg=crop_cfg)
             self._loaded = True
 
             # Log VRAM after loading
@@ -220,6 +317,199 @@ class _InProcessGPUBackend:
             logger.error(f"Failed to load LivePortrait in-process: {e}", exc_info=True)
             return False
 
+    def _loop_list(self, items: list[Any], target_len: int) -> list[Any]:
+        if not items:
+            return []
+        return [items[i % len(items)] for i in range(target_len)]
+
+    def _enhance_expression(
+        self,
+        driving_expression: np.ndarray,
+        scale: float = 1.3,
+        noise_threshold: float = 0.02,
+    ) -> np.ndarray:
+        """Non-linear amplification with noise suppression.
+
+        Args:
+            driving_expression: Expression array [frames, indices, coords]
+            scale: Amplification factor for speech movements
+            noise_threshold: Suppress deltas below this magnitude
+
+        Returns:
+            Enhanced expression array
+        """
+        if driving_expression.size == 0:
+            return driving_expression
+
+        # Use first frame as rest pose reference
+        rest_pose = driving_expression[0:1]
+        delta = driving_expression - rest_pose
+
+        # Soft-gate: suppress noise, preserve/amplify speech
+        abs_delta = np.abs(delta)
+        clean_delta = np.where(
+            abs_delta < noise_threshold,
+            delta * 0.3,  # Suppress micro-noise
+            delta * scale,  # Amplify speech
+        )
+
+        # Clamp to prevent extreme values
+        clean_delta = np.clip(clean_delta, -1.0, 1.0)
+
+        return rest_pose + clean_delta
+
+    def _scalar_from_template(self, entry: Any) -> float:
+        if isinstance(entry, np.ndarray):
+            return float(entry.reshape(-1)[0])
+        if isinstance(entry, (list, tuple)):
+            return self._scalar_from_template(entry[0]) if entry else 0.0
+        return float(entry)
+
+    def _visemes_to_lip_ratios(
+        self,
+        visemes: list[torch.Tensor],
+        template_lips: list[Any],
+    ) -> list[np.ndarray]:
+        if not visemes:
+            return []
+
+        jaw_opens = [
+            float(v[0].clamp(0.0, 1.0).item())
+            for v in visemes
+        ]
+
+        min_val, max_val = 0.1, 0.6
+        if template_lips:
+            values = [self._scalar_from_template(v) for v in template_lips]
+            if values:
+                min_val, max_val = min(values), max(values)
+                if max_val - min_val < 1e-6:
+                    min_val -= 0.01
+                    max_val += 0.01
+
+        return [
+            np.array([[min_val + jaw * (max_val - min_val)]], dtype=np.float32)
+            for jaw in jaw_opens
+        ]
+
+    def _build_audio_template(
+        self,
+        template: dict[str, Any],
+        visemes: list[torch.Tensor],
+        num_frames: int,
+        fps: int,
+    ) -> dict[str, Any]:
+        motion = template.get("motion") or []
+        if not motion:
+            raise ValueError("Driving template missing motion entries")
+
+        def _normalize_exp(exp_value: Any) -> tuple[np.ndarray, bool]:
+            exp_arr = np.asarray(exp_value)
+            if exp_arr.ndim == 3 and exp_arr.shape[0] == 1:
+                return exp_arr[0], True
+            return exp_arr, False
+
+        if not visemes:
+            new_motion = [dict(motion[i % len(motion)]) for i in range(num_frames)]
+        else:
+            exp_samples = []
+            for item in motion:
+                exp_arr, _ = _normalize_exp(item["exp"])
+                exp_samples.append(exp_arr)
+            exp_stack = np.stack(exp_samples, axis=0)
+
+            lip_indices = self._lip_indices
+            if exp_stack.ndim != 3 or exp_stack.shape[1] <= max(lip_indices):
+                logger.warning(
+                    "LivePortrait template exp shape unexpected; skipping lip modulation",
+                    extra={"exp_shape": exp_stack.shape},
+                )
+                new_motion = [dict(motion[i % len(motion)]) for i in range(num_frames)]
+                exp_min = None
+                exp_max = None
+                exp_range = None
+            else:
+                exp_min = exp_stack[:, lip_indices, :].min(axis=0)
+                exp_max = exp_stack[:, lip_indices, :].max(axis=0)
+                exp_range = np.where(
+                    exp_max - exp_min == 0,
+                    1e-6,
+                    exp_max - exp_min,
+                )
+                new_motion = []
+                for i in range(num_frames):
+                    base = motion[i % len(motion)]
+                    exp_arr, had_batch = _normalize_exp(base["exp"])
+                    exp = np.array(exp_arr, copy=True)
+                    jaw_open = float(visemes[i][0].clamp(0.0, 1.0).item())
+                    exp[lip_indices, :] = exp_min + jaw_open * exp_range
+
+                    # Apply non-linear enhancement to lip expression with noise gating
+                    if self._expression_scale != 1.0:
+                        lip_exp = exp[lip_indices, :]
+                        rest_lip = exp_min
+                        delta = lip_exp - rest_lip
+                        # Noise gate + amplification
+                        abs_delta = np.abs(delta)
+                        clean_delta = np.where(
+                            abs_delta < self._noise_threshold,
+                            delta * 0.3,
+                            delta * self._expression_scale,
+                        )
+                        exp[lip_indices, :] = rest_lip + np.clip(clean_delta, -1.0, 1.0)
+
+                    if had_batch:
+                        exp = exp[None, ...]
+
+                    item = dict(base)
+                    item["exp"] = exp.astype(np.float32, copy=False)
+                    new_motion.append(item)
+
+        c_eyes = template.get("c_eyes_lst") or template.get("c_d_eyes_lst") or []
+        c_lip = template.get("c_lip_lst") or template.get("c_d_lip_lst") or []
+
+        template_out = dict(template)
+        template_out["n_frames"] = num_frames
+        template_out["output_fps"] = fps
+        template_out["motion"] = new_motion
+        if c_eyes:
+            template_out["c_eyes_lst"] = self._loop_list(c_eyes, num_frames)
+        if visemes:
+            template_out["c_lip_lst"] = self._visemes_to_lip_ratios(visemes, c_lip)
+        elif c_lip:
+            template_out["c_lip_lst"] = self._loop_list(c_lip, num_frames)
+
+        return template_out
+
+    def to(self, device: str) -> "_InProcessGPUBackend":
+        """Move LivePortrait weights to the target device."""
+        self.device = device
+        if not self._loaded or not self._pipeline:
+            return self
+
+        wrapper = getattr(self._pipeline, "live_portrait_wrapper", None)
+        if wrapper is None:
+            return self
+
+        wrapper.device = device
+        modules = [
+            wrapper.appearance_feature_extractor,
+            wrapper.motion_extractor,
+            wrapper.warping_module,
+            wrapper.spade_generator,
+            wrapper.stitching_retargeting_module,
+        ]
+        for module in modules:
+            if module is None:
+                continue
+            if isinstance(module, dict):
+                for sub in module.values():
+                    sub.to(device)
+            else:
+                module.to(device)
+
+        return self
+
     def warp_sequence(
         self,
         source_image: torch.Tensor,
@@ -227,6 +517,7 @@ class _InProcessGPUBackend:
         expression_params: List[torch.Tensor],
         num_frames: int,
         driving_source: Optional[Path] = None,
+        fps: int = 24,
     ) -> torch.Tensor:
         """Generate video frames using in-process GPU inference.
 
@@ -236,6 +527,7 @@ class _InProcessGPUBackend:
             expression_params: Per-frame expression parameters
             num_frames: Number of frames to generate
             driving_source: Driving video path for motion transfer
+            fps: Target frame rate for template alignment
 
         Returns:
             Video tensor [num_frames, 3, 512, 512]
@@ -248,39 +540,47 @@ class _InProcessGPUBackend:
             raise ValueError("driving_source is required for GPU backend")
 
         try:
-            # Save source image to temp file (LivePortrait expects file path)
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp_path = Path(tmp.name)
-                self._save_image(source_image, tmp_path)
+            from liveportrait.config.argument_config import ArgumentConfig
 
-            try:
-                # Run inference
-                result = self._pipeline.execute(
-                    source_path=str(tmp_path),
-                    driving_path=str(driving_source),
-                    flag_relative_motion=True,  # Fix "static head" issue
-                    flag_pasteback=True,
+            driving_path = Path(driving_source).expanduser()
+            if not driving_path.exists():
+                raise FileNotFoundError(f"Driving source not found: {driving_path}")
+
+            with tempfile.TemporaryDirectory(prefix="vortex-liveportrait-") as tmpdir:
+                tmp_path = Path(tmpdir)
+                source_path = tmp_path / "source.png"
+                self._save_image(source_image, source_path)
+
+                driving_input_path = driving_path
+                if driving_path.suffix.lower() == ".pkl":
+                    with driving_path.open("rb") as handle:
+                        base_template = pickle.load(handle)
+                    template = self._build_audio_template(
+                        base_template,
+                        visemes,
+                        num_frames,
+                        fps,
+                    )
+                    driving_input_path = tmp_path / "driving_audio.pkl"
+                    with driving_input_path.open("wb") as handle:
+                        pickle.dump(template, handle)
+
+                args = ArgumentConfig(
+                    source=str(source_path),
+                    driving=str(driving_input_path),
+                    output_dir=str(tmp_path),
+                    flag_crop_driving_video=self.crop_driving_video,
                 )
 
-                # Convert result to tensor
-                if result is not None and hasattr(result, 'frames'):
-                    frames = result.frames
-                    if isinstance(frames, list):
-                        frames = torch.stack([
-                            torch.from_numpy(f).permute(2, 0, 1).float() / 255.0
-                            for f in frames
-                        ])
-                    return frames.to(device=self.device)
-                else:
-                    # Return from video file output
-                    output_path = self._find_output_video()
-                    if output_path:
-                        return self._load_video_to_tensor(output_path)
+                wfp, _ = self._pipeline.execute(args)
+                output_path = (
+                    Path(wfp)
+                    if wfp
+                    else self._find_latest_output_in_dirs([tmp_path])
+                )
 
-            finally:
-                # Cleanup temp file
-                if tmp_path.exists():
-                    tmp_path.unlink()
+                if output_path and output_path.exists():
+                    return self._load_video_to_tensor(output_path)
 
         except Exception as e:
             logger.error(f"GPU backend warp_sequence failed: {e}", exc_info=True)
@@ -300,6 +600,16 @@ class _InProcessGPUBackend:
             raise RuntimeError("Pillow required for LivePortrait") from exc
 
         Image.fromarray(image).save(path)
+
+    def _find_latest_output_in_dirs(self, directories: list[Path]) -> Optional[Path]:
+        candidates: list[Path] = []
+        for directory in directories:
+            if not directory.exists():
+                continue
+            candidates.extend(directory.glob("**/*.mp4"))
+        if not candidates:
+            return None
+        return max(candidates, key=lambda p: p.stat().st_mtime)
 
     def _find_output_video(self) -> Optional[Path]:
         """Find the most recent output video from LivePortrait."""
@@ -393,6 +703,7 @@ class LivePortraitPipeline:
         use_safetensors: bool = True,
         cache_dir: Optional[str] = None,
         config: Optional[dict] = None,
+        local_only: bool = False,
     ):
         """Load LivePortrait pipeline (CLI adapter or fallback).
 
@@ -413,6 +724,16 @@ class LivePortraitPipeline:
 
         repo_path = os.getenv("LIVEPORTRAIT_HOME") or runtime_cfg.get("repo_path")
         repo_path = Path(repo_path).expanduser() if repo_path else None
+
+        if local_only:
+            if repo_path is None:
+                raise LivePortraitNotInstalledError(
+                    "Local-only mode requires LIVEPORTRAIT_HOME or runtime.repo_path to be set."
+                )
+            if not repo_path.exists():
+                raise LivePortraitNotInstalledError(
+                    f"Local-only mode requires LivePortrait repo at: {repo_path}"
+                )
 
         driving_source = os.getenv("LIVEPORTRAIT_DRIVING_SOURCE") or runtime_cfg.get(
             "driving_source"
@@ -435,6 +756,20 @@ class LivePortraitPipeline:
         crop_driving_video = bool(runtime_cfg.get("crop_driving_video", False))
         relative_motion = bool(runtime_cfg.get("relative_motion", True))
         use_output_dir_flag = bool(runtime_cfg.get("use_output_dir_flag", False))
+        flag_pasteback = bool(runtime_cfg.get("flag_pasteback", True))
+        flag_do_crop = bool(runtime_cfg.get("flag_do_crop", True))
+        driving_multiplier = float(runtime_cfg.get("driving_multiplier", 1.0))
+        crop_scale = float(runtime_cfg.get("crop_scale", 2.3))
+        crop_vx_ratio = float(runtime_cfg.get("crop_vx_ratio", 0.0))
+        crop_vy_ratio = float(runtime_cfg.get("crop_vy_ratio", -0.125))
+
+        # Extract lipsync config for expression enhancement
+        lipsync_cfg = config.get("lipsync", {})
+        expression_scale = float(lipsync_cfg.get("expression_scale", 1.3))
+        noise_threshold = float(lipsync_cfg.get("noise_threshold", 0.02))
+        driving_smooth_variance = float(
+            runtime_cfg.get("driving_smooth_observation_variance", 3e-7)
+        )
 
         # Backend selection priority: gpu > cli (no fallback - require real LivePortrait)
         # GPU backend saves ~3.5GB VRAM by sharing CUDA context
@@ -461,14 +796,9 @@ class LivePortraitPipeline:
 
         # Validate backend availability
         if backend == "gpu" and not _check_gpu_backend_available(repo_path):
-            logger.warning("GPU backend requested but unavailable; trying CLI backend")
-            if repo_path and (repo_path / "inference.py").exists():
-                backend = "cli"
-            else:
-                raise LivePortraitNotInstalledError(
-                    "GPU backend requested but LivePortrait package not importable, "
-                    "and CLI backend not available (inference.py not found)."
-                )
+            raise LivePortraitNotInstalledError(
+                "GPU backend requested but LivePortrait package not importable."
+            )
 
         if backend == "cli" and not (repo_path and (repo_path / "inference.py").exists()):
             raise LivePortraitNotInstalledError(
@@ -496,6 +826,18 @@ class LivePortraitPipeline:
                 device=device,
                 dtype=torch_dtype,
                 repo_path=repo_path,
+                animation_region=animation_region,
+                relative_motion=relative_motion,
+                flag_pasteback=flag_pasteback,
+                flag_do_crop=flag_do_crop,
+                crop_driving_video=crop_driving_video,
+                driving_multiplier=driving_multiplier,
+                crop_scale=crop_scale,
+                crop_vx_ratio=crop_vx_ratio,
+                crop_vy_ratio=crop_vy_ratio,
+                expression_scale=expression_scale,
+                noise_threshold=noise_threshold,
+                driving_smooth_observation_variance=driving_smooth_variance,
             )
             instance.device = device
 
@@ -514,6 +856,7 @@ class LivePortraitPipeline:
         expression_params: List[torch.Tensor],
         num_frames: int,
         driving_source: Optional[Path] = None,
+        fps: int = 24,
     ) -> torch.Tensor:
         """Warp source image into video sequence.
 
@@ -523,6 +866,7 @@ class LivePortraitPipeline:
             expression_params: Per-frame expression parameters
             num_frames: Number of frames to generate
             driving_source: Driving video or motion template path (required)
+            fps: Target frame rate (used to align driving template length)
 
         Returns:
             Video tensor [num_frames, 3, 512, 512]
@@ -545,14 +889,20 @@ class LivePortraitPipeline:
         if self.backend == "gpu" and self._gpu_backend is not None:
             try:
                 return self._gpu_backend.warp_sequence(
-                    source_image, visemes, expression_params, num_frames, driving_path
+                    source_image,
+                    visemes,
+                    expression_params,
+                    num_frames,
+                    driving_path,
+                    fps=fps,
                 )
             except Exception as e:
-                logger.warning(f"GPU backend failed: {e}; trying CLI backend")
-                # Fall through to CLI if GPU fails
+                raise RuntimeError(
+                    f"LivePortrait GPU backend failed: {e}"
+                ) from e
 
         # Priority 2: CLI backend (subprocess)
-        if self.backend == "cli" or (self.backend == "gpu" and self._gpu_backend is None):
+        if self.backend == "cli":
             try:
                 return self._run_cli(source_image, driving_path)
             except Exception as e:
@@ -762,6 +1112,7 @@ class LivePortraitModel:
         self.smoothing_window = int(
             self.config.get("lipsync", {}).get("smoothing_window", 3)
         )
+        self.lipsync_method = self.config.get("lipsync", {}).get("method", "wav2vec")
         logger.info("LivePortraitModel initialized", extra={"device": device})
 
     @torch.no_grad()
@@ -776,6 +1127,7 @@ class LivePortraitModel:
         output: Optional[torch.Tensor] = None,
         seed: Optional[int] = None,
         driving_source: Optional[Path] = None,
+        driver_sample_rate: Optional[int] = None,
     ) -> torch.Tensor:
         """Generate animated video from static image + audio.
 
@@ -821,17 +1173,18 @@ class LivePortraitModel:
             )
 
         # Truncate audio if too long
-        expected_samples = duration * self.sample_rate
+        sample_rate = driver_sample_rate or self.sample_rate
+        expected_samples = duration * sample_rate
         if driving_audio.shape[0] > expected_samples:
             original_samples = driving_audio.shape[0]
-            original_length = original_samples / self.sample_rate
+            original_length = original_samples / sample_rate
             driving_audio = driving_audio[:expected_samples]
             logger.warning(
                 f"Audio truncated from {original_length:.1f}s to {duration}s",
                 extra={"original_samples": original_samples},
             )
         elif driving_audio.shape[0] < expected_samples:
-            original_length = driving_audio.shape[0] / self.sample_rate
+            original_length = driving_audio.shape[0] / sample_rate
             pad_len = expected_samples - driving_audio.shape[0]
             driving_audio = F.pad(driving_audio, (0, pad_len))
             logger.warning(
@@ -851,7 +1204,11 @@ class LivePortraitModel:
 
         # Convert audio to per-frame visemes (lip-sync)
         visemes = audio_to_visemes(
-            driving_audio, fps, sample_rate=self.sample_rate, smoothing_window=self.smoothing_window
+            driving_audio,
+            fps,
+            sample_rate=sample_rate,
+            smoothing_window=self.smoothing_window,
+            method=self.lipsync_method,
         )
         visemes = self._normalize_visemes(visemes, num_frames)
 
@@ -888,6 +1245,7 @@ class LivePortraitModel:
             expression_params=expression_params_list,
             num_frames=num_frames,
             driving_source=driving_source,
+            fps=fps,
         )
 
         # Ensure output is in [0, 1] range
@@ -907,9 +1265,702 @@ class LivePortraitModel:
         return video
 
     @property
+    def repo_path(self) -> Optional[Path]:
+        """Get LivePortrait repository path from pipeline."""
+        return getattr(self.pipeline, "repo_path", None)
+
+    @torch.no_grad()
+    def animate_gated(
+        self,
+        source_image: torch.Tensor,
+        audio_path: str,
+        fps: int = 24,
+        template_name: str = "d7",
+    ) -> torch.Tensor:
+        """Generate video using audio-gated motion from template.
+
+        This method uses the AudioGatedDriver to blend between the source
+        face (rest pose) and a pre-recorded motion template based on audio
+        energy. This produces smooth, natural animation without the artifacts
+        caused by direct audio-to-motion synthesis.
+
+        Args:
+            source_image: Actor image tensor [3, 512, 512] or [1, 3, 512, 512]
+            audio_path: Path to audio file (WAV, 24kHz)
+            fps: Output frame rate (default 24)
+            template_name: Motion template to use (default "d7")
+
+        Returns:
+            Video frames tensor [num_frames, 3, 512, 512]
+        """
+        import cv2
+        from vortex.models.audio_driver import AudioGatedDriver
+
+        # Ensure GPU backend is loaded
+        gpu_backend = getattr(self.pipeline, "_gpu_backend", None)
+        if gpu_backend is None or not gpu_backend._loaded:
+            if gpu_backend is not None:
+                if not gpu_backend.load():
+                    raise RuntimeError("Failed to load GPU backend")
+            else:
+                raise RuntimeError("GPU backend required for animate_gated")
+
+        lp_pipeline = gpu_backend._pipeline
+        wrapper = lp_pipeline.live_portrait_wrapper
+
+        # Handle input shape
+        if source_image.dim() == 4:
+            source_image = source_image.squeeze(0)
+
+        # Convert source image to LivePortrait format
+        img_np = source_image.permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np * 255).astype(np.uint8)
+        img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+
+        # Extract source face info (the "anchor")
+        crop_info = lp_pipeline.cropper.crop_source_image(
+            img_bgr,
+            lp_pipeline.cropper.crop_cfg
+        )
+        if crop_info is None:
+            raise RuntimeError("Failed to detect face in source image")
+
+        img_crop_256 = crop_info['img_crop_256x256']
+        I_s = wrapper.prepare_source(img_crop_256)
+        x_s_info = wrapper.get_kp_info(I_s)
+
+        # Build source_info dict for driver
+        source_info = {
+            'exp': x_s_info['exp'].cpu(),
+            'scale': x_s_info['scale'].cpu(),
+            'R': self._euler_to_rotation_matrix_torch(
+                x_s_info['pitch'],
+                x_s_info['yaw'],
+                x_s_info['roll']
+            ).cpu(),
+            't': x_s_info['t'].cpu(),
+        }
+
+        # Find template path
+        if self.repo_path is None:
+            raise RuntimeError("LivePortrait repo_path required for animate_gated")
+        template_path = self.repo_path / f"assets/examples/driving/{template_name}.pkl"
+        if not template_path.exists():
+            raise FileNotFoundError(f"Motion template not found: {template_path}")
+
+        # Initialize audio-gated driver
+        driver = AudioGatedDriver(str(template_path), device=str(self.device))
+
+        # Generate motion from audio
+        logger.info(
+            "Generating audio-gated motion",
+            extra={
+                "template": template_name,
+                "audio_path": audio_path,
+                "fps": fps,
+            }
+        )
+        motion_data = driver.drive(audio_path, source_info, fps=fps)
+
+        # Build driving template in LivePortrait format
+        driving_template = {
+            'n_frames': motion_data['n_frames'],
+            'output_fps': motion_data['output_fps'],
+            'motion': motion_data['motion'],
+            'c_eyes_lst': motion_data['c_d_eyes_lst'],
+            'c_lip_lst': motion_data['c_d_lip_lst'],
+        }
+
+        # Use existing template animation path
+        logger.info(
+            "Rendering video from gated motion",
+            extra={
+                "num_frames": driving_template['n_frames'],
+                "fps": fps,
+            }
+        )
+
+        video = self._animate_with_template(
+            source_image=source_image.unsqueeze(0) if source_image.dim() == 3 else source_image,
+            driving_template=driving_template,
+            num_frames=driving_template['n_frames'],
+            fps=fps,
+        )
+
+        return video
+
+    @staticmethod
+    def _euler_to_rotation_matrix_torch(
+        pitch: torch.Tensor,
+        yaw: torch.Tensor,
+        roll: torch.Tensor,
+    ) -> torch.Tensor:
+        """Convert euler angles to rotation matrix.
+
+        Args:
+            pitch: Rotation around X axis
+            yaw: Rotation around Y axis
+            roll: Rotation around Z axis
+
+        Returns:
+            Rotation matrix [1, 3, 3]
+        """
+        # Ensure scalar tensors
+        if pitch.dim() > 0:
+            pitch = pitch.squeeze()
+        if yaw.dim() > 0:
+            yaw = yaw.squeeze()
+        if roll.dim() > 0:
+            roll = roll.squeeze()
+
+        cos_p, sin_p = torch.cos(pitch), torch.sin(pitch)
+        cos_y, sin_y = torch.cos(yaw), torch.sin(yaw)
+        cos_r, sin_r = torch.cos(roll), torch.sin(roll)
+
+        # R = Rz @ Ry @ Rx
+        R = torch.zeros(3, 3, device=pitch.device, dtype=pitch.dtype)
+
+        R[0, 0] = cos_y * cos_r
+        R[0, 1] = sin_p * sin_y * cos_r - cos_p * sin_r
+        R[0, 2] = cos_p * sin_y * cos_r + sin_p * sin_r
+        R[1, 0] = cos_y * sin_r
+        R[1, 1] = sin_p * sin_y * sin_r + cos_p * cos_r
+        R[1, 2] = cos_p * sin_y * sin_r - sin_p * cos_r
+        R[2, 0] = -sin_y
+        R[2, 1] = sin_p * cos_y
+        R[2, 2] = cos_p * cos_y
+
+        return R.unsqueeze(0)
+
+    @torch.no_grad()
+    def animate_from_motion(
+        self,
+        source_image: torch.Tensor,
+        motion_data: dict,
+        fps: int = 25,
+        output: Optional[torch.Tensor] = None,
+        seed: Optional[int] = None,
+    ) -> torch.Tensor:
+        """Generate animated video from static image + pre-computed motion data.
+
+        This method accepts motion sequences generated by JoyVASA or similar
+        audio-to-motion models, bypassing the internal audio-to-viseme conversion.
+        This provides higher quality lip-sync as the motion data includes full
+        facial motion (not just mouth shapes).
+
+        Args:
+            source_image: Actor image from Flux, shape [3, 512, 512], range [0, 1]
+            motion_data: Pre-computed motion dict from JoyVASA with keys:
+                - 'n_frames': int - number of motion frames
+                - 'output_fps': int - motion frame rate (typically 25)
+                - 'motion': list[dict] - per-frame motion data with:
+                    - 'exp': np.ndarray [1, 21, 3] or [21, 3] - expression coefficients
+                    - 'scale': np.ndarray [1, 1] or scalar - face scale
+                    - 'R': np.ndarray [1, 3, 3] or [3, 3] - rotation matrix
+                    - 't': np.ndarray [1, 3] or [3] - translation vector
+            fps: Output video frame rate (default: 25 to match JoyVASA)
+            output: Pre-allocated output buffer [num_frames, 3, 512, 512]
+            seed: Random seed for deterministic generation
+
+        Returns:
+            torch.Tensor: Video tensor, shape [num_frames, 3, 512, 512], range [0, 1]
+
+        Example:
+            >>> # Generate motion from audio using JoyVASA
+            >>> motion_data = joyvasa.generate_motion(audio, duration_sec=15.0)
+            >>> # Render video using pre-computed motion
+            >>> video = liveportrait.animate_from_motion(
+            ...     source_image=actor_image,
+            ...     motion_data=motion_data,
+            ...     fps=25,
+            ... )
+        """
+        # Input validation
+        if source_image.shape != (3, 512, 512):
+            raise ValueError(
+                f"Invalid source_image shape: {source_image.shape}. "
+                f"Expected [3, 512, 512]"
+            )
+
+        if "motion" not in motion_data or not motion_data["motion"]:
+            raise ValueError("motion_data must contain 'motion' list with frame data")
+
+        # Set deterministic seed if provided
+        if seed is not None:
+            torch.manual_seed(seed)
+            logger.debug("Set random seed: %d", seed)
+
+        # Get motion parameters
+        motion_fps = motion_data.get("output_fps", 25)
+        num_motion_frames = motion_data.get("n_frames", len(motion_data["motion"]))
+
+        # Calculate output frame count based on requested fps
+        duration_sec = num_motion_frames / motion_fps
+        num_frames = int(fps * duration_sec)
+
+        # Detect format and choose code path
+        is_delta_format = motion_data.get("format") == "relative_deltas"
+
+        logger.info(
+            "Animating from JoyVASA motion data",
+            extra={
+                "motion_frames": num_motion_frames,
+                "motion_fps": motion_fps,
+                "output_frames": num_frames,
+                "output_fps": fps,
+                "duration_sec": duration_sec,
+                "format": "relative_deltas" if is_delta_format else "absolute",
+            },
+        )
+
+        if is_delta_format:
+            # Source-anchored motion adapter for JoyVASA relative deltas
+            # This extracts source motion in LivePortrait's coordinate space
+            # and applies JoyVASA's normalized deltas with appropriate scaling
+            logger.info("Using source-anchored motion adapter for JoyVASA deltas")
+
+            try:
+                # Extract source motion in LivePortrait coordinate space
+                source_motion = self._extract_source_motion(source_image)
+
+                # Log source motion range for debugging
+                exp_min = source_motion["exp"].min()
+                exp_max = source_motion["exp"].max()
+                logger.debug(
+                    "Source motion extracted",
+                    extra={
+                        "exp_range": f"[{exp_min:.4f}, {exp_max:.4f}]",
+                        "scale": float(source_motion["scale"].flat[0]),
+                    },
+                )
+
+                # Resample motion deltas if fps differs
+                motion_deltas = motion_data["motion"]
+                if fps != motion_fps and len(motion_deltas) > 0:
+                    motion_deltas = self._resample_motion(
+                        motion_deltas, motion_fps, fps, num_frames
+                    )
+
+                # Apply deltas to source motion
+                driving_template = self._apply_motion_deltas(
+                    source_motion=source_motion,
+                    motion_deltas=motion_deltas,
+                    num_frames=num_frames,
+                    fps=fps,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Source-anchored adapter failed: {e}. "
+                    "Falling back to legacy template mode.",
+                    exc_info=True,
+                )
+                # Fallback to legacy mode
+                driving_template = self._build_template_from_motion(
+                    motion_data, num_frames, fps
+                )
+        else:
+            # Legacy path for absolute motion data
+            driving_template = self._build_template_from_motion(
+                motion_data, num_frames, fps
+            )
+
+        # Write template to temp file and animate
+        video = self._animate_with_template(
+            source_image, driving_template, num_frames, fps
+        )
+
+        # Ensure output is in [0, 1] range
+        video = torch.clamp(video, 0.0, 1.0).to(dtype=torch.float32)
+
+        # Write to pre-allocated buffer if provided
+        if output is not None:
+            out_frames = min(num_frames, output.shape[0])
+            if output.shape[1:] != (3, 512, 512):
+                raise ValueError(
+                    f"Invalid output buffer shape: {output.shape}. "
+                    f"Expected [N, 3, 512, 512]"
+                )
+            output[:out_frames].copy_(video[:out_frames])
+            logger.debug("Wrote %d frames to pre-allocated video buffer", out_frames)
+            return output
+
+        return video
+
+    def _build_template_from_motion(
+        self,
+        motion_data: dict,
+        num_frames: int,
+        fps: int,
+    ) -> dict:
+        """Build LivePortrait driving template from JoyVASA motion data.
+
+        Args:
+            motion_data: JoyVASA motion output
+            num_frames: Target number of frames
+            fps: Target frame rate
+
+        Returns:
+            dict: LivePortrait-compatible driving template
+        """
+        motion_list = motion_data["motion"]
+        motion_fps = motion_data.get("output_fps", 25)
+
+        # Resample motion if fps differs
+        if fps != motion_fps and len(motion_list) > 0:
+            motion_list = self._resample_motion(motion_list, motion_fps, fps, num_frames)
+
+        # Ensure we have enough frames (loop if needed)
+        if len(motion_list) < num_frames:
+            original_len = len(motion_list)
+            motion_list = [motion_list[i % original_len] for i in range(num_frames)]
+        elif len(motion_list) > num_frames:
+            motion_list = motion_list[:num_frames]
+
+        # Normalize motion format for LivePortrait
+        normalized_motion = []
+        for frame_motion in motion_list:
+            # Ensure correct shapes (LivePortrait expects specific formats)
+            exp = np.asarray(frame_motion["exp"])
+            if exp.ndim == 2:
+                exp = exp[None, ...]  # Add batch dim if missing
+
+            scale = frame_motion.get("scale", np.array([[1.0]]))
+            if isinstance(scale, (int, float)):
+                scale = np.array([[scale]])
+            scale = np.asarray(scale)
+            if scale.ndim == 0:
+                scale = scale.reshape(1, 1)
+            elif scale.ndim == 1:
+                scale = scale.reshape(1, -1)
+
+            R = np.asarray(frame_motion.get("R", np.eye(3)))
+            if R.ndim == 2:
+                R = R[None, ...]
+
+            t = np.asarray(frame_motion.get("t", np.zeros(3)))
+            if t.ndim == 1:
+                t = t[None, ...]
+
+            normalized_motion.append({
+                "exp": exp.astype(np.float32),
+                "scale": scale.astype(np.float32),
+                "R": R.astype(np.float32),
+                "t": t.astype(np.float32),
+            })
+
+        return {
+            "n_frames": num_frames,
+            "output_fps": fps,
+            "motion": normalized_motion,
+            # Empty control lists - motion data already contains full expression
+            "c_eyes_lst": [],
+            "c_lip_lst": [],
+        }
+
+    def _extract_source_motion(
+        self,
+        source_image: torch.Tensor,
+    ) -> dict[str, np.ndarray]:
+        """Extract motion parameters from source image using LivePortrait's extractor.
+
+        This ensures motion is in LivePortrait's native coordinate space,
+        enabling proper delta application from JoyVASA.
+
+        Args:
+            source_image: Source actor image tensor [3, 512, 512]
+
+        Returns:
+            dict with motion parameters in LivePortrait coordinate space:
+                - 'exp': Expression coefficients [1, 21, 3]
+                - 'scale': Face scale [1, 1]
+                - 'pitch', 'yaw', 'roll': Rotation angles
+                - 't': Translation [1, 3]
+        """
+        import cv2
+
+        gpu_backend = getattr(self.pipeline, "_gpu_backend", None)
+        if gpu_backend is None or not gpu_backend._loaded:
+            # Ensure GPU backend is loaded
+            if gpu_backend is not None:
+                if not gpu_backend.load():
+                    raise RuntimeError("Failed to load GPU backend for source motion extraction")
+            else:
+                raise RuntimeError("GPU backend required for source motion extraction")
+
+        lp_pipeline = gpu_backend._pipeline
+        wrapper = lp_pipeline.live_portrait_wrapper
+
+        # Convert source image to LivePortrait input format
+        img_np = source_image.permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np * 255).astype(np.uint8)
+        img_rgb = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+
+        # Crop and prepare source
+        crop_info = lp_pipeline.cropper.crop_source_image(img_rgb, lp_pipeline.cropper.crop_cfg)
+        if crop_info is None:
+            raise RuntimeError("Failed to detect face in source image")
+
+        img_crop_256 = crop_info['img_crop_256x256']
+        I_s = wrapper.prepare_source(img_crop_256)
+        x_s_info = wrapper.get_kp_info(I_s)
+
+        # Convert to numpy and return
+        return {
+            "exp": x_s_info["exp"].cpu().numpy(),
+            "scale": x_s_info["scale"].cpu().numpy(),
+            "pitch": x_s_info["pitch"].cpu().numpy(),
+            "yaw": x_s_info["yaw"].cpu().numpy(),
+            "roll": x_s_info["roll"].cpu().numpy(),
+            "t": x_s_info["t"].cpu().numpy(),
+        }
+
+    def _apply_motion_deltas(
+        self,
+        source_motion: dict[str, np.ndarray],
+        motion_deltas: list[dict],
+        num_frames: int,
+        fps: int,
+    ) -> dict:
+        """Apply JoyVASA motion deltas to source motion in LivePortrait space.
+
+        This is the core of the source-anchored motion adapter. JoyVASA outputs
+        normalized deltas from its frame 0, and we apply these deltas to the
+        source motion extracted from the actor image in LivePortrait's coordinate
+        space.
+
+        Args:
+            source_motion: Motion extracted from source image (LP coordinate space)
+            motion_deltas: JoyVASA relative deltas (normalized, from frame 0)
+            num_frames: Target frame count
+            fps: Target frame rate
+
+        Returns:
+            Driving template in LivePortrait format
+        """
+        # Configurable scaling factors (tune these for quality)
+        # Start conservative to prevent artifacts
+        EXP_SCALE = 0.15      # Expression delta magnitude
+        ROT_SCALE = 0.3       # Rotation dampening
+        TRANS_SCALE = 0.05    # Translation dampening
+
+        adapted_motion = []
+
+        # Source base values (LivePortrait coordinate space)
+        source_exp = source_motion["exp"]  # [1, 21, 3]
+        source_scale = source_motion["scale"]  # [1, 1]
+        source_t = source_motion["t"]  # [1, 3]
+
+        # Source rotation as matrix from euler angles
+        try:
+            from liveportrait.utils.helper import get_rotation_matrix
+            source_R = get_rotation_matrix(
+                torch.tensor(source_motion["pitch"]),
+                torch.tensor(source_motion["yaw"]),
+                torch.tensor(source_motion["roll"]),
+            ).cpu().numpy()
+        except ImportError:
+            # Fallback: compute rotation matrix manually
+            source_R = self._euler_to_rotation_matrix_np(
+                float(source_motion["pitch"].flat[0]),
+                float(source_motion["yaw"].flat[0]),
+                float(source_motion["roll"].flat[0]),
+            ).reshape(1, 3, 3)
+
+        for i, delta in enumerate(motion_deltas[:num_frames]):
+            # Apply scaled expression delta to source
+            exp_delta = delta["exp"] * EXP_SCALE
+            adapted_exp = source_exp + exp_delta
+
+            # Apply rotation delta (scale down to prevent spinning)
+            R_delta = delta["R"]
+            # Interpolate toward identity to dampen rotation
+            R_identity = np.eye(3, dtype=np.float32).reshape(1, 3, 3)
+            R_delta_scaled = R_identity * (1 - ROT_SCALE) + R_delta * ROT_SCALE
+            adapted_R = np.matmul(R_delta_scaled, source_R)
+
+            # Apply translation delta (heavily scaled)
+            t_delta = delta["t"] * TRANS_SCALE
+            adapted_t = source_t + t_delta
+
+            # Apply scale (multiplicative, close to 1.0)
+            adapted_scale = source_scale * delta["scale"]
+
+            adapted_motion.append({
+                "exp": adapted_exp.astype(np.float32),
+                "scale": adapted_scale.astype(np.float32),
+                "R": adapted_R.astype(np.float32),
+                "t": adapted_t.astype(np.float32),
+            })
+
+        # Pad with last frame if needed
+        while len(adapted_motion) < num_frames:
+            adapted_motion.append(adapted_motion[-1].copy() if adapted_motion else {
+                "exp": source_exp.astype(np.float32),
+                "scale": source_scale.astype(np.float32),
+                "R": source_R.astype(np.float32),
+                "t": source_t.astype(np.float32),
+            })
+
+        return {
+            "n_frames": num_frames,
+            "output_fps": fps,
+            "motion": adapted_motion,
+            "c_eyes_lst": [],
+            "c_lip_lst": [],
+        }
+
+    @staticmethod
+    def _euler_to_rotation_matrix_np(
+        pitch: float, yaw: float, roll: float
+    ) -> np.ndarray:
+        """Convert Euler angles to rotation matrix (fallback implementation).
+
+        Args:
+            pitch: Rotation around X axis (radians)
+            yaw: Rotation around Y axis (radians)
+            roll: Rotation around Z axis (radians)
+
+        Returns:
+            Rotation matrix (3, 3)
+        """
+        cos_p, sin_p = np.cos(pitch), np.sin(pitch)
+        cos_y, sin_y = np.cos(yaw), np.sin(yaw)
+        cos_r, sin_r = np.cos(roll), np.sin(roll)
+
+        # R = Rz(roll) @ Ry(yaw) @ Rx(pitch)
+        Rx = np.array([
+            [1, 0, 0],
+            [0, cos_p, -sin_p],
+            [0, sin_p, cos_p],
+        ])
+        Ry = np.array([
+            [cos_y, 0, sin_y],
+            [0, 1, 0],
+            [-sin_y, 0, cos_y],
+        ])
+        Rz = np.array([
+            [cos_r, -sin_r, 0],
+            [sin_r, cos_r, 0],
+            [0, 0, 1],
+        ])
+
+        return (Rz @ Ry @ Rx).astype(np.float32)
+
+    def _resample_motion(
+        self,
+        motion_list: list,
+        src_fps: int,
+        dst_fps: int,
+        num_frames: int,
+    ) -> list:
+        """Resample motion sequence to different frame rate.
+
+        Uses linear interpolation for smooth transitions.
+
+        Args:
+            motion_list: Source motion frames
+            src_fps: Source frame rate
+            dst_fps: Target frame rate
+            num_frames: Target number of frames
+
+        Returns:
+            list: Resampled motion frames
+        """
+        if not motion_list:
+            return []
+
+        src_len = len(motion_list)
+        resampled = []
+
+        for i in range(num_frames):
+            # Map target frame to source time
+            t = i / dst_fps
+            src_idx_f = t * src_fps
+            src_idx = int(src_idx_f)
+            frac = src_idx_f - src_idx
+
+            # Clamp indices
+            idx0 = min(src_idx, src_len - 1)
+            idx1 = min(src_idx + 1, src_len - 1)
+
+            # Interpolate between frames
+            m0 = motion_list[idx0]
+            m1 = motion_list[idx1]
+
+            interpolated = {}
+            for key in ["exp", "scale", "R", "t"]:
+                if key in m0 and key in m1:
+                    v0 = np.asarray(m0[key])
+                    v1 = np.asarray(m1[key])
+                    interpolated[key] = (1 - frac) * v0 + frac * v1
+                elif key in m0:
+                    interpolated[key] = m0[key]
+
+            resampled.append(interpolated)
+
+        return resampled
+
+    def _animate_with_template(
+        self,
+        source_image: torch.Tensor,
+        template: dict,
+        num_frames: int,
+        fps: int,
+    ) -> torch.Tensor:
+        """Animate using pre-built driving template.
+
+        Args:
+            source_image: Source actor image
+            template: Driving template dict
+            num_frames: Number of output frames
+            fps: Output frame rate
+
+        Returns:
+            Video tensor [num_frames, 3, 512, 512]
+        """
+        import tempfile
+
+        # Check if we have GPU backend
+        gpu_backend = getattr(self.pipeline, "_gpu_backend", None)
+        if gpu_backend is None:
+            raise RuntimeError(
+                "animate_from_motion requires GPU backend. "
+                "Ensure LivePortrait is properly installed."
+            )
+
+        # Write template to temp file
+        with tempfile.TemporaryDirectory(prefix="vortex-motion-") as tmpdir:
+            tmp_path = Path(tmpdir)
+            template_path = tmp_path / "motion_template.pkl"
+
+            with open(template_path, "wb") as f:
+                pickle.dump(template, f)
+
+            # Use warp_sequence with the template
+            video = gpu_backend.warp_sequence(
+                source_image=source_image,
+                visemes=[],  # Empty - motion data contains full expression
+                expression_params=[],
+                num_frames=num_frames,
+                driving_source=template_path,
+                fps=fps,
+            )
+
+        return video
+
+    @property
     def backend_name(self) -> str:
         """Return the active LivePortrait backend name."""
         return getattr(self.pipeline, "backend", "unknown")
+
+    def to(self, device: str) -> "LivePortraitModel":
+        """Move pipeline weights to the target device for offloading."""
+        self.device = device
+        self.pipeline.to(device)
+        gpu_backend = getattr(self.pipeline, "_gpu_backend", None)
+        if gpu_backend is not None:
+            gpu_backend.to(device)
+        return self
 
     def _load_expression_presets(self) -> dict:
         presets = self.config.get("expressions")
@@ -1090,6 +2141,7 @@ def load_liveportrait(
     precision: str = "fp16",
     cache_dir: Optional[str] = None,
     config_path: Optional[str] = None,
+    local_only: bool = False,
 ) -> LivePortraitModel:
     """Load LivePortrait video warping model with FP16 precision.
 
@@ -1105,6 +2157,7 @@ def load_liveportrait(
         precision: Model precision ("fp16" for half precision)
         cache_dir: Model cache directory (default: ~/.cache/huggingface/hub)
         config_path: Path to LivePortrait config YAML (optional)
+        local_only: Require local repo and cached weights (no network)
 
     Returns:
         LivePortraitModel: Initialized LivePortrait model wrapper
@@ -1124,7 +2177,7 @@ def load_liveportrait(
         ... )
 
     Notes:
-        - First run downloads model weights (one-time, ~8GB)
+        - Weights must be present locally when local_only=True
         - Requires NVIDIA GPU with CUDA 12.1+ and driver 535+
         - Optional TensorRT for 20-30% speedup
     """
@@ -1157,11 +2210,18 @@ def load_liveportrait(
                 f"Unsupported precision: {precision}. Use 'fp16' or 'fp32'"
             )
 
+        runtime_cfg = config.get("runtime", {})
+        repo_path = runtime_cfg.get("repo_path") or os.getenv("LIVEPORTRAIT_HOME")
+        repo_path = Path(repo_path).expanduser() if repo_path else None
+
         model_name = (
             config.get("model", {}).get("repo_id")
             or config.get("model", {}).get("name")
             or "KwaiVGI/LivePortrait"
         )
+        if local_only and repo_path:
+            model_name = str(repo_path)
+
         pipeline = LivePortraitPipeline.from_pretrained(
             model_name,
             torch_dtype=torch_dtype,
@@ -1169,6 +2229,7 @@ def load_liveportrait(
             use_safetensors=True,
             cache_dir=cache_dir,
             config=config,
+            local_only=local_only,
         )
 
         # Move to target device
