@@ -25,7 +25,7 @@ class TestLivePortraitModelInterface(unittest.TestCase):
 
         # Mock warp_sequence to return correct number of frames based on num_frames arg
         def mock_warp_sequence(
-            source_image, visemes, expression_params, num_frames, driving_source=None
+            source_image, visemes, expression_params, num_frames, driving_source=None, fps=24
         ):
             return torch.rand(num_frames, 3, 512, 512)  # TCHW format
 
@@ -328,7 +328,7 @@ class TestOutputConstraints(unittest.TestCase):
 
         # Mock output in correct range [0, 1]
         def mock_warp_sequence(
-            source_image, visemes, expression_params, num_frames, driving_source=None
+            source_image, visemes, expression_params, num_frames, driving_source=None, fps=24
         ):
             return torch.rand(num_frames, 3, 512, 512)  # rand() gives [0, 1]
 

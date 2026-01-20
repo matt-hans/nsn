@@ -591,6 +591,9 @@ class _InProcessGPUBackend:
     def _save_image(self, image: torch.Tensor, path: Path) -> None:
         """Save tensor image to file."""
         image = image.detach().float().clamp(0.0, 1.0).cpu()
+        # Remove batch dimension if present (4D -> 3D)
+        if image.dim() == 4:
+            image = image.squeeze(0)
         image = (image * 255.0).to(torch.uint8)
         image = image.permute(1, 2, 0).numpy()
 
@@ -1382,7 +1385,7 @@ class LivePortraitModel:
 
         video = self._animate_with_template(
             source_image=source_image.unsqueeze(0) if source_image.dim() == 3 else source_image,
-            driving_template=driving_template,
+            template=driving_template,
             num_frames=driving_template['n_frames'],
             fps=fps,
         )
