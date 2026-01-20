@@ -53,6 +53,12 @@ repomix-output.xml
 *.pth
 *.onnx
 
+# Media outputs (generated files)
+*.mp4
+*.wav
+*.mp3
+*.npy
+
 # Secrets
 *.pem
 *.key
