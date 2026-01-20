@@ -50,6 +50,8 @@ class MockModel(nn.Module):
 def load_flux(
     device: str = "cuda:0",
     precision: Precision = "nf4",
+    cache_dir: str | None = None,
+    local_only: bool = False,
 ) -> nn.Module:
     """Load Flux-Schnell image generation model.
 
@@ -59,7 +61,7 @@ def load_flux(
             Note: Flux-Schnell only supports NF4. Other precisions will use mock model.
 
     Returns:
-        nn.Module: Loaded Flux model with NF4 quantization, or mock model if precision unsupported
+        nn.Module: Loaded Flux model with NF4 quantization
 
     VRAM Budget:
         ~6.0 GB with NF4 quantization
@@ -70,39 +72,34 @@ def load_flux(
     """
     logger.info("Loading Flux-Schnell model", extra={"device": device, "precision": precision})
 
-    # T015: Real Flux-Schnell implementation with NF4 quantization
-    # Flux-Schnell only supports NF4. For other precisions, fall back to mock.
-    if precision == "nf4":
-        try:
-            from vortex.models.flux import load_flux_schnell
-            model = load_flux_schnell(device=device, quantization=precision)
-            logger.info("Flux-Schnell loaded successfully")
-            return model
-        except (ImportError, Exception) as e:
-            # Fallback to mock for environments without diffusers/bitsandbytes
-            logger.warning(
-                "Failed to load real Flux model, using mock. "
-                "Error: %s",
-                str(e),
-                extra={"error_type": type(e).__name__}
-            )
-    else:
-        # Unsupported precision for Flux - use mock
-        logger.warning(
-            "Flux-Schnell only supports NF4 quantization. "
-            "Using mock model for precision: %s",
-            precision
+    if precision != "nf4":
+        raise ValueError(
+            f"Flux-Schnell only supports NF4 quantization. Got precision={precision}."
         )
 
-    # Fallback to mock model
-    model = MockModel(name="flux", vram_gb=6.0)
-    model = model.to(device)
-    return model
+    try:
+        from vortex.models.flux import load_flux_schnell
+        model = load_flux_schnell(
+            device=device,
+            quantization=precision,
+            cache_dir=cache_dir,
+            local_only=local_only,
+        )
+        logger.info("Flux-Schnell loaded successfully")
+        return model
+    except (ImportError, Exception) as e:
+        logger.error(
+            "Failed to load Flux-Schnell model",
+            extra={"error_type": type(e).__name__, "error": str(e)},
+        )
+        raise
 
 
 def load_liveportrait(
     device: str = "cuda:0",
     precision: Precision = "fp16",
+    cache_dir: str | None = None,
+    local_only: bool = False,
 ) -> nn.Module:
     """Load LivePortrait video warping model.
 
@@ -127,26 +124,27 @@ def load_liveportrait(
     # T016: Real LivePortrait implementation with FP16 precision
     try:
         from vortex.models.liveportrait import load_liveportrait as load_liveportrait_real
-        model = load_liveportrait_real(device=device, precision=precision)
+        model = load_liveportrait_real(
+            device=device,
+            precision=precision,
+            cache_dir=cache_dir,
+            local_only=local_only,
+        )
         logger.info("LivePortrait loaded successfully (real implementation)")
         return model
     except (ImportError, Exception) as e:
-        # Fallback to mock for environments without LivePortrait
-        logger.warning(
-            "Failed to load real LivePortrait model, using mock. "
-            "Error: %s",
-            str(e),
-            extra={"error_type": type(e).__name__}
+        logger.error(
+            "Failed to load LivePortrait model",
+            extra={"error_type": type(e).__name__, "error": str(e)},
         )
-        model = MockModel(name="liveportrait", vram_gb=3.5)
-        model = model.to(device)
-        logger.info("LivePortrait loaded successfully (mock fallback)")
-        return model
+        raise
 
 
 def load_kokoro(
     device: str = "cuda:0",
     precision: Precision = "fp32",
+    cache_dir: str | None = None,
+    local_only: bool = False,
 ) -> nn.Module:
     """Load Kokoro-82M text-to-speech model.
 
@@ -169,21 +167,17 @@ def load_kokoro(
     # T017: Real Kokoro-82M implementation
     try:
         from vortex.models.kokoro import load_kokoro as load_kokoro_real
+        _ = cache_dir
+        _ = local_only
         model = load_kokoro_real(device=device)
         logger.info("Kokoro-82M loaded successfully (real implementation)")
         return model
     except (ImportError, Exception) as e:
-        # Fallback to mock for environments without kokoro package
-        logger.warning(
-            "Failed to load real Kokoro model, using mock. "
-            "Error: %s. Install with: pip install kokoro soundfile",
-            str(e),
-            extra={"error_type": type(e).__name__}
+        logger.error(
+            "Failed to load Kokoro model",
+            extra={"error_type": type(e).__name__, "error": str(e)},
         )
-        model = MockModel(name="kokoro", vram_gb=0.4)
-        model = model.to(device)
-        logger.info("Kokoro-82M loaded successfully (mock fallback)")
-        return model
+        raise
 
 
 def load_clip_b(
@@ -228,17 +222,11 @@ def load_clip_b(
         logger.info("CLIP-ViT-B-32 loaded successfully (real implementation)")
         return clip_b
     except (ImportError, Exception) as e:
-        # Fallback to mock for environments without open-clip
-        logger.warning(
-            "Failed to load real CLIP-B model, using mock. "
-            "Error: %s. Install with: pip install open-clip-torch==2.23.0",
-            str(e),
-            extra={"error_type": type(e).__name__}
+        logger.error(
+            "Failed to load CLIP-B model",
+            extra={"error_type": type(e).__name__, "error": str(e)},
         )
-        model = MockModel(name="clip_b", vram_gb=0.3)
-        model = model.to(device)
-        logger.info("CLIP-ViT-B-32 loaded successfully (mock fallback)")
-        return model
+        raise
 
 
 def load_clip_l(
@@ -283,17 +271,11 @@ def load_clip_l(
         logger.info("CLIP-ViT-L-14 loaded successfully (real implementation)")
         return clip_l
     except (ImportError, Exception) as e:
-        # Fallback to mock for environments without open-clip
-        logger.warning(
-            "Failed to load real CLIP-L model, using mock. "
-            "Error: %s. Install with: pip install open-clip-torch==2.23.0",
-            str(e),
-            extra={"error_type": type(e).__name__}
+        logger.error(
+            "Failed to load CLIP-L model",
+            extra={"error_type": type(e).__name__, "error": str(e)},
         )
-        model = MockModel(name="clip_l", vram_gb=0.6)
-        model = model.to(device)
-        logger.info("CLIP-ViT-L-14 loaded successfully (mock fallback)")
-        return model
+        raise
 
 
 MODEL_LOADERS: dict[ModelName, callable] = {
@@ -309,6 +291,8 @@ def load_model(
     name: ModelName,
     device: str = "cuda:0",
     precision: Precision | None = None,
+    cache_dir: str | None = None,
+    local_only: bool = False,
 ) -> nn.Module:
     """Load a model by name using the appropriate loader.
 
@@ -331,6 +315,10 @@ def load_model(
 
     loader = MODEL_LOADERS[name]
     if precision:
-        return loader(device=device, precision=precision)
-    else:
-        return loader(device=device)
+        return loader(
+            device=device,
+            precision=precision,
+            cache_dir=cache_dir,
+            local_only=local_only,
+        )
+    return loader(device=device, cache_dir=cache_dir, local_only=local_only)

@@ -155,11 +155,26 @@ class FluxModel:
 
         return result
 
+    def to(self, device: str) -> "FluxModel":
+        """Move pipeline weights to device for offloading support."""
+        if hasattr(self.pipeline, "reset_device_map"):
+            try:
+                self.pipeline.reset_device_map()
+            except Exception as exc:
+                logger.warning(
+                    "FluxPipeline reset_device_map failed: %s",
+                    exc,
+                )
+        self.pipeline.to(device)
+        self.device = device
+        return self
+
 
 def load_flux_schnell(
     device: str = "cuda:0",
     quantization: str = "nf4",
     cache_dir: str | None = None,
+    local_only: bool = False,
 ) -> FluxModel:
     """Load Flux-Schnell image generation model with NF4 quantization.
 
@@ -174,6 +189,7 @@ def load_flux_schnell(
             Note: "cpu" is only for testing, generation will be extremely slow
         quantization: Quantization type ("nf4" for 4-bit)
         cache_dir: Model cache directory (default: ~/.cache/huggingface/hub)
+        local_only: Require cached weights and skip network access
 
     Returns:
         FluxModel: Initialized Flux model wrapper
@@ -189,7 +205,7 @@ def load_flux_schnell(
         >>> image = flux.generate(prompt="a scientist")
 
     Notes:
-        - First run downloads ~12GB of model weights (one-time)
+        - Weights must be present in cache_dir when local_only=True
         - Requires NVIDIA GPU with CUDA 12.1+ and driver 535+
         - bitsandbytes must be installed for NF4 support
     """
@@ -222,6 +238,7 @@ def load_flux_schnell(
             quantization_config=t5_quant_config,
             torch_dtype=torch.float16,
             cache_dir=cache_dir,
+            local_files_only=local_only,
         )
         logger.info("T5 text_encoder_2 loaded with NF4 quantization")
 
@@ -239,6 +256,7 @@ def load_flux_schnell(
             torch_dtype=torch.float16,
             use_safetensors=True,
             cache_dir=cache_dir,
+            local_files_only=local_only,
         )
         logger.info("FluxTransformer2DModel loaded with NF4 quantization")
 
@@ -252,6 +270,7 @@ def load_flux_schnell(
             use_safetensors=True,
             cache_dir=cache_dir,
             device_map="cuda",  # Required for quantized models
+            local_files_only=local_only,
         )
         logger.info("FluxPipeline loaded with NF4 quantization")
 

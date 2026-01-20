@@ -20,6 +20,7 @@ Latency Target: <1s P99 for 5-frame verification on RTX 3060
 """
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -114,6 +115,23 @@ class ClipEnsemble:
                 "threshold_l": self.threshold_l,
             },
         )
+
+    def _model_dtype(self, model: torch.nn.Module) -> torch.dtype:
+        visual = getattr(model, "visual", None)
+        conv1 = getattr(visual, "conv1", None)
+        if conv1 is not None and hasattr(conv1, "weight"):
+            return conv1.weight.dtype
+        try:
+            return next(model.parameters()).dtype
+        except StopIteration:
+            return torch.float32
+
+    def to(self, device: str) -> "ClipEnsemble":
+        """Move CLIP models to target device for offloading."""
+        self.clip_b = self.clip_b.to(device)
+        self.clip_l = self.clip_l.to(device)
+        self.device = device
+        return self
 
     @torch.no_grad()
     def verify(
@@ -306,6 +324,8 @@ class ClipEnsemble:
             RuntimeError: If CUDA out of memory
         """
         try:
+            target_dtype = self._model_dtype(clip_model)
+
             # Preprocess keyframes for CLIP (resize to 224x224, normalize)
             if preprocess is not None:
                 # Convert tensor frames to PIL-like format and apply transform
@@ -319,9 +339,9 @@ class ClipEnsemble:
                     pil_image = TF.to_pil_image(frame_uint8.cpu())
                     processed = preprocess(pil_image)
                     processed_frames.append(processed)
-                keyframes = torch.stack(processed_frames).to(self.device)
+                keyframes = torch.stack(processed_frames).to(self.device, dtype=target_dtype)
             else:
-                keyframes = keyframes.to(self.device)
+                keyframes = keyframes.to(self.device, dtype=target_dtype)
 
             # Encode keyframes
             image_features = clip_model.encode_image(keyframes)
@@ -388,7 +408,11 @@ class ClipEnsemble:
                 pil_image = TF.to_pil_image(frame_uint8.cpu())
                 processed = self.preprocess_b(pil_image)
                 processed_frames.append(processed)
-            processed_keyframes = torch.stack(processed_frames).to(self.device)
+            target_dtype = self._model_dtype(self.clip_b)
+            processed_keyframes = torch.stack(processed_frames).to(
+                self.device,
+                dtype=target_dtype,
+            )
 
             # Use CLIP-ViT-B-32 for embedding (native 512-dim output)
             # ViT-L-14 has 768-dim output which can't be directly combined
@@ -429,6 +453,7 @@ def load_clip_ensemble(
     device: str = "cuda",
     cache_dir: Path | None = None,
     precision: str = "fp16",
+    local_only: bool = False,
 ) -> ClipEnsemble:
     """Load dual CLIP models with configurable precision.
 
@@ -436,6 +461,7 @@ def load_clip_ensemble(
         device: Target device ("cuda" or "cpu")
         cache_dir: Model cache directory (default: ~/.cache/vortex/clip)
         precision: Model precision - "fp16" (default, recommended), "fp32", or "bf16"
+        local_only: Require cached weights and skip network access
 
     Returns:
         ClipEnsemble instance with both models loaded
@@ -463,7 +489,8 @@ def load_clip_ensemble(
 
     if cache_dir is None:
         cache_dir = Path.home() / ".cache" / "vortex" / "clip"
-        cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = Path(cache_dir).expanduser()
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Validate and normalize precision
     precision = precision.lower()
@@ -481,6 +508,53 @@ def load_clip_ensemble(
         extra={"device": device, "cache_dir": str(cache_dir), "precision": precision},
     )
 
+    if local_only:
+        def _assert_cached_weights(model_name: str, pretrained_tag: str) -> None:
+            cfg = open_clip.get_pretrained_cfg(model_name, pretrained_tag)
+            if not cfg:
+                raise RuntimeError(
+                    f"Unknown pretrained config for {model_name} ({pretrained_tag})"
+                )
+
+            url = cfg.get("url")
+            hf_hub = cfg.get("hf_hub")
+
+            # Check HuggingFace hub cache first (preferred - used by download script)
+            if hf_hub:
+                try:
+                    from huggingface_hub import try_to_load_from_cache
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "huggingface_hub is required to verify CLIP cache entries."
+                    ) from exc
+
+                model_id, _ = os.path.split(hf_hub)
+                # Try common weight file names - safetensors is preferred by modern open_clip
+                for filename in ["open_clip_model.safetensors", "open_clip_pytorch_model.bin"]:
+                    result = try_to_load_from_cache(
+                        repo_id=model_id,
+                        filename=filename,
+                        cache_dir=str(cache_dir),
+                    )
+                    if result is not None:
+                        return  # Found in HuggingFace cache
+
+            # Fallback to URL-based cache
+            if url:
+                filename = Path(url).name
+                expected = cache_dir / filename
+                if expected.is_file():
+                    return  # Found in URL cache
+
+            # Neither cache has the weights
+            raise RuntimeError(
+                f"Local-only mode missing CLIP weights for {model_name} ({pretrained_tag}). "
+                f"Run: python scripts/download_and_quantize_clip.py"
+            )
+
+        _assert_cached_weights("ViT-B-32", "openai")
+        _assert_cached_weights("ViT-L-14", "openai")
+
     # Determine torch dtype for model loading
     if use_fp16:
         torch_precision = "fp16"
@@ -497,6 +571,7 @@ def load_clip_ensemble(
         device=device,
         precision=torch_precision,
         cache_dir=str(cache_dir),
+        require_pretrained=True,
     )
     clip_b.eval()
     tokenizer_b = open_clip.get_tokenizer("ViT-B-32")
@@ -509,6 +584,7 @@ def load_clip_ensemble(
         device=device,
         precision=torch_precision,
         cache_dir=str(cache_dir),
+        require_pretrained=True,
     )
     clip_l.eval()
     tokenizer_l = open_clip.get_tokenizer("ViT-L-14")

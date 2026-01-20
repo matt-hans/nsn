@@ -88,6 +88,7 @@ def audio_to_visemes(
     fps: int,
     sample_rate: int = 24000,
     smoothing_window: int = 3,
+    method: str = "wav2vec",
 ) -> list[torch.Tensor]:
     """Convert audio waveform to per-frame viseme parameters.
 
@@ -122,22 +123,90 @@ def audio_to_visemes(
     duration_sec = len(audio) / sample_rate
     num_frames = int(fps * duration_sec)
 
-    # Generate raw visemes based on audio energy
-    raw_visemes = []
-    for i in range(num_frames):
-        # Extract audio segment for this frame
-        start_sample = int(i * sample_rate / fps)
-        end_sample = int((i + 1) * sample_rate / fps)
-        frame_audio = audio[start_sample:end_sample]
+    if method == "wav2vec":
+        raw_visemes = _audio_to_visemes_wav2vec(
+            audio, num_frames, sample_rate=sample_rate
+        )
+    else:
+        # Generate raw visemes based on audio energy
+        raw_visemes = []
+        for i in range(num_frames):
+            # Extract audio segment for this frame
+            start_sample = int(i * sample_rate / fps)
+            end_sample = int((i + 1) * sample_rate / fps)
+            frame_audio = audio[start_sample:end_sample]
 
-        # Compute viseme from audio features
-        viseme = _audio_segment_to_viseme(frame_audio)
-        raw_visemes.append(viseme)
+            # Compute viseme from audio features
+            viseme = _audio_segment_to_viseme(frame_audio)
+            raw_visemes.append(viseme)
 
     # Smooth viseme sequence
     smoothed_visemes = smooth_viseme_sequence(raw_visemes, window_size=smoothing_window)
 
     return smoothed_visemes
+
+
+_WAV2VEC_CACHE: dict[str, torch.nn.Module] = {}
+
+
+def _get_wav2vec_model(device: torch.device) -> torch.nn.Module:
+    try:
+        import torchaudio
+    except ImportError as exc:
+        raise RuntimeError("torchaudio is required for wav2vec lipsync") from exc
+
+    key = f"{device.type}:{device.index}"
+    if key in _WAV2VEC_CACHE:
+        return _WAV2VEC_CACHE[key]
+
+    bundle = torchaudio.pipelines.WAV2VEC2_BASE
+    model = bundle.get_model().to(device)
+    model.eval()
+    _WAV2VEC_CACHE[key] = model
+    return model
+
+
+def _audio_to_visemes_wav2vec(
+    audio: torch.Tensor,
+    num_frames: int,
+    sample_rate: int = 16000,
+    noise_threshold: float = 0.02,
+) -> list[torch.Tensor]:
+    """Convert audio to visemes using semantic Wav2Vec2 features.
+
+    This uses the LivePortraitAudioProcessor for proper phoneme extraction
+    with noise suppression, fixing twitching and sealed mouth issues.
+
+    Args:
+        audio: Audio waveform tensor [samples]
+        num_frames: Target number of video frames
+        sample_rate: Input audio sample rate
+        noise_threshold: Suppress micro-movements below this magnitude
+
+    Returns:
+        List of viseme tensors [jaw_open, lip_width, lip_rounding]
+    """
+    if audio.numel() == 0 or num_frames <= 0:
+        return []
+
+    device = audio.device
+
+    # Use new semantic processor with noise suppression
+    from vortex.models.liveportrait_features import get_audio_processor
+
+    processor = get_audio_processor(str(device))
+
+    # Extract semantic features (handles resampling internally)
+    features = processor.extract_features(audio, sample_rate=sample_rate)
+
+    # Convert to visemes with noise suppression
+    visemes = processor.features_to_visemes(
+        features,
+        num_frames,
+        noise_threshold=noise_threshold,
+    )
+
+    return visemes
 
 
 def _audio_segment_to_viseme(audio_segment: torch.Tensor) -> torch.Tensor:

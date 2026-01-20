@@ -28,10 +28,15 @@ models:
     clip_b: "fp16"        # Half precision (INT8 incompatible with open_clip)
     clip_l: "fp16"        # Half precision (INT8 incompatible with open_clip)
 
+  # Force local-only model loading (no network) and shared cache root.
+  # Ensure all required weights are pre-cached in this directory.
+  local_only: true
+  cache_dir: "/home/matt/.cache/huggingface/hub"
+
   # Sequential offloading: Move models to CPU RAM between pipeline stages
   # Reduces peak VRAM from ~11.8GB to ~6.5GB (enables GPUs with <12GB)
   # Options: "auto" (enable if VRAM < 12GB), "always" (force), "never" (disable)
-  offloading: "auto"
+  offloading: "always"
 
 buffers:
   # Pre-allocated output buffers (prevents fragmentation during generation)
@@ -54,9 +59,32 @@ buffers:
 
 pipeline:
   # Slot generation timeout (seconds) - abort if exceeded
-  generation_timeout_sec: 20.0
+  # Audio-gated pipeline: ~3s audio + ~12s image + ~25s video + ~2s clip = ~42s
+  generation_timeout_sec: 60.0
   # Enable async parallelization for audio + image generation
   parallel_audio_actor: true
+
+quality:
+  prompt_steering:
+    enabled: true
+    positive_prefix: "medium shot, looking at viewer, symmetrical face, centered composition, eye contact, "
+    negative_prefix: "profile view, side view, looking away, skewed, distorted, back of head, asymmetrical"
+  driver_audio:
+    enabled: true
+    sample_rate: 16000
+    pad_silence_sec: 0.2
+  camera_shake:
+    enabled: true
+    strength: 0.002
+    zoom: 0.002
+
+outputs:
+  # Persist RenderResult to disk after successful generation
+  enabled: true
+  # Output directory for .mp4/.wav assets
+  directory: "outputs"
+  # Attempt to mux audio into mp4 (falls back to video-only on failure)
+  include_audio_in_mp4: true
 
 # Lane 0 renderer configuration
 renderers:
@@ -70,8 +98,8 @@ renderers:
   policy:
     # Maximum VRAM any renderer can declare (GB)
     max_vram_gb: 12.0
-    # Maximum latency for Lane 0 (ms)
-    max_latency_ms: 25000
+    # Maximum latency for Lane 0 (ms) - audio-gated pipeline ~42s typical
+    max_latency_ms: 65000
     # Require determinism for Lane 0 (must be true for BFT consensus)
     require_determinism: true
     # Allowlist of renderer names (null = allow all registered renderers)
@@ -126,10 +154,10 @@ plugins:
 orchestration:
   # Per-stage timeouts (seconds) - prevent infinite hangs
   timeouts:
-    audio_s: 3     # Kokoro TTS timeout (2s target)
-    image_s: 15    # Flux-Schnell timeout (12s target)
-    video_s: 10    # LivePortrait timeout (8s target)
-    clip_s: 2      # Dual CLIP ensemble timeout (1s target)
+    audio_s: 5     # Kokoro TTS timeout (2s target)
+    image_s: 20    # Flux-Schnell timeout (12s target)
+    video_s: 30    # LivePortrait timeout (25s with audio-gated driver)
+    clip_s: 5      # Dual CLIP ensemble timeout (1s target)
 
   # Retry policy per stage (0 = no retry)
   retry_policy:

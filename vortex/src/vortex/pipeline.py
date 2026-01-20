@@ -23,6 +23,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ from vortex.renderers import (
     RenderResult,
     policy_from_config,
 )
+from vortex.utils.render_output import save_render_result
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +151,14 @@ class VortexPipeline:
                 config = yaml.safe_load(f)
         except Exception as e:
             raise VortexInitializationError(f"Failed to load config: {e}") from e
+
+        # Enforce offline model loading when configured.
+        if config.get("models", {}).get("local_only", False):
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            logger.info(
+                "Local-only mode enabled (HF_HUB_OFFLINE=1, TRANSFORMERS_OFFLINE=1)"
+            )
 
         # Determine device
         device = device or config.get("device", {}).get("name", "cuda:0")
@@ -298,6 +308,35 @@ class VortexPipeline:
                     "proof_hash": result.determinism_proof.hex()[:16] + "...",
                 },
             )
+            outputs_cfg = self.config.get("outputs", {})
+            if outputs_cfg.get("enabled", True):
+                output_dir = outputs_cfg.get("directory", "outputs")
+                include_audio = outputs_cfg.get("include_audio_in_mp4", True)
+                fps = recipe.get("slot_params", {}).get("fps", 24)
+                sample_rate = (
+                    self.config.get("buffers", {})
+                    .get("audio", {})
+                    .get("sample_rate", 24000)
+                )
+                try:
+                    paths = save_render_result(
+                        render_result,
+                        output_dir=output_dir,
+                        fps=fps,
+                        sample_rate=sample_rate,
+                        slot_id=slot_id,
+                        seed=seed,
+                        include_audio_in_mp4=include_audio,
+                    )
+                    logger.info(
+                        "Saved render output",
+                        extra={
+                            "video_path": str(paths["video_path"]),
+                            "audio_path": str(paths["audio_path"]),
+                        },
+                    )
+                except Exception as exc:
+                    logger.error("Failed to save render output: %s", exc)
         else:
             logger.error(
                 f"Slot generation failed",

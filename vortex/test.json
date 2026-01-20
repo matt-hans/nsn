@@ -1,0 +1,20 @@
+{
+  "recipe": {
+    "slot_params": {
+      "slot_id": 1001,
+      "duration_sec": 15,
+      "fps": 24
+    },
+    "audio_track": {
+      "script": "Testing precise phoneme alignment. A. E. I. O. U. Now let's try some consonants. Peter Piper picked a peck of pickled peppers. My mama makes marvelous muffins.",
+      "voice_id": "rick_c137",
+      "speed": 1.0
+    },
+    "visual_track": {
+      "prompt": "Portrait of a friendly scientist with short brown hair, clean-shaven face, wearing a white lab coat, front facing view, neutral background, professional headshot style, detailed facial features, realistic skin texture",
+      "expression_preset": "neutral"
+    }
+  },
+  "slot_id": 1001,
+  "seed": 2024
+}
