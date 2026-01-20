@@ -7,12 +7,18 @@ VortexPipeline behavior.
 
 Architecture:
     - Flux-Schnell (NF4, 6.0GB): Generates actor images from prompts
-    - LivePortrait (FP16, 3.5GB): Animates images with audio-driven lip-sync
     - Kokoro-82M (FP32, 0.4GB): Text-to-speech synthesis
+    - LivePortrait (FP16, 3.5GB): Animates images using audio-gated motion driver
     - CLIP ViT-B-32 + ViT-L-14 (FP16, 0.6GB): Dual ensemble semantic verification
 
+Pipeline Flow:
+    Recipe -> Kokoro (TTS) -> Audio
+          -> Flux (image) -> Actor
+    Actor + Audio -> LivePortrait (audio-gated) -> Video
+    Video -> CLIP (verify) -> Embedding
+
 VRAM Modes:
-    - Static residency (default): All models stay on GPU (~11.8GB peak)
+    - Static residency (default): All models stay on GPU (~10GB peak)
     - Sequential offloading: Models moved to CPU between stages (~6.5GB peak)
 
 The sequential offloading mode is automatically enabled for GPUs with <12GB VRAM.
@@ -24,12 +30,16 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Optional
 
+import soundfile as sf
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import yaml
 
 from vortex.models import ModelName, load_model
@@ -68,12 +78,16 @@ class _ModelRegistry:
         device: str,
         precision_overrides: dict[ModelName, str] | None = None,
         offloading_mode: str = "auto",
+        cache_dir: str | None = None,
+        local_only: bool = False,
     ):
         self.device = device
         self.precision_overrides = precision_overrides or {}
         self._models: dict[ModelName, nn.Module] = {}
         self._offloading_mode = offloading_mode
         self._offloader: Optional[ModelOffloader] = None
+        self._cache_dir = cache_dir
+        self._local_only = local_only
 
         # Determine if offloading should be enabled
         self._offloading_enabled = self._should_enable_offloading()
@@ -108,6 +122,7 @@ class _ModelRegistry:
 
     def load_all_models(self) -> None:
         """Load all models into registry."""
+        # All required models (audio-gated driver replaces JoyVASA)
         single_models: list[ModelName] = ["flux", "liveportrait", "kokoro"]
 
         try:
@@ -117,12 +132,24 @@ class _ModelRegistry:
 
                 # With offloading, load to CPU first to avoid VRAM spike
                 if self._offloading_enabled:
-                    model = load_model(name, device="cpu", precision=precision)
+                    model = load_model(
+                        name,
+                        device="cpu",
+                        precision=precision,
+                        cache_dir=self._cache_dir,
+                        local_only=self._local_only,
+                    )
                     self._models[name] = model
                     if self._offloader:
                         self._offloader.register(name, model, initial_device="cpu")
                 else:
-                    model = load_model(name, device=self.device, precision=precision)
+                    model = load_model(
+                        name,
+                        device=self.device,
+                        precision=precision,
+                        cache_dir=self._cache_dir,
+                        local_only=self._local_only,
+                    )
                     self._models[name] = model
 
                 log_vram_snapshot(f"after_{name}_load")
@@ -131,13 +158,24 @@ class _ModelRegistry:
             logger.info("Loading model: clip_ensemble")
             clip_precision = self.precision_overrides.get("clip_b", "fp16")
 
+            # Note: clip_ensemble uses its own cache at ~/.cache/vortex/clip
+            # (managed by download_and_quantize_clip.py script), so we don't
+            # pass the shared HuggingFace cache_dir here.
             if self._offloading_enabled:
-                clip_ensemble = load_clip_ensemble(device="cpu", precision=clip_precision)
+                clip_ensemble = load_clip_ensemble(
+                    device="cpu",
+                    precision=clip_precision,
+                    local_only=self._local_only,
+                )
                 self._models["clip_ensemble"] = clip_ensemble
                 if self._offloader:
                     self._offloader.register("clip_ensemble", clip_ensemble, initial_device="cpu")
             else:
-                clip_ensemble = load_clip_ensemble(device=self.device, precision=clip_precision)
+                clip_ensemble = load_clip_ensemble(
+                    device=self.device,
+                    precision=clip_precision,
+                    local_only=self._local_only,
+                )
                 self._models["clip_ensemble"] = clip_ensemble
 
             log_vram_snapshot("after_clip_ensemble_load")
@@ -178,7 +216,7 @@ class _ModelRegistry:
         if not self._offloading_enabled or not self._offloader:
             return
 
-        # Map stages to required models
+        # Map stages to required models (audio-gated driver replaces JoyVASA)
         stage_models = {
             "audio": "kokoro",
             "image": "flux",
@@ -292,11 +330,17 @@ class DefaultRenderer(DeterministicVideoRenderer):
         models_config = config.get("models", {})
         precision_overrides = models_config.get("precision", {})
         offloading_mode = models_config.get("offloading", "auto")
+        cache_dir = models_config.get("cache_dir")
+        cache_dir_path = Path(cache_dir).expanduser() if cache_dir else None
+        cache_dir_str = str(cache_dir_path) if cache_dir_path else None
+        local_only = bool(models_config.get("local_only", False))
 
         self._model_registry = _ModelRegistry(
             device,
             precision_overrides,
             offloading_mode=offloading_mode,
+            cache_dir=cache_dir_str,
+            local_only=local_only,
         )
         self._model_registry.load_all_models()
 
@@ -430,15 +474,21 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
             # Check deadline after audio + actor phase
             time_remaining = deadline - time.time()
-            if time_remaining < 10.0:  # Need at least 10s for video + CLIP
+            if time_remaining < 15.0:  # Need at least 15s for motion + video + CLIP
                 raise TimeoutError(
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 2: Sequential video warping (LivePortrait)
+            # Phase 2: Video rendering with audio-gated driver
+            # (Combines motion generation + rendering in one step)
             if offloading_enabled:
                 self._model_registry.prepare_for_stage("video")
-            video_result = await self._generate_video(actor_result, audio_result, recipe, seed)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            video_result = await self._generate_video_gated(
+                actor_result, audio_result, recipe, seed
+            )
+            video_result = self._apply_cinematic_shake(video_result)
 
             # Check deadline before CLIP
             time_remaining = deadline - time.time()
@@ -447,7 +497,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 3: CLIP verification
+            # Phase 4: CLIP verification
             if offloading_enabled:
                 self._model_registry.prepare_for_stage("clip")
             clip_embedding = await self._verify_semantic(video_result, recipe)
@@ -558,6 +608,20 @@ class DefaultRenderer(DeterministicVideoRenderer):
         prompt = visual_track.get("prompt", "")
         negative_prompt = visual_track.get("negative_prompt", "")
 
+        quality_cfg = self._config.get("quality", {})
+        prompt_cfg = quality_cfg.get("prompt_steering", {})
+        if prompt_cfg.get("enabled", True):
+            system_prefix = prompt_cfg.get(
+                "positive_prefix",
+                "medium shot, looking at viewer, symmetrical face, centered composition, eye contact, ",
+            )
+            system_negative = prompt_cfg.get(
+                "negative_prefix",
+                "profile view, side view, looking away, skewed, distorted, back of head, asymmetrical",
+            )
+            prompt = f"{system_prefix}{prompt}".strip()
+            negative_prompt = f"{system_negative}, {negative_prompt}".strip(", ")
+
         # Validate prompt is not empty
         if not prompt or not prompt.strip():
             logger.warning("Empty prompt provided, returning zeroed actor buffer")
@@ -654,10 +718,18 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 expected_frames,
             )
 
+        driver_audio = audio
+        quality_cfg = self._config.get("quality", {})
+        audio_cfg = quality_cfg.get("driver_audio", {})
+        if audio_cfg.get("enabled", True):
+            driver_audio = self._process_audio_for_driver(audio)
+
+        driver_sample_rate = int(audio_cfg.get("sample_rate", 16000))
+
         # LivePortrait should use seed for deterministic warping
         video = liveportrait.animate(
             source_image=actor_img,
-            driving_audio=audio,
+            driving_audio=driver_audio,
             expression_preset=expression_preset,
             expression_sequence=expression_sequence,
             fps=fps,
@@ -665,6 +737,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             output=output_buffer,
             driving_source=Path(driving_source) if driving_source else None,
             seed=seed,  # Pass seed for determinism
+            driver_sample_rate=driver_sample_rate,
         )
 
         if not isinstance(video, torch.Tensor):
@@ -672,6 +745,276 @@ class DefaultRenderer(DeterministicVideoRenderer):
             return self._video_buffer
 
         return video
+
+    async def _generate_motion(
+        self,
+        audio: torch.Tensor,
+        recipe: dict[str, Any],
+        seed: int,
+    ) -> dict[str, Any]:
+        """Generate motion sequence from audio using JoyVASA.
+
+        JoyVASA uses a diffusion transformer to generate LivePortrait-compatible
+        motion sequences directly from audio. This produces higher quality lip-sync
+        than the viseme-based approach.
+
+        Args:
+            audio: Audio waveform tensor (samples,) at 24kHz from Kokoro
+            recipe: Recipe with slot_params
+            seed: Deterministic seed
+
+        Returns:
+            Motion data dict for LivePortrait's animate_from_motion():
+            - 'n_frames': int
+            - 'output_fps': int (25)
+            - 'motion': list[dict] with per-frame exp, scale, R, t
+        """
+        assert self._model_registry is not None
+
+        joyvasa = self._model_registry.get_model("joyvasa")
+
+        slot_params = recipe.get("slot_params", {})
+        duration = slot_params.get("duration_sec", 45)
+
+        # Resample audio from 24kHz (Kokoro) to 16kHz (JoyVASA)
+        try:
+            import torchaudio
+            resampler = torchaudio.transforms.Resample(
+                orig_freq=24000,
+                new_freq=16000,
+            ).to(audio.device)
+            audio_16k = resampler(audio.unsqueeze(0)).squeeze(0)
+        except ImportError:
+            # Fallback: simple downsampling
+            logger.warning("torchaudio not available; using simple downsampling for JoyVASA")
+            ratio = 24000 / 16000  # 1.5
+            indices = torch.arange(0, audio.shape[0], ratio, device=audio.device).long()
+            audio_16k = audio[indices]
+
+        logger.info(
+            "Generating motion with JoyVASA",
+            extra={
+                "audio_samples": audio_16k.shape[0],
+                "duration_sec": duration,
+                "seed": seed,
+            },
+        )
+
+        # JoyVASA generates motion at 25fps
+        motion_data = joyvasa.generate_motion(
+            audio=audio_16k,
+            duration_sec=duration,
+            seed=seed,
+        )
+
+        logger.info(
+            "JoyVASA motion generated",
+            extra={
+                "n_frames": motion_data.get("n_frames"),
+                "output_fps": motion_data.get("output_fps"),
+            },
+        )
+
+        return motion_data
+
+    async def _generate_video_from_motion(
+        self,
+        actor_img: torch.Tensor,
+        motion_data: dict[str, Any],
+        recipe: dict[str, Any],
+        seed: int,
+    ) -> torch.Tensor:
+        """Generate video from actor image and JoyVASA motion data.
+
+        Uses LivePortrait's animate_from_motion() method to render video
+        with pre-computed motion sequences from JoyVASA.
+
+        Args:
+            actor_img: Actor image tensor [1, 3, 512, 512] or [3, 512, 512]
+            motion_data: Motion dict from JoyVASA with motion sequences
+            recipe: Recipe with visual_track overrides
+            seed: Deterministic seed
+
+        Returns:
+            Video frames tensor [num_frames, 3, 512, 512]
+        """
+        assert self._model_registry is not None
+        assert self._video_buffer is not None
+
+        liveportrait = self._model_registry.get_model("liveportrait")
+
+        slot_params = recipe.get("slot_params", {})
+        # Use 25fps when using JoyVASA (its native fps)
+        fps = motion_data.get("output_fps", 25)
+
+        if actor_img.dim() == 4 and actor_img.shape[0] == 1:
+            actor_img = actor_img[0]
+
+        if not hasattr(liveportrait, "animate_from_motion"):
+            logger.warning(
+                "LivePortrait missing animate_from_motion(); falling back to viseme-based"
+            )
+            # Fallback - this shouldn't happen if LivePortrait is properly updated
+            return await self._generate_video(
+                actor_img.unsqueeze(0),
+                torch.zeros(1),  # Dummy audio
+                recipe,
+                seed,
+            )
+
+        logger.info(
+            "Rendering video from JoyVASA motion",
+            extra={
+                "motion_frames": motion_data.get("n_frames"),
+                "fps": fps,
+            },
+        )
+
+        # Calculate expected frame count
+        expected_frames = motion_data.get("n_frames", int(slot_params.get("duration_sec", 45) * fps))
+
+        # Check buffer compatibility
+        output_buffer = None
+        if self._video_buffer is not None and self._video_buffer.shape[0] >= expected_frames:
+            output_buffer = self._video_buffer
+
+        video = liveportrait.animate_from_motion(
+            source_image=actor_img,
+            motion_data=motion_data,
+            fps=fps,
+            output=output_buffer,
+            seed=seed,
+        )
+
+        if not isinstance(video, torch.Tensor):
+            logger.warning("LivePortrait animate_from_motion() returned non-tensor")
+            return self._video_buffer
+
+        return video
+
+    async def _generate_video_gated(
+        self,
+        actor_img: torch.Tensor,
+        audio: torch.Tensor,
+        recipe: dict[str, Any],
+        seed: int,
+    ) -> torch.Tensor:
+        """Generate video using audio-gated motion driver.
+
+        This replaces the JoyVASA motion generation with a simpler,
+        more robust template-based approach.
+
+        Args:
+            actor_img: Actor image tensor [1, 3, 512, 512] or [3, 512, 512]
+            audio: Audio waveform tensor at 24kHz
+            recipe: Recipe with slot_params
+            seed: Deterministic seed
+
+        Returns:
+            Video frames tensor [num_frames, 3, 512, 512]
+        """
+        assert self._model_registry is not None
+        assert self._video_buffer is not None
+
+        liveportrait = self._model_registry.get_model("liveportrait")
+
+        slot_params = recipe.get("slot_params", {})
+        fps = slot_params.get("fps", 24)
+
+        # Ensure correct shape
+        if actor_img.dim() == 4 and actor_img.shape[0] == 1:
+            actor_img = actor_img[0]
+
+        if not hasattr(liveportrait, "animate_gated"):
+            logger.warning(
+                "LivePortrait missing animate_gated(); falling back to viseme-based"
+            )
+            return await self._generate_video(
+                actor_img.unsqueeze(0),
+                audio,
+                recipe,
+                seed,
+            )
+
+        # Save audio to temp file for librosa
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            audio_path = f.name
+            sf.write(audio_path, audio.cpu().numpy(), 24000)
+
+        try:
+            logger.info(
+                "Generating video with audio-gated driver",
+                extra={"fps": fps, "audio_samples": audio.shape[0]},
+            )
+
+            video = liveportrait.animate_gated(
+                source_image=actor_img,
+                audio_path=audio_path,
+                fps=fps,
+                template_name="d7",
+            )
+
+            if not isinstance(video, torch.Tensor):
+                logger.warning("animate_gated returned non-tensor")
+                return self._video_buffer
+
+            return video
+
+        finally:
+            # Cleanup temp file
+            if os.path.exists(audio_path):
+                os.unlink(audio_path)
+
+    def _process_audio_for_driver(self, audio_24k: torch.Tensor) -> torch.Tensor:
+        """Prepare audio for 16kHz LivePortrait driving."""
+        quality_cfg = self._config.get("quality", {})
+        audio_cfg = quality_cfg.get("driver_audio", {})
+        pad_seconds = float(audio_cfg.get("pad_silence_sec", 0.2))
+        target_sample_rate = int(audio_cfg.get("sample_rate", 16000))
+
+        pad_samples = int(pad_seconds * 24000)
+        padded = F.pad(audio_24k, (pad_samples, pad_samples), mode="constant", value=0.0)
+
+        try:
+            import torchaudio
+        except ImportError as exc:
+            raise RuntimeError("torchaudio is required for driver audio resampling") from exc
+
+        resampler = torchaudio.transforms.Resample(
+            orig_freq=24000,
+            new_freq=target_sample_rate,
+        ).to(padded.device)
+        return resampler(padded.unsqueeze(0)).squeeze(0)
+
+    def _apply_cinematic_shake(self, video_frames: torch.Tensor) -> torch.Tensor:
+        """Apply subtle handheld-style motion to reduce static background feel."""
+        quality_cfg = self._config.get("quality", {})
+        shake_cfg = quality_cfg.get("camera_shake", {})
+        if not shake_cfg.get("enabled", True):
+            return video_frames
+
+        strength = float(shake_cfg.get("strength", 0.002))
+        zoom = float(shake_cfg.get("zoom", 0.002))
+
+        t, c, h, w = video_frames.shape
+        time_axis = torch.linspace(0, t / 24.0, t, device=video_frames.device)
+        tx = strength * torch.sin(time_axis * 1.5) + (strength * 0.5) * torch.sin(time_axis * 3.7)
+        ty = (strength * 0.5) * torch.cos(time_axis * 1.2)
+        scale = 1.0 + zoom * torch.sin(time_axis * 0.5)
+
+        theta = torch.zeros((t, 2, 3), device=video_frames.device, dtype=video_frames.dtype)
+        theta[:, 0, 0] = scale
+        theta[:, 1, 1] = scale
+        theta[:, 0, 2] = tx
+        theta[:, 1, 2] = ty
+
+        grid = F.affine_grid(theta, video_frames.size(), align_corners=False)
+        return F.grid_sample(
+            video_frames,
+            grid,
+            align_corners=False,
+            padding_mode="reflection",
+        )
 
     async def _verify_semantic(
         self, video: torch.Tensor, recipe: dict[str, Any]
