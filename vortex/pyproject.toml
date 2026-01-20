@@ -26,6 +26,8 @@ dependencies = [
     "pyyaml>=6.0.0",         # Config file loading (T017)
     "open-clip-torch>=2.23.0",  # CLIP ensemble semantic verification (T018)
     "av>=12.0.0",  # VP9/Opus encoding for Lane 0 video pipeline
+    "librosa>=0.10.0",  # Audio analysis for audio-gated motion driver
+    "scipy>=1.10.0",    # Signal smoothing for audio-gated motion driver
 ]
 
 [project.optional-dependencies]
