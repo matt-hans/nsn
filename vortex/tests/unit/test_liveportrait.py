@@ -238,7 +238,7 @@ class TestLipsyncAccuracy(unittest.TestCase):
         mock_pipeline_class.from_pretrained.return_value = self.mock_pipeline
 
         def mock_warp_sequence(
-            source_image, visemes, expression_params, num_frames, driving_source=None
+            source_image, visemes, expression_params, num_frames, driving_source=None, fps=24
         ):
             return torch.rand(num_frames, 3, 512, 512)
 
@@ -280,7 +280,7 @@ class TestExpressionPresets(unittest.TestCase):
         mock_pipeline_class.from_pretrained.return_value = self.mock_pipeline
 
         def mock_warp_sequence(
-            source_image, visemes, expression_params, num_frames, driving_source=None
+            source_image, visemes, expression_params, num_frames, driving_source=None, fps=24
         ):
             return torch.rand(num_frames, 3, 512, 512)
 
