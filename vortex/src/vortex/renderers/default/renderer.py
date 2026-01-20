@@ -472,6 +472,11 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 actor_task = asyncio.create_task(self._generate_actor(recipe, seed))
                 audio_result, actor_result = await asyncio.gather(audio_task, actor_task)
 
+            # Phase 1c: Lip inpainting (optional, creates mouth void for animation)
+            lip_inpaint_cfg = self._config.get("quality", {}).get("lip_inpainting", {})
+            if lip_inpaint_cfg.get("enabled", False):
+                actor_result = await self._inpaint_lips(actor_result, recipe, seed)
+
             # Check deadline after audio + actor phase
             time_remaining = deadline - time.time()
             if time_remaining < 15.0:  # Need at least 15s for motion + video + CLIP
@@ -666,6 +671,93 @@ class DefaultRenderer(DeterministicVideoRenderer):
             self._actor_buffer.zero_()
             return self._actor_buffer
 
+    async def _inpaint_lips(
+        self,
+        actor_img: torch.Tensor,
+        recipe: dict[str, Any],
+        seed: int,
+    ) -> torch.Tensor:
+        """Inpaint lip region to create mouth interior texture.
+
+        This creates a "mouth void" in sealed-lip images before LivePortrait
+        animation, preventing the "rubber mask" artifact where lip skin
+        stretches instead of revealing teeth/cavity.
+
+        Args:
+            actor_img: Actor image tensor [1, 3, H, W]
+            recipe: Recipe with visual_track
+            seed: Deterministic seed
+
+        Returns:
+            Inpainted actor image tensor [1, 3, H, W]
+        """
+        assert self._model_registry is not None
+
+        lip_cfg = self._config.get("quality", {}).get("lip_inpainting", {})
+
+        # Import face landmarks utility
+        try:
+            from vortex.utils.face_landmarks import create_mouth_void_mask
+        except ImportError as e:
+            logger.warning(f"Face landmarks not available: {e}, skipping lip inpainting")
+            return actor_img
+
+        # Get Flux model for inpainting
+        try:
+            flux = self._model_registry.get_model("flux")
+        except KeyError:
+            logger.warning("Flux model not available for inpainting, skipping")
+            return actor_img
+
+        if not hasattr(flux, "inpaint_region"):
+            logger.warning("Flux model missing inpaint_region(), skipping lip inpainting")
+            return actor_img
+
+        # Ensure correct shape for processing
+        img = actor_img.squeeze(0) if actor_img.dim() == 4 else actor_img  # [3, H, W]
+
+        # Create lip mask from landmarks
+        dilation_px = int(lip_cfg.get("dilation_px", 8))
+        mask = create_mouth_void_mask(img, device=self._device, dilation_px=dilation_px)
+
+        if mask is None:
+            logger.warning("Face detection failed, skipping lip inpainting")
+            return actor_img
+
+        # Inpainting prompt
+        inpaint_prompt = lip_cfg.get(
+            "prompt",
+            "slightly parted lips, visible teeth, natural shadow"
+        )
+        denoising_strength = float(lip_cfg.get("denoising_strength", 0.45))
+
+        logger.info(
+            "Inpainting lip region",
+            extra={
+                "mask_coverage": float(mask.mean()),
+                "denoising_strength": denoising_strength,
+            }
+        )
+
+        try:
+            inpainted = flux.inpaint_region(
+                image=img,
+                mask=mask,
+                prompt=inpaint_prompt,
+                denoising_strength=denoising_strength,
+                seed=seed,
+            )
+
+            # Restore batch dimension
+            if inpainted.dim() == 3:
+                inpainted = inpainted.unsqueeze(0)
+
+            return inpainted
+
+        except Exception as e:
+            logger.warning(f"Lip inpainting failed: {e}, using original image")
+            return actor_img
+
     async def _generate_video(
         self,
         actor_img: torch.Tensor,
@@ -796,9 +888,13 @@ class DefaultRenderer(DeterministicVideoRenderer):
             sf.write(audio_path, audio.cpu().numpy(), 24000)
 
         try:
+            # Detect animation style from recipe
+            visual_track = recipe.get("visual_track", {})
+            style = self._detect_animation_style(visual_track)
+
             logger.info(
                 "Generating video with audio-gated driver",
-                extra={"fps": fps, "audio_samples": audio.shape[0]},
+                extra={"fps": fps, "audio_samples": audio.shape[0], "style": style},
             )
 
             video = liveportrait.animate_gated(
@@ -806,6 +902,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 audio_path=audio_path,
                 fps=fps,
                 template_name="d7",
+                style=style,
             )
 
             if not isinstance(video, torch.Tensor):
@@ -839,6 +936,34 @@ class DefaultRenderer(DeterministicVideoRenderer):
             new_freq=target_sample_rate,
         ).to(padded.device)
         return resampler(padded.unsqueeze(0)).squeeze(0)
+
+    def _detect_animation_style(self, visual_track: dict[str, Any]) -> str:
+        """Detect animation style from recipe or prompt keywords.
+
+        Precedence: Explicit override > Auto-detect > Default (realistic)
+
+        Args:
+            visual_track: Visual track section of recipe
+
+        Returns:
+            Animation style: "realistic", "cartoon", or "exaggerated"
+        """
+        # 1. Check explicit override
+        if "animation_style" in visual_track:
+            return visual_track["animation_style"]
+
+        # 2. Auto-detect from prompt keywords
+        prompt = visual_track.get("prompt", "").lower()
+        cartoon_keywords = {
+            "cartoon", "anime", "illustration", "drawing", "sketch",
+            "vector art", "pixar", "disney", "animated style", "2d",
+            "cel shaded", "flat style", "caricature"
+        }
+
+        if any(k in prompt for k in cartoon_keywords):
+            return "cartoon"
+
+        return "realistic"
 
     def _apply_cinematic_shake(self, video_frames: torch.Tensor) -> torch.Tensor:
         """Apply subtle handheld-style motion to reduce static background feel."""

@@ -85,6 +85,11 @@ RECIPE_SCHEMA: dict[str, Any] = {
                     "type": "string",
                     "description": "Optional motion template path or CID",
                 },
+                "animation_style": {
+                    "type": "string",
+                    "enum": ["realistic", "cartoon", "exaggerated"],
+                    "description": "Override animation dynamics. Auto-detected if omitted.",
+                },
             },
         },
         "semantic_constraints": {

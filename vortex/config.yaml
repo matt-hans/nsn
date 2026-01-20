@@ -67,8 +67,10 @@ pipeline:
 quality:
   prompt_steering:
     enabled: true
-    positive_prefix: "medium shot, looking at viewer, symmetrical face, centered composition, eye contact, "
-    negative_prefix: "profile view, side view, looking away, skewed, distorted, back of head, asymmetrical"
+    # NOTE: "teeth visible" removed to prevent grimace. "slightly parted lips" creates
+    # the dark void needed for natural mouth opening without forcing a smile.
+    positive_prefix: "medium shot, looking at viewer, symmetrical face, centered composition, eye contact, slightly parted lips, "
+    negative_prefix: "profile view, side view, looking away, skewed, distorted, back of head, asymmetrical, closed mouth, sealed lips"
   driver_audio:
     enabled: true
     sample_rate: 16000
@@ -77,6 +79,30 @@ quality:
     enabled: true
     strength: 0.002
     zoom: 0.002
+
+  # Audio-gated motion driver settings
+  audio_driver:
+    # Asymmetric physics smoothing: fast close, slow open (biomechanical)
+    # Phase 1 - safe to enable, replaces Gaussian smoothing
+    asymmetric_smoothing: true
+    # Wav2Vec2 MLP for phoneme-aware mouth mapping
+    # Phase 2 - enable after validation, uses learned bilabial detection
+    # Fixes: /m/, /b/, /p/ sounds incorrectly opening the mouth
+    use_mlp: false
+
+  # Lip inpainting: creates mouth void texture before animation
+  # Phase 3 - enable after VRAM testing, higher complexity
+  # Fixes: "rubber mask" artifact where lip skin stretches instead of
+  # revealing teeth/cavity when jaw opens
+  lip_inpainting:
+    enabled: false
+    # Pixels to dilate lip mask (softens inpainting boundary)
+    dilation_px: 8
+    # How much to regenerate (0.0=none, 1.0=full). 0.45 adds texture without
+    # dramatically changing the lip appearance
+    denoising_strength: 0.45
+    # Prompt for the inpainted region
+    prompt: "slightly parted lips, visible teeth, natural shadow"
 
 outputs:
   # Persist RenderResult to disk after successful generation
