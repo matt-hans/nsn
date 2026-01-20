@@ -1,4 +1,13 @@
-"""VRAM management and monitoring utilities."""
+"""Vortex utility modules.
+
+This package provides:
+- Memory/VRAM monitoring and management
+- Exception types for memory pressure handling
+- Model offloading utilities
+
+Legacy modules (lipsync, face_landmarks) have been removed
+as their functionality is now integrated into liveportrait_features.
+"""
 
 from .exceptions import (
     MemoryLeakWarning,
