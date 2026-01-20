@@ -122,7 +122,7 @@ class _ModelRegistry:
 
     def load_all_models(self) -> None:
         """Load all models into registry."""
-        # All required models (audio-gated driver replaces JoyVASA)
+        # All required models for audio-gated pipeline
         single_models: list[ModelName] = ["flux", "liveportrait", "kokoro"]
 
         try:
@@ -216,7 +216,7 @@ class _ModelRegistry:
         if not self._offloading_enabled or not self._offloader:
             return
 
-        # Map stages to required models (audio-gated driver replaces JoyVASA)
+        # Map stages to required models
         stage_models = {
             "audio": "kokoro",
             "image": "flux",
@@ -746,152 +746,6 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
         return video
 
-    async def _generate_motion(
-        self,
-        audio: torch.Tensor,
-        recipe: dict[str, Any],
-        seed: int,
-    ) -> dict[str, Any]:
-        """Generate motion sequence from audio using JoyVASA.
-
-        JoyVASA uses a diffusion transformer to generate LivePortrait-compatible
-        motion sequences directly from audio. This produces higher quality lip-sync
-        than the viseme-based approach.
-
-        Args:
-            audio: Audio waveform tensor (samples,) at 24kHz from Kokoro
-            recipe: Recipe with slot_params
-            seed: Deterministic seed
-
-        Returns:
-            Motion data dict for LivePortrait's animate_from_motion():
-            - 'n_frames': int
-            - 'output_fps': int (25)
-            - 'motion': list[dict] with per-frame exp, scale, R, t
-        """
-        assert self._model_registry is not None
-
-        joyvasa = self._model_registry.get_model("joyvasa")
-
-        slot_params = recipe.get("slot_params", {})
-        duration = slot_params.get("duration_sec", 45)
-
-        # Resample audio from 24kHz (Kokoro) to 16kHz (JoyVASA)
-        try:
-            import torchaudio
-            resampler = torchaudio.transforms.Resample(
-                orig_freq=24000,
-                new_freq=16000,
-            ).to(audio.device)
-            audio_16k = resampler(audio.unsqueeze(0)).squeeze(0)
-        except ImportError:
-            # Fallback: simple downsampling
-            logger.warning("torchaudio not available; using simple downsampling for JoyVASA")
-            ratio = 24000 / 16000  # 1.5
-            indices = torch.arange(0, audio.shape[0], ratio, device=audio.device).long()
-            audio_16k = audio[indices]
-
-        logger.info(
-            "Generating motion with JoyVASA",
-            extra={
-                "audio_samples": audio_16k.shape[0],
-                "duration_sec": duration,
-                "seed": seed,
-            },
-        )
-
-        # JoyVASA generates motion at 25fps
-        motion_data = joyvasa.generate_motion(
-            audio=audio_16k,
-            duration_sec=duration,
-            seed=seed,
-        )
-
-        logger.info(
-            "JoyVASA motion generated",
-            extra={
-                "n_frames": motion_data.get("n_frames"),
-                "output_fps": motion_data.get("output_fps"),
-            },
-        )
-
-        return motion_data
-
-    async def _generate_video_from_motion(
-        self,
-        actor_img: torch.Tensor,
-        motion_data: dict[str, Any],
-        recipe: dict[str, Any],
-        seed: int,
-    ) -> torch.Tensor:
-        """Generate video from actor image and JoyVASA motion data.
-
-        Uses LivePortrait's animate_from_motion() method to render video
-        with pre-computed motion sequences from JoyVASA.
-
-        Args:
-            actor_img: Actor image tensor [1, 3, 512, 512] or [3, 512, 512]
-            motion_data: Motion dict from JoyVASA with motion sequences
-            recipe: Recipe with visual_track overrides
-            seed: Deterministic seed
-
-        Returns:
-            Video frames tensor [num_frames, 3, 512, 512]
-        """
-        assert self._model_registry is not None
-        assert self._video_buffer is not None
-
-        liveportrait = self._model_registry.get_model("liveportrait")
-
-        slot_params = recipe.get("slot_params", {})
-        # Use 25fps when using JoyVASA (its native fps)
-        fps = motion_data.get("output_fps", 25)
-
-        if actor_img.dim() == 4 and actor_img.shape[0] == 1:
-            actor_img = actor_img[0]
-
-        if not hasattr(liveportrait, "animate_from_motion"):
-            logger.warning(
-                "LivePortrait missing animate_from_motion(); falling back to viseme-based"
-            )
-            # Fallback - this shouldn't happen if LivePortrait is properly updated
-            return await self._generate_video(
-                actor_img.unsqueeze(0),
-                torch.zeros(1),  # Dummy audio
-                recipe,
-                seed,
-            )
-
-        logger.info(
-            "Rendering video from JoyVASA motion",
-            extra={
-                "motion_frames": motion_data.get("n_frames"),
-                "fps": fps,
-            },
-        )
-
-        # Calculate expected frame count
-        expected_frames = motion_data.get("n_frames", int(slot_params.get("duration_sec", 45) * fps))
-
-        # Check buffer compatibility
-        output_buffer = None
-        if self._video_buffer is not None and self._video_buffer.shape[0] >= expected_frames:
-            output_buffer = self._video_buffer
-
-        video = liveportrait.animate_from_motion(
-            source_image=actor_img,
-            motion_data=motion_data,
-            fps=fps,
-            output=output_buffer,
-            seed=seed,
-        )
-
-        if not isinstance(video, torch.Tensor):
-            logger.warning("LivePortrait animate_from_motion() returned non-tensor")
-            return self._video_buffer
-
-        return video
-
     async def _generate_video_gated(
         self,
         actor_img: torch.Tensor,
@@ -901,8 +755,8 @@ class DefaultRenderer(DeterministicVideoRenderer):
     ) -> torch.Tensor:
         """Generate video using audio-gated motion driver.
 
-        This replaces the JoyVASA motion generation with a simpler,
-        more robust template-based approach.
+        Uses a template-based approach with audio envelope gating
+        for reliable lip-sync animation.
 
         Args:
             actor_img: Actor image tensor [1, 3, 512, 512] or [3, 512, 512]
