@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -32,6 +33,7 @@ class ComfyClient:
         host: str = "127.0.0.1",
         port: int = 8188,
         timeout: float = 300.0,
+        output_dir: str | None = None,
     ):
         """Initialize client.
 
@@ -39,11 +41,13 @@ class ComfyClient:
             host: ComfyUI server hostname
             port: ComfyUI server port
             timeout: Maximum seconds to wait for job completion
+            output_dir: ComfyUI output directory (defaults to COMFYUI_OUTPUT_DIR env var or /ComfyUI/output)
         """
         self.host = host
         self.port = port
         self.timeout = timeout
         self.client_id = uuid.uuid4().hex
+        self.output_dir = output_dir or os.environ.get("COMFYUI_OUTPUT_DIR", "/ComfyUI/output")
 
         self._base_url = f"http://{host}:{port}"
         self._ws_url = f"ws://{host}:{port}/ws?clientId={self.client_id}"
@@ -202,10 +206,7 @@ class ComfyClient:
 
     def _get_output_dir(self) -> str:
         """Get ComfyUI output directory path."""
-        # Default ComfyUI output location
-        if self.host == "127.0.0.1":
-            return "/home/matt/nsn/ComfyUI/output"
-        return "/ComfyUI/output"
+        return self.output_dir
 
     async def generate(
         self,
