@@ -1,0 +1,73 @@
+# ToonGen ComfyUI Server
+# GPU-enabled container for visual generation pipeline
+
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+LABEL maintainer="NSN Team"
+LABEL description="ComfyUI server for ToonGen visual generation"
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    ffmpeg \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Clone ComfyUI
+RUN git clone https://github.com/comfyanonymous/ComfyUI.git /app/ComfyUI
+
+WORKDIR /app/ComfyUI
+
+# Install ComfyUI requirements
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional dependencies for custom nodes
+RUN pip install --no-cache-dir \
+    onnxruntime-gpu \
+    insightface \
+    mediapipe \
+    opencv-python-headless
+
+# Install ComfyUI Manager
+RUN cd custom_nodes && \
+    git clone https://github.com/ltdrdata/ComfyUI-Manager.git
+
+# Install required custom nodes
+RUN cd custom_nodes && \
+    git clone https://github.com/kijai/ComfyUI-LivePortraitKJ.git && \
+    git clone https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved.git && \
+    git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
+
+# Install custom node requirements
+RUN cd custom_nodes/ComfyUI-LivePortraitKJ && \
+    pip install --no-cache-dir -r requirements.txt || true
+RUN cd custom_nodes/ComfyUI-AnimateDiff-Evolved && \
+    pip install --no-cache-dir -r requirements.txt || true
+RUN cd custom_nodes/ComfyUI-VideoHelperSuite && \
+    pip install --no-cache-dir -r requirements.txt || true
+
+# Create model directories (will be mounted as volumes)
+RUN mkdir -p /app/ComfyUI/models/checkpoints \
+    /app/ComfyUI/models/liveportrait \
+    /app/ComfyUI/models/animatediff_models \
+    /app/ComfyUI/models/clip \
+    /app/ComfyUI/input \
+    /app/ComfyUI/output
+
+# Expose port
+EXPOSE 8188
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8188/system_stats || exit 1
+
+# Start ComfyUI in headless mode
+CMD ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188"]
