@@ -26,6 +26,7 @@ Target Duration: 10-15 seconds at 8fps
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -442,11 +443,11 @@ class DefaultRenderer(DeterministicVideoRenderer):
         logger.info(f"Initializing DefaultRenderer on device: {device}")
 
         # Initialize Showrunner (external LLM, no VRAM usage)
-        showrunner_config = config.get("showrunner", {})
+        llm_config = config.get("llm", {})
         self._showrunner = Showrunner(
-            base_url=showrunner_config.get("base_url", "http://localhost:11434"),
-            model=showrunner_config.get("model", "llama3:8b"),
-            timeout=showrunner_config.get("timeout", 30.0),
+            base_url=llm_config.get("base_url", "http://localhost:11434"),
+            model=llm_config.get("model", "llama3:8b"),
+            timeout=llm_config.get("timeout_s", 30.0),
         )
 
         # Initialize model registry and load models
@@ -777,9 +778,10 @@ class DefaultRenderer(DeterministicVideoRenderer):
             self._audio_buffer.zero_()
             return self._audio_buffer
 
-        # Generate audio with deterministic seed
+        # Generate audio with deterministic seed (wrap in thread to avoid blocking)
         try:
-            audio = kokoro.synthesize(
+            audio = await asyncio.to_thread(
+                kokoro.synthesize,
                 text=script,
                 voice_id=voice_id,
                 speed=speed,
@@ -831,7 +833,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             self._actor_buffer.zero_()
             return self._actor_buffer.squeeze(0)
 
-        # Generate keyframe image with deterministic seed
+        # Generate keyframe image with deterministic seed (wrap in thread to avoid blocking)
         try:
             # Flux expects output buffer shape [3, 512, 512]
             output_buffer = (
@@ -840,7 +842,8 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 else self._actor_buffer
             )
 
-            image = flux.generate(
+            image = await asyncio.to_thread(
+                flux.generate,
                 prompt=prompt,
                 negative_prompt=negative_prompt,
                 num_inference_steps=4,  # Schnell fast variant
@@ -1081,3 +1084,34 @@ class DefaultRenderer(DeterministicVideoRenderer):
             return False
 
         return True
+
+    async def shutdown(self) -> None:
+        """Shutdown renderer and release all resources.
+
+        Unloads all models, clears pre-allocated buffers, and resets state.
+        Safe to call multiple times.
+        """
+        logger.info("Shutting down DefaultRenderer...")
+
+        # Unload CogVideoX if loaded
+        if self._model_registry is not None:
+            try:
+                cogvideox = self._model_registry.get_cogvideox()
+                cogvideox.unload()
+            except Exception as e:
+                logger.warning(f"Error unloading CogVideoX: {e}")
+
+        # Clear model registry (triggers cleanup)
+        self._model_registry = None
+
+        # Clear pre-allocated buffers
+        self._actor_buffer = None
+        self._video_buffer = None
+        self._audio_buffer = None
+
+        # Clear GPU cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        self._initialized = False
+        logger.info("DefaultRenderer shutdown complete")
