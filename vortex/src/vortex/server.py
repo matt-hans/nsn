@@ -1,16 +1,21 @@
-"""Vortex AI video generation server.
+"""Vortex AI video generation server (ToonGen).
 
-This server provides HTTP JSON API for Lane 0 video generation:
-- POST /generate: Generate video from recipe
+This server provides HTTP JSON API for Lane 0 video generation using ToonGen:
+- POST /generate: Generate video from recipe via ComfyUI
 - POST /unload: Manually unload models to free GPU memory
-- GET /health: Health check endpoint
+- GET /health: Health check endpoint (includes ComfyUI status)
 - GET /vram: VRAM status endpoint
 - GET /metrics: Prometheus metrics endpoint
 
-The server wraps the VortexPipeline and provides a simple HTTP interface
+The server wraps the VideoOrchestrator and provides a simple HTTP interface
 for standalone operation or direct integration testing.
 
 GPU Memory Management:
+    The orchestrator manages VRAM handoff between audio and visual models:
+    - Audio models (F5-TTS/Kokoro) load for voice generation
+    - Audio models unload before ComfyUI visual generation
+    - ComfyUI manages its own models (Flux, LivePortrait, etc.)
+
     Models are loaded lazily on first /generate request and remain in VRAM
     for fast subsequent generations. To free GPU memory for other processes:
 
@@ -51,7 +56,6 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
 
 logger = logging.getLogger(__name__)
@@ -61,7 +65,7 @@ class VortexServer:
     """HTTP JSON API server for Vortex video generation.
 
     Provides endpoints for video generation, health checks, and VRAM monitoring.
-    Lazily initializes the VortexPipeline on first generation request.
+    Lazily initializes the VideoOrchestrator on first generation request.
 
     GPU Memory Management:
         - Models load lazily on first /generate request
@@ -75,6 +79,10 @@ class VortexServer:
         device: str,
         output_path: Path,
         idle_timeout_sec: float = 300.0,
+        comfy_host: str = "127.0.0.1",
+        comfy_port: int = 8188,
+        template_path: str = "templates/cartoon_workflow.json",
+        assets_dir: str = "assets",
     ):
         """Initialize server.
 
@@ -83,28 +91,36 @@ class VortexServer:
             output_path: Directory for output files
             idle_timeout_sec: Seconds of inactivity before unloading models.
                               Set to 0 to disable auto-unload. Default: 300 (5 min)
+            comfy_host: ComfyUI server hostname
+            comfy_port: ComfyUI server port
+            template_path: Path to ComfyUI workflow template JSON
+            assets_dir: Root directory for audio assets
         """
         self.device = device
         self.output_path = output_path
         self.idle_timeout_sec = idle_timeout_sec
-        self._pipeline = None
+        self._comfy_host = comfy_host
+        self._comfy_port = comfy_port
+        self._template_path = template_path
+        self._assets_dir = assets_dir
+        self._orchestrator = None
         self._initialized = False
         self._init_error: str | None = None
         self._last_activity_time: float = 0.0
         self._idle_monitor_task: asyncio.Task | None = None
         self._unload_count: int = 0  # Track number of unloads for metrics
 
-    async def ensure_pipeline(self) -> bool:
-        """Lazily initialize the VortexPipeline.
+    async def ensure_orchestrator(self) -> bool:
+        """Lazily initialize the VideoOrchestrator.
 
         Returns:
-            True if pipeline is ready, False if initialization failed
+            True if orchestrator is ready, False if initialization failed
         """
         # Update activity time
         self._last_activity_time = time.time()
 
-        # If already initialized and pipeline exists, we're good
-        if self._initialized and self._pipeline is not None:
+        # If already initialized and orchestrator exists, we're good
+        if self._initialized and self._orchestrator is not None:
             return True
 
         # If previously failed, don't retry
@@ -112,14 +128,21 @@ class VortexServer:
             return False
 
         try:
-            logger.info(f"Initializing VortexPipeline on device: {self.device}")
-            from vortex.pipeline import VortexPipeline
+            logger.info(f"Initializing VideoOrchestrator on device: {self.device}")
+            from vortex.orchestrator import VideoOrchestrator
 
-            self._pipeline = await VortexPipeline.create(device=self.device)
+            self._orchestrator = VideoOrchestrator(
+                template_path=self._template_path,
+                assets_dir=self._assets_dir,
+                output_dir=str(self.output_path),
+                comfy_host=self._comfy_host,
+                comfy_port=self._comfy_port,
+                device=self.device,
+            )
             self._initialized = True
             self._init_error = None
             logger.info(
-                f"VortexPipeline initialized with renderer: {self._pipeline.renderer_name}"
+                f"VideoOrchestrator initialized: ComfyUI at {self._comfy_host}:{self._comfy_port}"
             )
 
             # Start idle monitor if timeout is enabled
@@ -133,21 +156,21 @@ class VortexServer:
         except Exception as e:
             self._init_error = str(e)
             self._initialized = True
-            logger.error(f"Failed to initialize VortexPipeline: {e}")
+            logger.error(f"Failed to initialize VideoOrchestrator: {e}")
             return False
 
-    async def unload_pipeline(self) -> bool:
-        """Unload the pipeline and free GPU memory.
+    async def unload_orchestrator(self) -> bool:
+        """Unload the orchestrator and free GPU memory.
 
         Returns:
-            True if pipeline was unloaded, False if nothing to unload
+            True if orchestrator was unloaded, False if nothing to unload
         """
-        if self._pipeline is None:
-            logger.debug("No pipeline to unload")
+        if self._orchestrator is None:
+            logger.debug("No orchestrator to unload")
             return False
 
         try:
-            logger.info("Unloading VortexPipeline to free GPU memory...")
+            logger.info("Unloading VideoOrchestrator to free GPU memory...")
 
             # Get VRAM before unload for logging
             if torch.cuda.is_available():
@@ -156,9 +179,9 @@ class VortexServer:
                 )
                 vram_before = torch.cuda.memory_allocated(device_idx) / 1e9
 
-            # Delete pipeline and clear references
-            del self._pipeline
-            self._pipeline = None
+            # Delete orchestrator and clear references
+            del self._orchestrator
+            self._orchestrator = None
             self._initialized = False
             self._init_error = None
 
@@ -172,17 +195,17 @@ class VortexServer:
                 vram_after = torch.cuda.memory_allocated(device_idx) / 1e9
                 freed = vram_before - vram_after
                 logger.info(
-                    f"Pipeline unloaded: freed {freed:.2f} GB VRAM "
+                    f"Orchestrator unloaded: freed {freed:.2f} GB VRAM "
                     f"({vram_before:.2f} GB -> {vram_after:.2f} GB)"
                 )
             else:
-                logger.info("Pipeline unloaded (CUDA not available)")
+                logger.info("Orchestrator unloaded (CUDA not available)")
 
             self._unload_count += 1
             return True
 
         except Exception as e:
-            logger.error(f"Error unloading pipeline: {e}")
+            logger.error(f"Error unloading orchestrator: {e}")
             return False
 
     async def _idle_monitor(self) -> None:
@@ -194,8 +217,8 @@ class VortexServer:
             while True:
                 await asyncio.sleep(check_interval)
 
-                # Skip if pipeline not loaded
-                if self._pipeline is None:
+                # Skip if orchestrator not loaded
+                if self._orchestrator is None:
                     continue
 
                 # Check if idle timeout exceeded
@@ -205,7 +228,7 @@ class VortexServer:
                         f"Idle timeout reached ({idle_time:.0f}s >= {self.idle_timeout_sec}s), "
                         "unloading models..."
                     )
-                    await self.unload_pipeline()
+                    await self.unload_orchestrator()
 
         except asyncio.CancelledError:
             logger.debug("Idle monitor task cancelled")
@@ -222,7 +245,7 @@ class VortexServer:
         Returns:
             Tuple of (HTTP status code, response dict)
         """
-        if self._pipeline is not None:
+        if self._orchestrator is not None:
             status = "healthy"
         elif self._init_error:
             status = "unhealthy"
@@ -232,12 +255,20 @@ class VortexServer:
         response: dict[str, Any] = {
             "status": status,
             "device": self.device,
-            "models_loaded": self._pipeline is not None,
+            "models_loaded": self._orchestrator is not None,
+            "comfyui_host": self._comfy_host,
+            "comfyui_port": self._comfy_port,
         }
 
-        if self._pipeline is not None:
-            response["renderer"] = self._pipeline.renderer_name
-            response["renderer_version"] = self._pipeline.renderer_version
+        # Check ComfyUI health if orchestrator is available
+        comfyui_connected = False
+        if self._orchestrator is not None:
+            try:
+                health = await self._orchestrator.health_check()
+                comfyui_connected = health.get("comfyui", False)
+            except Exception as e:
+                logger.warning(f"ComfyUI health check failed: {e}")
+                comfyui_connected = False
 
             # Include idle time info
             idle_time = time.time() - self._last_activity_time
@@ -247,6 +278,8 @@ class VortexServer:
                 response["unload_in_seconds"] = max(
                     0, round(self.idle_timeout_sec - idle_time, 1)
                 )
+
+        response["comfyui_connected"] = comfyui_connected
 
         if self._init_error:
             response["error"] = self._init_error
@@ -263,7 +296,7 @@ class VortexServer:
         Returns:
             Tuple of (HTTP status code, response dict)
         """
-        if self._pipeline is None:
+        if self._orchestrator is None:
             return HTTPStatus.OK, {
                 "success": True,
                 "message": "Models already unloaded",
@@ -278,7 +311,7 @@ class VortexServer:
             )
             vram_before = torch.cuda.memory_allocated(device_idx) / 1e9
 
-        success = await self.unload_pipeline()
+        success = await self.unload_orchestrator()
 
         # Get VRAM after
         vram_after = 0.0
@@ -298,7 +331,7 @@ class VortexServer:
             return HTTPStatus.INTERNAL_SERVER_ERROR, {
                 "success": False,
                 "message": "Failed to unload models",
-                "models_loaded": self._pipeline is not None,
+                "models_loaded": self._orchestrator is not None,
             }
 
     async def handle_vram(self) -> tuple[int, dict[str, Any]]:
@@ -354,20 +387,34 @@ class VortexServer:
         lines.append("# TYPE nvidia_gpu_memory_total_bytes gauge")
         lines.append("# HELP nvidia_gpu_temperature_celsius GPU temperature in Celsius")
         lines.append("# TYPE nvidia_gpu_temperature_celsius gauge")
-        lines.append("# HELP vortex_pipeline_initialized Whether the pipeline is initialized")
-        lines.append("# TYPE vortex_pipeline_initialized gauge")
+        lines.append(
+            "# HELP vortex_orchestrator_initialized Whether the orchestrator is initialized"
+        )
+        lines.append("# TYPE vortex_orchestrator_initialized gauge")
         lines.append("# HELP vortex_idle_seconds Seconds since last generation activity")
         lines.append("# TYPE vortex_idle_seconds gauge")
         lines.append("# HELP vortex_idle_timeout_seconds Configured idle timeout (0=disabled)")
         lines.append("# TYPE vortex_idle_timeout_seconds gauge")
         lines.append("# HELP vortex_unload_total Total number of model unloads")
         lines.append("# TYPE vortex_unload_total counter")
+        lines.append("# HELP vortex_comfyui_connected Whether ComfyUI is connected")
+        lines.append("# TYPE vortex_comfyui_connected gauge")
 
         device_label = f'device="{self.device}"'
 
-        # Pipeline status
-        initialized = 1 if self._pipeline is not None else 0
-        lines.append(f"vortex_pipeline_initialized{{{device_label}}} {initialized}")
+        # Orchestrator status
+        initialized = 1 if self._orchestrator is not None else 0
+        lines.append(f"vortex_orchestrator_initialized{{{device_label}}} {initialized}")
+
+        # ComfyUI connection status
+        comfyui_connected = 0
+        if self._orchestrator is not None:
+            try:
+                health = await self._orchestrator.health_check()
+                comfyui_connected = 1 if health.get("comfyui", False) else 0
+            except Exception:
+                pass
+        lines.append(f"vortex_comfyui_connected{{{device_label}}} {comfyui_connected}")
 
         # Idle metrics
         if self._last_activity_time > 0:
@@ -416,7 +463,11 @@ class VortexServer:
 
         Args:
             body: Request body with keys:
-                - recipe: Generation recipe dict
+                - recipe: Generation recipe dict containing:
+                    - slot_params: Basic slot parameters
+                    - audio_track: Script, voice settings
+                    - audio_environment: BGM, SFX, mix_ratio
+                    - visual_track: Prompt for image generation
                 - slot_id: Unique slot identifier
                 - seed: Optional deterministic seed
 
@@ -436,37 +487,34 @@ class VortexServer:
         if seed is not None and not isinstance(seed, int):
             return HTTPStatus.BAD_REQUEST, {"error": "seed must be an integer or null"}
 
-        # Ensure pipeline is initialized
-        if not await self.ensure_pipeline():
+        # Ensure orchestrator is initialized
+        if not await self.ensure_orchestrator():
             return HTTPStatus.SERVICE_UNAVAILABLE, {
-                "error": f"Pipeline initialization failed: {self._init_error}"
+                "error": f"Orchestrator initialization failed: {self._init_error}"
             }
 
         try:
             start_time = time.time()
 
+            # Extract recipe components
+            audio_track = recipe.get("audio_track", {})
+            audio_environment = recipe.get("audio_environment")
+            visual_track = recipe.get("visual_track", {})
+
             logger.info(f"Starting generation for slot {slot_id}", extra={"seed": seed})
 
-            result = await self._pipeline.generate_slot(
-                recipe=recipe, slot_id=slot_id, seed=seed
+            # Call orchestrator with extracted parameters
+            result = await self._orchestrator.generate(
+                prompt=visual_track.get("prompt", ""),
+                script=audio_track.get("script", ""),
+                voice_style=audio_track.get("voice_style"),
+                voice_id=audio_track.get("voice_id", "af_heart"),
+                engine=audio_track.get("engine", "auto"),
+                bgm_name=audio_environment.get("bgm") if audio_environment else None,
+                sfx_name=audio_environment.get("sfx") if audio_environment else None,
+                mix_ratio=audio_environment.get("mix_ratio", 0.3) if audio_environment else 0.3,
+                seed=seed,
             )
-
-            if not result.success:
-                return HTTPStatus.INTERNAL_SERVER_ERROR, {
-                    "error": result.error_msg,
-                    "slot_id": slot_id,
-                }
-
-            # Save outputs
-            video_path = self.output_path / f"slot_{slot_id}_video.npy"
-            audio_path = self.output_path / f"slot_{slot_id}_audio.npy"
-
-            video_np = result.video_frames.cpu().numpy()
-            audio_np = result.audio_waveform.cpu().numpy()
-            clip_np = result.clip_embedding.cpu().numpy()
-
-            np.save(video_path, video_np)
-            np.save(audio_path, audio_np)
 
             generation_time_ms = (time.time() - start_time) * 1000
 
@@ -474,19 +522,18 @@ class VortexServer:
                 f"Generation completed for slot {slot_id}",
                 extra={
                     "generation_time_ms": generation_time_ms,
-                    "proof": result.determinism_proof.hex()[:16],
+                    "frame_count": result.get("frame_count"),
                 },
             )
 
             return HTTPStatus.OK, {
                 "success": True,
                 "slot_id": slot_id,
-                "video_path": str(video_path),
-                "audio_path": str(audio_path),
-                "video_shape": list(video_np.shape),
-                "audio_samples": len(audio_np),
-                "clip_embedding_shape": list(clip_np.shape),
-                "determinism_proof": result.determinism_proof.hex(),
+                "video_path": result["video_path"],
+                "clean_audio_path": result["clean_audio_path"],
+                "mixed_audio_path": result["mixed_audio_path"],
+                "frame_count": result["frame_count"],
+                "seed": result["seed"],
                 "generation_time_ms": generation_time_ms,
             }
 
@@ -607,7 +654,7 @@ class HTTPHandler:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Vortex AI video generation server")
+    parser = argparse.ArgumentParser(description="Vortex AI video generation server (ToonGen)")
     parser.add_argument(
         "--host",
         default=os.getenv("VORTEX_HOST", "0.0.0.0"),
@@ -643,7 +690,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--eager-init",
         action="store_true",
-        help="Initialize pipeline eagerly at startup (default: lazy init on first request)",
+        help="Initialize orchestrator eagerly at startup (default: lazy init on first request)",
     )
     parser.add_argument(
         "--idle-timeout",
@@ -653,6 +700,27 @@ def _parse_args() -> argparse.Namespace:
             "Seconds of inactivity before unloading models to free GPU memory. "
             "Set to 0 to disable auto-unload. (default: 300 = 5 minutes)"
         ),
+    )
+    parser.add_argument(
+        "--comfy-host",
+        default=os.getenv("COMFY_HOST", "127.0.0.1"),
+        help="ComfyUI server hostname (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--comfy-port",
+        type=int,
+        default=int(os.getenv("COMFY_PORT", "8188")),
+        help="ComfyUI server port (default: 8188)",
+    )
+    parser.add_argument(
+        "--template-path",
+        default=os.getenv("VORTEX_TEMPLATE_PATH", "templates/cartoon_workflow.json"),
+        help="Path to ComfyUI workflow template JSON",
+    )
+    parser.add_argument(
+        "--assets-dir",
+        default=os.getenv("VORTEX_ASSETS_DIR", "assets"),
+        help="Root directory for audio assets (default: assets)",
     )
     args = parser.parse_args()
     # Handle deprecated --grpc-port for backward compatibility
@@ -669,22 +737,30 @@ async def _run_server(
     output_path: Path,
     eager_init: bool,
     idle_timeout_sec: float,
+    comfy_host: str,
+    comfy_port: int,
+    template_path: str,
+    assets_dir: str,
 ) -> None:
     """Run the HTTP server."""
     server = VortexServer(
         device=device,
         output_path=output_path,
         idle_timeout_sec=idle_timeout_sec,
+        comfy_host=comfy_host,
+        comfy_port=comfy_port,
+        template_path=template_path,
+        assets_dir=assets_dir,
     )
     handler = HTTPHandler(server)
 
     # Eager initialization if requested
     if eager_init:
-        logger.info("Performing eager pipeline initialization...")
-        if await server.ensure_pipeline():
-            logger.info("Pipeline initialized successfully")
+        logger.info("Performing eager orchestrator initialization...")
+        if await server.ensure_orchestrator():
+            logger.info("Orchestrator initialized successfully")
         else:
-            logger.error(f"Pipeline initialization failed: {server._init_error}")
+            logger.error(f"Orchestrator initialization failed: {server._init_error}")
 
     tcp_server = await asyncio.start_server(
         handler.handle_connection, host=host, port=port
@@ -714,6 +790,9 @@ def main() -> None:
     )
     logger.info(f"Models path: {models_path}")
     logger.info(f"Output path: {output_path}")
+    logger.info(f"ComfyUI: {args.comfy_host}:{args.comfy_port}")
+    logger.info(f"Template: {args.template_path}")
+    logger.info(f"Assets: {args.assets_dir}")
     if args.idle_timeout > 0:
         logger.info(f"Idle timeout: {args.idle_timeout}s (models will unload after inactivity)")
     else:
@@ -727,6 +806,10 @@ def main() -> None:
             output_path=output_path,
             eager_init=args.eager_init,
             idle_timeout_sec=args.idle_timeout,
+            comfy_host=args.comfy_host,
+            comfy_port=args.comfy_port,
+            template_path=args.template_path,
+            assets_dir=args.assets_dir,
         )
     )
 
