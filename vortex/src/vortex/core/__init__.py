@@ -5,5 +5,6 @@
 """
 
 from vortex.core.audio import AudioEngine
+from vortex.core.mixer import AudioCompositor, calculate_frame_count
 
-__all__ = ["AudioEngine"]
+__all__ = ["AudioEngine", "AudioCompositor", "calculate_frame_count"]
