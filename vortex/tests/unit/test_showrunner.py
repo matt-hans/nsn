@@ -1,14 +1,24 @@
 """Unit tests for Showrunner script generator.
 
-Tests the Showrunner class including fallback template functionality.
+Tests the Showrunner class including:
+- Fallback template functionality
+- Showrunner initialization
+- Ollama health check (is_available)
+- Async script generation (generate_script)
+- JSON parsing edge cases
+- Error handling (ShowrunnerError)
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 import pytest
 
 from vortex.models.showrunner import (
     FALLBACK_TEMPLATES,
     Script,
     Showrunner,
+    ShowrunnerError,
 )
 
 
@@ -143,3 +153,471 @@ class TestShowrunnerGetFallbackScript:
         assert script.setup in template_setups, (
             "Script setup should match a template"
         )
+
+
+class TestShowrunnerInit:
+    """Test Showrunner initialization."""
+
+    def test_default_initialization(self):
+        """Showrunner should initialize with default values."""
+        sr = Showrunner()
+        assert sr.base_url == "http://localhost:11434"
+        assert sr.model == "llama3:8b"
+        assert sr.timeout == 30.0
+
+    def test_custom_initialization(self):
+        """Showrunner should accept custom configuration."""
+        sr = Showrunner(
+            base_url="http://custom:1234",
+            model="custom-model",
+            timeout=60.0
+        )
+        assert sr.base_url == "http://custom:1234"
+        assert sr.model == "custom-model"
+        assert sr.timeout == 60.0
+
+    def test_base_url_trailing_slash_stripped(self):
+        """Trailing slashes should be stripped from base_url."""
+        sr = Showrunner(base_url="http://localhost:11434/")
+        assert sr.base_url == "http://localhost:11434"
+
+    def test_base_url_multiple_trailing_slashes_stripped(self):
+        """Multiple trailing slashes should be stripped from base_url."""
+        sr = Showrunner(base_url="http://localhost:11434///")
+        # rstrip("/") removes all trailing slashes
+        assert not sr.base_url.endswith("/")
+
+
+class TestShowrunnerIsAvailable:
+    """Test is_available() Ollama health check."""
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_true_when_model_present(self, mock_client_class):
+        """Should return True when Ollama has the model."""
+        mock_client = MagicMock()
+        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "models": [{"name": "llama3:8b"}, {"name": "mistral:7b"}]
+        }
+        mock_client.get.return_value = mock_response
+
+        sr = Showrunner()
+        assert sr.is_available() is True
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_true_with_prefix_match(self, mock_client_class):
+        """Should return True when model matches by prefix."""
+        mock_client = MagicMock()
+        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "models": [{"name": "llama3:8b-instruct-q4_0"}]
+        }
+        mock_client.get.return_value = mock_response
+
+        sr = Showrunner(model="llama3:8b")
+        assert sr.is_available() is True
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_false_when_model_missing(self, mock_client_class):
+        """Should return False when model not in Ollama."""
+        mock_client = MagicMock()
+        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "models": [{"name": "mistral:7b"}]
+        }
+        mock_client.get.return_value = mock_response
+
+        sr = Showrunner(model="llama3:8b")
+        assert sr.is_available() is False
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_false_when_models_list_empty(self, mock_client_class):
+        """Should return False when Ollama has no models."""
+        mock_client = MagicMock()
+        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"models": []}
+        mock_client.get.return_value = mock_response
+
+        sr = Showrunner()
+        assert sr.is_available() is False
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_false_on_non_200_status(self, mock_client_class):
+        """Should return False when Ollama returns non-200 status."""
+        mock_client = MagicMock()
+        mock_client_class.return_value.__enter__ = MagicMock(return_value=mock_client)
+        mock_client_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_client.get.return_value = mock_response
+
+        sr = Showrunner()
+        assert sr.is_available() is False
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_false_on_connection_error(self, mock_client_class):
+        """Should return False when Ollama connection fails."""
+        mock_client_class.return_value.__enter__.side_effect = httpx.ConnectError(
+            "Connection refused"
+        )
+
+        sr = Showrunner()
+        assert sr.is_available() is False
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_false_on_timeout(self, mock_client_class):
+        """Should return False when Ollama request times out."""
+        mock_client_class.return_value.__enter__.side_effect = httpx.TimeoutException(
+            "Request timed out"
+        )
+
+        sr = Showrunner()
+        assert sr.is_available() is False
+
+    @patch("vortex.models.showrunner.httpx.Client")
+    def test_is_available_returns_false_on_generic_exception(self, mock_client_class):
+        """Should return False when any exception occurs."""
+        mock_client_class.return_value.__enter__.side_effect = Exception(
+            "Unexpected error"
+        )
+
+        sr = Showrunner()
+        assert sr.is_available() is False
+
+
+class TestShowrunnerGenerateScript:
+    """Test async generate_script() method."""
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_returns_script(self, mock_client_class):
+        """Should parse Ollama response into Script object."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        json_response = (
+            '{"setup": "Test setup", "punchline": "Test punch", '
+            '"visual_prompt": "Test visual"}'
+        )
+        mock_response.json.return_value = {"response": json_response}
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        script = await sr.generate_script("test theme")
+
+        assert isinstance(script, Script)
+        assert script.setup == "Test setup"
+        assert script.punchline == "Test punch"
+        assert script.visual_prompt == "Test visual"
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_calls_correct_endpoint(self, mock_client_class):
+        """Should call the correct Ollama API endpoint."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "response": '{"setup": "S", "punchline": "P", "visual_prompt": "V"}'
+        }
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner(base_url="http://test:1234", model="test-model")
+        await sr.generate_script("test theme", tone="deadpan")
+
+        # Verify the call was made to the correct endpoint
+        mock_client.post.assert_called_once()
+        call_args = mock_client.post.call_args
+        assert call_args[0][0] == "http://test:1234/api/generate"
+        assert call_args[1]["json"]["model"] == "test-model"
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_handles_markdown_json(self, mock_client_class):
+        """Should extract JSON from markdown code blocks."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        markdown_response = """Here's the script:
+```json
+{
+  "setup": "Markdown setup",
+  "punchline": "Markdown punch",
+  "visual_prompt": "Markdown visual"
+}
+```
+Hope you like it!"""
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"response": markdown_response}
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        script = await sr.generate_script("test")
+
+        assert script.setup == "Markdown setup"
+        assert script.punchline == "Markdown punch"
+        assert script.visual_prompt == "Markdown visual"
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_empty_theme(self, mock_client_class):
+        """Should raise ShowrunnerError on empty theme."""
+        sr = Showrunner()
+
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("")
+
+        assert "empty" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_whitespace_theme(self, mock_client_class):
+        """Should raise ShowrunnerError on whitespace-only theme."""
+        sr = Showrunner()
+
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("   ")
+
+        assert "empty" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_connection_error(self, mock_client_class):
+        """Should raise ShowrunnerError on connection failure."""
+        mock_client_class.return_value.__aenter__.side_effect = httpx.ConnectError(
+            "Connection refused"
+        )
+
+        sr = Showrunner()
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("test")
+
+        assert "connect" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_timeout(self, mock_client_class):
+        """Should raise ShowrunnerError on request timeout."""
+        mock_client_class.return_value.__aenter__.side_effect = httpx.TimeoutException(
+            "Request timed out"
+        )
+
+        sr = Showrunner()
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("test")
+
+        assert "timed out" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_non_200_status(self, mock_client_class):
+        """Should raise ShowrunnerError on non-200 response."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("test")
+
+        assert "500" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_invalid_json(self, mock_client_class):
+        """Should raise ShowrunnerError on unparseable response."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"response": "This is not valid JSON at all"}
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("test")
+
+        assert "json" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_raises_on_missing_fields(self, mock_client_class):
+        """Should raise ShowrunnerError when response is missing required fields."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "response": '{"setup": "Only setup, missing other fields"}'
+        }
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        with pytest.raises(ShowrunnerError) as exc_info:
+            await sr.generate_script("test")
+
+        assert "missing" in str(exc_info.value).lower()
+
+
+class TestShowrunnerJsonParsing:
+    """Test JSON extraction edge cases via _extract_json and _parse_script_response."""
+
+    @pytest.fixture
+    def showrunner(self):
+        """Create a Showrunner instance for testing."""
+        return Showrunner()
+
+    def test_extract_json_from_pure_json(self, showrunner):
+        """Should handle pure JSON response."""
+        json_str = '{"setup": "S", "punchline": "P", "visual_prompt": "V"}'
+        result = showrunner._extract_json(json_str)
+        assert result == json_str
+
+    def test_extract_json_from_pure_json_with_whitespace(self, showrunner):
+        """Should handle pure JSON with surrounding whitespace."""
+        json_str = '{"setup": "S", "punchline": "P", "visual_prompt": "V"}'
+        result = showrunner._extract_json(f"  {json_str}  ")
+        assert result == json_str
+
+    def test_extract_json_from_markdown_code_block(self, showrunner):
+        """Should extract JSON from ```json ... ``` blocks."""
+        text = """Here's your script:
+```json
+{"setup": "S", "punchline": "P", "visual_prompt": "V"}
+```
+"""
+        result = showrunner._extract_json(text)
+        # Result should be parseable JSON
+        import json
+        data = json.loads(result)
+        assert data["setup"] == "S"
+
+    def test_extract_json_from_markdown_code_block_no_language(self, showrunner):
+        """Should extract JSON from ``` ... ``` blocks without language specifier."""
+        text = """Here's your script:
+```
+{"setup": "S", "punchline": "P", "visual_prompt": "V"}
+```
+"""
+        result = showrunner._extract_json(text)
+        import json
+        data = json.loads(result)
+        assert data["setup"] == "S"
+
+    def test_extract_json_from_embedded_braces(self, showrunner):
+        """Should find JSON object in surrounding text."""
+        text = (
+            'Sure! Here you go: {"setup": "S", "punchline": "P", '
+            '"visual_prompt": "V"} Hope this helps!'
+        )
+        result = showrunner._extract_json(text)
+        import json
+        data = json.loads(result)
+        assert data["setup"] == "S"
+
+    def test_extract_json_multiline(self, showrunner):
+        """Should extract multiline JSON."""
+        text = """The script is:
+{
+  "setup": "Multiline setup",
+  "punchline": "Multiline punch",
+  "visual_prompt": "Multiline visual"
+}
+End of script."""
+        result = showrunner._extract_json(text)
+        import json
+        data = json.loads(result)
+        assert data["setup"] == "Multiline setup"
+
+    def test_extract_json_raises_on_no_json(self, showrunner):
+        """Should raise ShowrunnerError when no JSON found."""
+        text = "This text contains no JSON at all, just plain text."
+        with pytest.raises(ShowrunnerError) as exc_info:
+            showrunner._extract_json(text)
+        assert "could not extract json" in str(exc_info.value).lower()
+
+    def test_parse_script_response_validates_string_types(self, showrunner):
+        """Should raise ShowrunnerError when fields are not strings."""
+        json_str = '{"setup": 123, "punchline": "P", "visual_prompt": "V"}'
+        with pytest.raises(ShowrunnerError) as exc_info:
+            showrunner._parse_script_response(json_str)
+        assert "string" in str(exc_info.value).lower()
+
+    def test_parse_script_response_validates_non_empty_fields(self, showrunner):
+        """Should raise ShowrunnerError when fields are empty strings."""
+        json_str = '{"setup": "", "punchline": "P", "visual_prompt": "V"}'
+        with pytest.raises(ShowrunnerError) as exc_info:
+            showrunner._parse_script_response(json_str)
+        assert "empty" in str(exc_info.value).lower()
+
+    def test_parse_script_response_validates_whitespace_only_fields(self, showrunner):
+        """Should raise ShowrunnerError when fields are whitespace-only."""
+        json_str = '{"setup": "   ", "punchline": "P", "visual_prompt": "V"}'
+        with pytest.raises(ShowrunnerError) as exc_info:
+            showrunner._parse_script_response(json_str)
+        assert "empty" in str(exc_info.value).lower()
+
+    def test_parse_script_response_strips_whitespace(self, showrunner):
+        """Should strip leading/trailing whitespace from fields."""
+        json_str = '{"setup": "  Setup  ", "punchline": "  Punch  ", "visual_prompt": "  Visual  "}'
+        script = showrunner._parse_script_response(json_str)
+        assert script.setup == "Setup"
+        assert script.punchline == "Punch"
+        assert script.visual_prompt == "Visual"
+
+
+class TestShowrunnerError:
+    """Test ShowrunnerError exception class."""
+
+    def test_showrunner_error_is_exception(self):
+        """ShowrunnerError should be an Exception subclass."""
+        assert issubclass(ShowrunnerError, Exception)
+
+    def test_showrunner_error_can_be_raised(self):
+        """ShowrunnerError should be raisable with a message."""
+        with pytest.raises(ShowrunnerError) as exc_info:
+            raise ShowrunnerError("Test error message")
+        assert "Test error message" in str(exc_info.value)
+
+    def test_showrunner_error_preserves_cause(self):
+        """ShowrunnerError should preserve the original exception cause."""
+        original = ValueError("Original error")
+        try:
+            raise ShowrunnerError("Wrapped error") from original
+        except ShowrunnerError as e:
+            assert e.__cause__ is original
