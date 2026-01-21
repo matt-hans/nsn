@@ -1,29 +1,26 @@
-"""Standardized recipe schema for Lane 0 video renderers.
+"""Standardized recipe schema for ToonGen video generation.
 
-All renderers must accept recipes conforming to this schema. The schema
-defines the standard fields that the network uses for task routing and
-BFT verification. Renderers may ignore unknown fields but must process
-all required fields.
+This schema defines the API contract between clients and the ToonGen
+orchestrator. It replaces the legacy Vortex schema with fields
+appropriate for ComfyUI-based workflow orchestration.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-# JSON Schema for Lane 0 recipe validation
+# JSON Schema for ToonGen recipe validation
 RECIPE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "required": ["slot_params", "audio_track", "visual_track"],
     "properties": {
         "slot_params": {
             "type": "object",
-            "required": ["slot_id", "duration_sec"],
+            "required": ["slot_id"],
             "properties": {
-                "slot_id": {"type": "integer", "description": "Unique slot identifier"},
-                "duration_sec": {
+                "slot_id": {
                     "type": "integer",
-                    "default": 45,
-                    "description": "Target duration in seconds",
+                    "description": "Unique slot identifier",
                 },
                 "fps": {
                     "type": "integer",
@@ -32,7 +29,7 @@ RECIPE_SCHEMA: dict[str, Any] = {
                 },
                 "seed": {
                     "type": "integer",
-                    "description": "Deterministic seed (generated if not provided)",
+                    "description": "Deterministic seed (random if not provided)",
                 },
             },
         },
@@ -40,24 +37,44 @@ RECIPE_SCHEMA: dict[str, Any] = {
             "type": "object",
             "required": ["script"],
             "properties": {
-                "script": {"type": "string", "description": "Text to synthesize as speech"},
+                "script": {
+                    "type": "string",
+                    "description": "Text to synthesize as speech",
+                },
+                "engine": {
+                    "type": "string",
+                    "enum": ["auto", "f5_tts", "kokoro"],
+                    "default": "auto",
+                    "description": "TTS engine selection (auto tries F5, falls back to Kokoro)",
+                },
+                "voice_style": {
+                    "type": "string",
+                    "description": "F5-TTS voice reference filename (without .wav)",
+                },
                 "voice_id": {
                     "type": "string",
-                    "default": "rick_c137",
-                    "description": "Voice identifier",
+                    "default": "af_heart",
+                    "description": "Kokoro voice ID (used if engine=kokoro or as fallback)",
                 },
-                "speed": {
-                    "type": "number",
-                    "default": 1.0,
-                    "minimum": 0.5,
-                    "maximum": 2.0,
-                    "description": "Speech speed multiplier",
-                },
-                "emotion": {
+            },
+        },
+        "audio_environment": {
+            "type": "object",
+            "properties": {
+                "bgm": {
                     "type": "string",
-                    "default": "neutral",
-                    "enum": ["neutral", "excited", "sad", "angry", "manic"],
-                    "description": "Emotion modulation",
+                    "description": "Background music filename (without .wav)",
+                },
+                "sfx": {
+                    "type": "string",
+                    "description": "Sound effect filename (without .wav)",
+                },
+                "mix_ratio": {
+                    "type": "number",
+                    "default": 0.3,
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "BGM volume relative to voice",
                 },
             },
         },
@@ -65,42 +82,14 @@ RECIPE_SCHEMA: dict[str, Any] = {
             "type": "object",
             "required": ["prompt"],
             "properties": {
-                "prompt": {"type": "string", "description": "Image generation prompt"},
+                "prompt": {
+                    "type": "string",
+                    "description": "Full scene prompt for Flux image generation",
+                },
                 "negative_prompt": {
                     "type": "string",
-                    "default": "",
+                    "default": "blurry, low quality, distorted face, extra limbs",
                     "description": "Negative prompt for image generation",
-                },
-                "expression_preset": {
-                    "type": "string",
-                    "default": "neutral",
-                    "description": "Base expression preset",
-                },
-                "expression_sequence": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Sequence of expression transitions",
-                },
-                "driving_source": {
-                    "type": "string",
-                    "description": "Optional motion template path or CID",
-                },
-                "animation_style": {
-                    "type": "string",
-                    "enum": ["realistic", "cartoon", "exaggerated"],
-                    "description": "Override animation dynamics. Auto-detected if omitted.",
-                },
-            },
-        },
-        "semantic_constraints": {
-            "type": "object",
-            "properties": {
-                "clip_threshold": {
-                    "type": "number",
-                    "default": 0.70,
-                    "minimum": 0.0,
-                    "maximum": 1.0,
-                    "description": "CLIP similarity threshold for verification",
                 },
             },
         },
@@ -109,7 +98,7 @@ RECIPE_SCHEMA: dict[str, Any] = {
 
 
 def validate_recipe(recipe: dict[str, Any]) -> list[str]:
-    """Validate recipe against schema, returning list of errors.
+    """Validate recipe against ToonGen schema, returning list of errors.
 
     Args:
         recipe: Recipe dict to validate
@@ -137,11 +126,6 @@ def validate_recipe(recipe: dict[str, Any]) -> list[str]:
     elif not isinstance(slot_params.get("slot_id"), int):
         errors.append("slot_params.slot_id must be an integer")
 
-    if "duration_sec" not in slot_params:
-        errors.append("Missing required field: slot_params.duration_sec")
-    elif not isinstance(slot_params.get("duration_sec"), int):
-        errors.append("slot_params.duration_sec must be an integer")
-
     # Validate audio_track
     audio_track = recipe["audio_track"]
     if "script" not in audio_track:
@@ -168,23 +152,21 @@ def get_recipe_defaults() -> dict[str, Any]:
     return {
         "slot_params": {
             "slot_id": 0,
-            "duration_sec": 45,
             "fps": 24,
         },
         "audio_track": {
             "script": "",
-            "voice_id": "rick_c137",
-            "speed": 1.0,
-            "emotion": "neutral",
+            "engine": "auto",
+            "voice_id": "af_heart",
+        },
+        "audio_environment": {
+            "bgm": None,
+            "sfx": None,
+            "mix_ratio": 0.3,
         },
         "visual_track": {
             "prompt": "",
-            "negative_prompt": "",
-            "expression_preset": "neutral",
-            "expression_sequence": [],
-        },
-        "semantic_constraints": {
-            "clip_threshold": 0.70,
+            "negative_prompt": "blurry, low quality, distorted face, extra limbs",
         },
     }
 

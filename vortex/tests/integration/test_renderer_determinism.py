@@ -6,9 +6,7 @@ These tests verify that:
 3. Different seeds produce different outputs
 """
 
-import asyncio
 import hashlib
-import json
 
 import pytest
 import torch
@@ -50,20 +48,18 @@ def mock_config():
 
 @pytest.fixture
 def sample_recipe():
-    """Sample recipe for testing."""
+    """Sample recipe for testing (ToonGen schema)."""
     return {
-        "slot_params": {"slot_id": 1, "duration_sec": 1, "fps": 24},
+        "slot_params": {"slot_id": 1, "fps": 24},
         "audio_track": {
             "script": "Test script for determinism verification.",
-            "voice_id": "rick_c137",
-            "speed": 1.0,
-            "emotion": "neutral",
+            "engine": "auto",
+            "voice_id": "af_heart",
         },
         "visual_track": {
             "prompt": "scientist in lab coat explaining",
-            "expression_preset": "neutral",
+            "negative_prompt": "blurry, low quality, distorted face",
         },
-        "semantic_constraints": {"clip_threshold": 0.70},
     }
 
 
@@ -180,7 +176,7 @@ class TestDeterminismProofComputation:
         """Test that proof is a valid SHA256 hash (32 bytes)."""
         renderer = DefaultRenderer()
 
-        recipe = {"slot_params": {"slot_id": 1, "duration_sec": 45}}
+        recipe = {"slot_params": {"slot_id": 1, "fps": 24}}
         seed = 42
         result = RenderResult(
             video_frames=torch.randn(10, 3, 64, 64),
@@ -198,8 +194,8 @@ class TestDeterminismProofComputation:
         """Test that proof changes when recipe changes."""
         renderer = DefaultRenderer()
 
-        recipe1 = {"slot_params": {"slot_id": 1, "duration_sec": 45}}
-        recipe2 = {"slot_params": {"slot_id": 1, "duration_sec": 30}}  # Different
+        recipe1 = {"slot_params": {"slot_id": 1, "fps": 24}}
+        recipe2 = {"slot_params": {"slot_id": 1, "fps": 30}}  # Different
         seed = 42
         result = RenderResult(
             video_frames=torch.randn(10, 3, 64, 64),
@@ -219,7 +215,7 @@ class TestDeterminismProofComputation:
         """Test that proof changes when seed changes."""
         renderer = DefaultRenderer()
 
-        recipe = {"slot_params": {"slot_id": 1, "duration_sec": 45}}
+        recipe = {"slot_params": {"slot_id": 1, "fps": 24}}
         result = RenderResult(
             video_frames=torch.randn(10, 3, 64, 64),
             audio_waveform=torch.randn(24000),
@@ -238,7 +234,7 @@ class TestDeterminismProofComputation:
         """Test that proof changes when output changes."""
         renderer = DefaultRenderer()
 
-        recipe = {"slot_params": {"slot_id": 1, "duration_sec": 45}}
+        recipe = {"slot_params": {"slot_id": 1, "fps": 24}}
         seed = 42
 
         result1 = RenderResult(
