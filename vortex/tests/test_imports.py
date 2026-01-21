@@ -17,9 +17,13 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    from vortex.models import MODEL_LOADERS
+    from vortex.models import (
+        CogVideoXModel,
+        KokoroWrapper,
+        Showrunner,
+    )
     print("✓ vortex.models imports successfully")
-    print(f"  Available models: {list(MODEL_LOADERS.keys())}")
+    print(f"  Available models: CogVideoXModel, KokoroWrapper, Showrunner")
 except Exception as e:
     print(f"✗ vortex.models import failed: {e}")
     sys.exit(1)
