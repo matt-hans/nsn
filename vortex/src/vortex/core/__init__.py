@@ -4,4 +4,6 @@
 - mixer: Audio compositing (FFmpeg-based BGM/SFX mixing)
 """
 
-__all__ = []
+from vortex.core.audio import AudioEngine
+
+__all__ = ["AudioEngine"]

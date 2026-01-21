@@ -125,7 +125,12 @@ class KokoroWrapper(nn.Module):
         if seed is not None:
             torch.manual_seed(seed)
 
-        kokoro_voice = self.voice_config[voice_id]
+        # Support both ICN voice IDs (mapped) and raw Kokoro voice IDs (passthrough)
+        if voice_id in self.voice_config:
+            kokoro_voice = self.voice_config[voice_id]
+        else:
+            # Assume raw Kokoro voice ID (e.g., "af_heart")
+            kokoro_voice = voice_id
         emotion_params = self._get_emotion_params(emotion)
         text = self._truncate_text_if_needed(text, speed)
         effective_speed = emotion_params["tempo"] * speed
@@ -142,7 +147,7 @@ class KokoroWrapper(nn.Module):
 
         Args:
             text: Input text
-            voice_id: Voice identifier
+            voice_id: Voice identifier (ICN voice ID or raw Kokoro voice ID)
 
         Raises:
             ValueError: If validation fails
@@ -150,11 +155,11 @@ class KokoroWrapper(nn.Module):
         if not text or text.strip() == "":
             raise ValueError("Text cannot be empty")
 
-        if voice_id not in self.voice_config:
-            raise ValueError(
-                f"Unknown voice_id: {voice_id}. "
-                f"Available: {list(self.voice_config.keys())}"
-            )
+        # Note: We allow both ICN voice IDs (in voice_config) and raw Kokoro
+        # voice IDs (passthrough for ToonGen). Only validate that voice_id
+        # is a non-empty string.
+        if not voice_id or not isinstance(voice_id, str):
+            raise ValueError("voice_id must be a non-empty string")
 
     def _generate_audio(
         self, text: str, voice: str, speed: float
