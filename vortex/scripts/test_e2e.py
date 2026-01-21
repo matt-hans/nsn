@@ -48,12 +48,16 @@ async def main():
     print("  Prompt: 'A cartoon cat in a lab coat'")
     print("  Script: 'This is a test of the ToonGen system.'")
 
-    result = await orchestrator.generate(
-        prompt="Medium shot, cartoon style, a friendly cat in a lab coat waving at camera, bright laboratory background",
-        script="This is a test of the ToonGen system. If you can hear this, everything is working correctly.",
-        engine="kokoro",  # Use Kokoro for quick test
-        seed=12345,
-    )
+    try:
+        result = await orchestrator.generate(
+            prompt="Medium shot, cartoon style, a friendly cat in a lab coat waving at camera, bright laboratory background",
+            script="This is a test of the ToonGen system. If you can hear this, everything is working correctly.",
+            engine="kokoro",  # Use Kokoro for quick test
+            seed=12345,
+        )
+    except Exception as e:
+        print(f"  ERROR: Generation failed: {e}")
+        return 1
 
     print(f"  Video: {result['video_path']}")
     print(f"  Frames: {result['frame_count']}")
