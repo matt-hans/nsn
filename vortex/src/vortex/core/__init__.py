@@ -1,6 +1,6 @@
 """ToonGen core modules.
 
-- audio: Voice synthesis (F5-TTS, Kokoro) with graceful degradation
+- audio: Voice synthesis using Kokoro TTS
 - mixer: Audio compositing (FFmpeg-based BGM/SFX mixing)
 """
 
