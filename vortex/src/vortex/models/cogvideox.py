@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import gc
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -328,6 +329,109 @@ class CogVideoXModel:
         except Exception as e:
             logger.error(f"Video generation failed: {e}", exc_info=True)
             raise CogVideoXError(f"Video generation failed: {e}") from e
+
+    async def generate_chain(
+        self,
+        keyframe: torch.Tensor,
+        prompt: str,
+        target_duration: float,
+        config: VideoGenerationConfig | None = None,
+        seed: int | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> torch.Tensor:
+        """Generate a long video by chaining multiple chunks.
+
+        Uses autoregressive chaining: each chunk's last frame becomes
+        the next chunk's keyframe, ensuring visual continuity.
+
+        Args:
+            keyframe: Initial keyframe tensor (RGB, 0-1 range) [C, H, W]
+            prompt: Text prompt for all chunks
+            target_duration: Desired total video duration in seconds
+            config: Optional generation config (uses defaults if None)
+            seed: Optional seed for deterministic generation
+            progress_callback: Optional callback(chunk_num, total_chunks)
+
+        Returns:
+            Concatenated video frames tensor [total_frames, C, H, W]
+
+        Example:
+            >>> # Generate 12-second video from a keyframe
+            >>> video = await model.generate_chain(
+            ...     keyframe=image_tensor,
+            ...     prompt="A ham-man giving a speech, animated",
+            ...     target_duration=12.0,
+            ...     seed=42,
+            ... )
+            >>> print(video.shape)  # [96, 3, 480, 720]  # 96 frames at 8fps = 12s
+        """
+        if config is None:
+            config = VideoGenerationConfig()
+
+        # Calculate chunks needed
+        chunk_duration = config.num_frames / config.fps  # ~6 seconds per chunk
+        num_chunks = max(1, int(np.ceil(target_duration / chunk_duration)))
+
+        logger.info(
+            f"Generating {num_chunks} chunks for {target_duration}s video",
+            extra={
+                "target_duration": target_duration,
+                "chunk_duration": chunk_duration,
+                "num_chunks": num_chunks,
+                "seed": seed,
+            },
+        )
+
+        all_frames: list[torch.Tensor] = []
+        current_frame = keyframe
+
+        for chunk_idx in range(num_chunks):
+            if progress_callback:
+                progress_callback(chunk_idx, num_chunks)
+
+            # Vary seed per chunk for diversity while maintaining determinism
+            chunk_seed = seed + chunk_idx if seed is not None else None
+
+            logger.info(f"Generating chunk {chunk_idx + 1}/{num_chunks}...")
+
+            # Generate chunk
+            chunk_frames = await self.generate_chunk(
+                image=current_frame,
+                prompt=prompt,
+                config=config,
+                seed=chunk_seed,
+            )
+
+            # Skip first frame of subsequent chunks (overlap with previous)
+            if chunk_idx > 0:
+                chunk_frames = chunk_frames[1:]
+
+            all_frames.append(chunk_frames)
+
+            # Extract last frame for next iteration
+            current_frame = chunk_frames[-1]  # [C, H, W]
+
+            logger.info(
+                f"Chunk {chunk_idx + 1} complete: {chunk_frames.shape[0]} frames"
+            )
+
+        # Concatenate all chunks
+        video = torch.cat(all_frames, dim=0)  # [T, C, H, W]
+
+        # Trim to exact target duration
+        target_frames = int(target_duration * config.fps)
+        if video.shape[0] > target_frames:
+            video = video[:target_frames]
+
+        logger.info(
+            f"Video chain complete: {video.shape[0]} frames "
+            f"({video.shape[0] / config.fps:.1f}s)"
+        )
+
+        if progress_callback:
+            progress_callback(num_chunks, num_chunks)
+
+        return video
 
     def _generate_sync(
         self,
