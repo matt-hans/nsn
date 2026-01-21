@@ -1,23 +1,25 @@
-"""ToonGen Video Orchestrator.
+"""Vortex Video Orchestrator - Narrative Chain pipeline.
 
-Main pipeline that coordinates:
-1. Audio generation (F5-TTS/Kokoro)
-2. Audio mixing (FFmpeg)
-3. Visual generation (ComfyUI)
-4. VRAM management (sequential execution)
+Thin wrapper around DefaultRenderer that:
+1. Loads config from config.yaml
+2. Initializes the renderer
+3. Provides a simple generate() interface
+4. Handles output file saving
 """
 
 from __future__ import annotations
 
 import logging
+import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from vortex.core.audio import AudioEngine
-from vortex.core.mixer import AudioCompositor, calculate_frame_count
-from vortex.engine.client import ComfyClient
-from vortex.engine.payload import WorkflowBuilder
+import yaml
+
+from vortex.renderers.default.renderer import DefaultRenderer
+from vortex.utils.render_output import save_render_result
 
 logger = logging.getLogger(__name__)
 
@@ -27,144 +29,152 @@ class GenerationResult:
     """Result of video generation."""
 
     video_path: str
-    clean_audio_path: str
-    mixed_audio_path: str
-    frame_count: int
+    audio_path: str
     seed: int
+    duration_sec: float
+    generation_time_ms: float
+    success: bool
+    error_msg: str | None = None
 
 
 class VideoOrchestrator:
-    """Orchestrates the ToonGen video generation pipeline.
+    """Orchestrates the Narrative Chain video generation pipeline.
 
-    Pipeline flow:
-    1. Generate voice audio (F5-TTS or Kokoro)
-    2. Mix with BGM/SFX (FFmpeg)
-    3. Unload audio models (free VRAM)
-    4. Build ComfyUI workflow payload
-    5. Dispatch to ComfyUI and wait for completion
-    6. Return paths to output files
+    This is a thin wrapper around DefaultRenderer that provides a simple
+    interface for video generation with file output handling.
+
+    Pipeline: Showrunner -> Kokoro TTS -> Flux keyframe -> CogVideoX video -> CLIP
     """
 
     def __init__(
         self,
-        template_path: str = "templates/cartoon_workflow.json",
-        assets_dir: str = "assets",
+        config_path: str = "config.yaml",
         output_dir: str = "outputs",
-        comfy_host: str = "127.0.0.1",
-        comfy_port: int = 8188,
         device: str = "cuda",
     ):
         """Initialize orchestrator.
 
         Args:
-            template_path: Path to ComfyUI workflow JSON
-            assets_dir: Root directory for audio assets
+            config_path: Path to vortex config.yaml
             output_dir: Directory for output files
-            comfy_host: ComfyUI server hostname
-            comfy_port: ComfyUI server port
-            device: PyTorch device for audio models
+            device: PyTorch device for models
         """
-        self.template_path = template_path
-        self.assets_dir = Path(assets_dir)
+        self.config_path = Path(config_path)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._device = device
 
-        # Initialize components
-        self._audio_engine = AudioEngine(
-            device=device,
-            assets_dir=str(self.assets_dir / "voices"),
-        )
-        self._audio_mixer = AudioCompositor(
-            assets_dir=str(self.assets_dir),
-        )
-        self._workflow_builder = WorkflowBuilder(template_path=template_path)
-        self._comfy_client = ComfyClient(host=comfy_host, port=comfy_port)
+        # Load config
+        with open(self.config_path) as f:
+            self._config = yaml.safe_load(f)
+
+        # Create renderer (lazy initialization)
+        self._renderer: DefaultRenderer | None = None
+        self._initialized = False
+
+    async def initialize(self) -> None:
+        """Initialize the renderer and load models."""
+        if self._initialized:
+            return
+
+        logger.info("Initializing VideoOrchestrator...")
+        self._renderer = DefaultRenderer()
+        await self._renderer.initialize(self._device, self._config)
+        self._initialized = True
+        logger.info("VideoOrchestrator initialized")
 
     async def generate(
         self,
-        prompt: str,
-        script: str,
-        voice_style: str | None = None,
-        voice_id: str = "af_heart",
-        engine: str = "auto",
-        bgm_name: str | None = None,
-        sfx_name: str | None = None,
-        mix_ratio: float = 0.3,
+        slot_id: int,
         seed: int | None = None,
-    ) -> dict[str, Any]:
-        """Generate a video clip.
+        theme: str = "bizarre infomercial",
+        tone: str = "absurd",
+        target_duration: float = 12.0,
+        voice_id: str = "af_heart",
+        deadline_sec: float = 150.0,
+    ) -> GenerationResult:
+        """Generate a video clip using the Narrative Chain pipeline.
 
         Args:
-            prompt: Visual prompt for Flux image generation
-            script: Text to synthesize as speech
-            voice_style: F5-TTS voice reference name
-            voice_id: Kokoro voice ID
-            engine: Audio engine selection ("auto", "f5_tts", "kokoro")
-            bgm_name: Background music asset name
-            sfx_name: Sound effect asset name
-            mix_ratio: BGM volume relative to voice
+            slot_id: Unique identifier for this generation
             seed: Deterministic seed (random if not provided)
+            theme: Topic for LLM script generation
+            tone: Comedic tone ("absurd", "deadpan", "manic")
+            target_duration: Target video duration in seconds
+            voice_id: Kokoro voice ID
+            deadline_sec: Maximum time allowed for generation
 
         Returns:
-            Dict with video_path, clean_audio_path, mixed_audio_path, etc.
+            GenerationResult with paths to output files
         """
-        logger.info(f"Starting generation: prompt='{prompt[:50]}...'")
+        if not self._initialized:
+            await self.initialize()
 
-        # ===== PHASE 1: Audio Generation =====
-        logger.info("Phase 1: Generating audio...")
+        if seed is None:
+            seed = random.randint(0, 2**31 - 1)
 
-        # Generate clean voice (for lip-sync)
-        clean_audio_path = self._audio_engine.generate(
-            script=script,
-            engine=engine,
-            voice_style=voice_style,
-            voice_id=voice_id,
+        logger.info(
+            f"Starting generation: slot_id={slot_id}, seed={seed}, theme='{theme}'"
         )
-        logger.info(f"Clean audio generated: {clean_audio_path}")
 
-        # Mix with BGM/SFX (for broadcast)
-        mixed_audio_path = self._audio_mixer.mix(
-            voice_path=clean_audio_path,
-            bgm_name=bgm_name,
-            sfx_name=sfx_name,
-            mix_ratio=mix_ratio,
-        )
-        logger.info(f"Mixed audio generated: {mixed_audio_path}")
+        # Build recipe
+        recipe: dict[str, Any] = {
+            "slot_params": {
+                "slot_id": slot_id,
+                "seed": seed,
+                "target_duration": target_duration,
+                "fps": 8,
+            },
+            "narrative": {
+                "theme": theme,
+                "tone": tone,
+                "auto_script": True,
+            },
+            "audio": {
+                "voice_id": voice_id,
+            },
+        }
 
-        # Calculate frame count from audio duration
-        frame_count = calculate_frame_count(clean_audio_path)
-        logger.info(f"Calculated frame count: {frame_count}")
+        # Set deadline
+        deadline = time.time() + deadline_sec
 
-        # ===== VRAM HANDOFF =====
-        # CRITICAL: Unload audio models BEFORE ComfyUI starts
-        logger.info("Unloading audio models for VRAM handoff...")
-        self._audio_engine.unload()
+        # Render
+        assert self._renderer is not None
+        result = await self._renderer.render(recipe, slot_id, seed, deadline)
 
-        # ===== PHASE 2: Visual Generation =====
-        logger.info("Phase 2: Generating visuals via ComfyUI...")
+        if not result.success:
+            return GenerationResult(
+                video_path="",
+                audio_path="",
+                seed=seed,
+                duration_sec=0.0,
+                generation_time_ms=result.generation_time_ms,
+                success=False,
+                error_msg=result.error_msg,
+            )
 
-        # Build workflow payload
-        workflow = self._workflow_builder.build(
-            prompt=prompt,
-            audio_path=clean_audio_path,  # Clean audio for lip-sync
+        # Save output files
+        output_paths = save_render_result(
+            result=result,
+            output_dir=self.output_dir,
+            fps=8,
+            sample_rate=24000,
+            slot_id=slot_id,
             seed=seed,
         )
 
-        # Dispatch to ComfyUI
-        video_path = await self._comfy_client.generate(workflow)
-        logger.info(f"Video generated: {video_path}")
+        # Calculate duration from video frames
+        num_frames = result.video_frames.shape[0] if result.video_frames.numel() > 0 else 0
+        duration_sec = num_frames / 8.0 if num_frames > 0 else 0.0
 
-        # ===== PHASE 3: Post-processing =====
-        # TODO: Mux mixed audio into final video (replace ComfyUI audio track)
-        # For MVP, ComfyUI's VHS_VideoCombine uses the clean audio directly
-
-        return {
-            "video_path": video_path,
-            "clean_audio_path": clean_audio_path,
-            "mixed_audio_path": mixed_audio_path,
-            "frame_count": frame_count,
-            "seed": seed,
-        }
+        return GenerationResult(
+            video_path=str(output_paths["video_path"]),
+            audio_path=str(output_paths["audio_path"]),
+            seed=seed,
+            duration_sec=duration_sec,
+            generation_time_ms=result.generation_time_ms,
+            success=True,
+        )
 
     async def health_check(self) -> dict[str, bool]:
         """Check health of all components.
@@ -172,9 +182,23 @@ class VideoOrchestrator:
         Returns:
             Dict with component health status
         """
-        comfy_ok = await self._comfy_client.check_health()
+        if not self._initialized or self._renderer is None:
+            return {
+                "orchestrator": False,
+                "renderer": False,
+            }
+
+        renderer_ok = await self._renderer.health_check()
 
         return {
             "orchestrator": True,
-            "comfyui": comfy_ok,
+            "renderer": renderer_ok,
         }
+
+    async def shutdown(self) -> None:
+        """Shutdown orchestrator and release resources."""
+        if self._renderer is not None:
+            await self._renderer.shutdown()
+            self._renderer = None
+        self._initialized = False
+        logger.info("VideoOrchestrator shutdown complete")
