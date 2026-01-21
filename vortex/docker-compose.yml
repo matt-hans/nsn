@@ -1,0 +1,92 @@
+# ToonGen Docker Compose Configuration
+# Two-container architecture: orchestrator + ComfyUI
+
+version: '3.8'
+
+services:
+  # ComfyUI Visual Generation Server
+  comfyui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.comfyui
+    container_name: toongen-comfyui
+
+    # GPU access
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Port mapping
+    ports:
+      - "8188:8188"
+
+    # Model volumes (external, not baked into image)
+    volumes:
+      - ./models/checkpoints:/app/ComfyUI/models/checkpoints:ro
+      - ./models/liveportrait:/app/ComfyUI/models/liveportrait:ro
+      - ./models/animatediff_models:/app/ComfyUI/models/animatediff_models:ro
+      - ./models/clip:/app/ComfyUI/models/clip:ro
+      # Input/Output (shared with orchestrator)
+      - ./temp/comfy_input:/app/ComfyUI/input
+      - ./outputs:/app/ComfyUI/output
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8188/system_stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ToonGen Orchestrator
+  orchestrator:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.orchestrator
+    container_name: toongen-orchestrator
+
+    # GPU access (for F5-TTS audio generation)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    # Port mapping
+    ports:
+      - "50051:50051"
+
+    # Volumes
+    volumes:
+      - ./assets:/app/assets:ro
+      - ./templates:/app/templates:ro
+      - ./temp/comfy_input:/app/temp/comfy_input
+      - ./outputs:/app/outputs
+
+    # Environment
+    environment:
+      - COMFY_HOST=comfyui
+      - COMFY_PORT=8188
+      - VORTEX_DEVICE=cuda:0
+
+    # Dependencies
+    depends_on:
+      comfyui:
+        condition: service_healthy
+
+    # Restart policy
+    restart: unless-stopped
+
+# Named volumes for persistence
+volumes:
+  models:
+  outputs:

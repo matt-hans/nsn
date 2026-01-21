@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+.eggs
+dist
+build
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Testing
+tests/
+htmlcov/
+.coverage
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Large files (use volumes instead)
+models/
+*.safetensors
+*.ckpt
+*.pth
+*.bin
+
+# Outputs
+outputs/
+temp/
+*.mp4
+*.wav
+*.npy
