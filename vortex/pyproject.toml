@@ -30,6 +30,7 @@ dependencies = [
     "scipy>=1.10.0",    # Signal smoothing for audio-gated motion driver
     "aiohttp>=3.9.0",   # Async HTTP client for ComfyUI API
     "websockets>=12.0", # WebSocket client for ComfyUI progress monitoring
+    "httpx>=0.26.0",    # Async HTTP client for Ollama Showrunner API
 ]
 
 [project.optional-dependencies]
