@@ -28,6 +28,8 @@ dependencies = [
     "av>=12.0.0",  # VP9/Opus encoding for Lane 0 video pipeline
     "librosa>=0.10.0",  # Audio analysis for audio-gated motion driver
     "scipy>=1.10.0",    # Signal smoothing for audio-gated motion driver
+    "aiohttp>=3.9.0",   # Async HTTP client for ComfyUI API
+    "websockets>=12.0", # WebSocket client for ComfyUI progress monitoring
 ]
 
 [project.optional-dependencies]
