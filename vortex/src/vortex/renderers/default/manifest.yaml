@@ -1,15 +1,15 @@
 schema_version: "1.0"
-name: "default-flux-liveportrait"
-version: "1.0.0"
+name: "default-narrative-chain"
+version: "2.0.0"
 entrypoint: "renderer.py:DefaultRenderer"
-description: "Default NSN Lane 0 renderer using Flux-Schnell for image generation, LivePortrait for video warping, Kokoro for TTS, and dual CLIP (ViT-B-32 + ViT-L-14) for semantic verification."
+description: "NSN Lane 0 Narrative Chain renderer using Showrunner (Ollama) for scripts, Kokoro for TTS, Flux-Schnell for keyframes, CogVideoX for video, and dual CLIP for verification."
 deterministic: true
 resources:
-  vram_gb: 11.8
-  max_latency_ms: 21000
+  vram_gb: 11.0
+  max_latency_ms: 150000
 model_dependencies:
   - flux-schnell-nf4
-  - liveportrait-fp16
+  - cogvideox-5b-int8
   - kokoro-82m-fp32
-  - clip-vit-b-32-int8
-  - clip-vit-l-14-int8
+  - clip-vit-b-32-fp16
+  - clip-vit-l-14-fp16

@@ -19,11 +19,12 @@ vram:
 
 models:
   # Model precision overrides (for debugging or VRAM optimization)
-  # Production values: flux=nf4, liveportrait=fp16, kokoro=fp32, clip=fp16
+  # Production values: flux=nf4, cogvideox=int8, kokoro=fp32, clip=fp16
   # Note: CLIP INT8 disabled due to open_clip compatibility issues; FP16 saves ~50% VRAM
   precision:
     flux: "nf4"           # 4-bit NormalFloat quantization
-    liveportrait: "fp16"  # Half precision
+    cogvideox: "int8"     # INT8 quantization for VRAM efficiency
+    showrunner: "external" # Ollama runs externally (not GPU-resident)
     kokoro: "fp32"        # Full precision (small model, quality matters)
     clip_b: "fp16"        # Half precision (INT8 incompatible with open_clip)
     clip_l: "fp16"        # Half precision (INT8 incompatible with open_clip)
@@ -37,6 +38,16 @@ models:
   # Reduces peak VRAM from ~11.8GB to ~6.5GB (enables GPUs with <12GB)
   # Options: "auto" (enable if VRAM < 12GB), "always" (force), "never" (disable)
   offloading: "always"
+
+# LLM configuration for Showrunner script generation
+llm:
+  # Ollama configuration for script generation
+  provider: "ollama"
+  base_url: "http://localhost:11434"
+  model: "llama3:8b"
+  timeout_s: 30
+  # Fallback to templates if Ollama unavailable
+  fallback_to_templates: true
 
 buffers:
   # Pre-allocated output buffers (prevents fragmentation during generation)
@@ -67,42 +78,13 @@ pipeline:
 quality:
   prompt_steering:
     enabled: true
-    # NOTE: "teeth visible" removed to prevent grimace. "slightly parted lips" creates
-    # the dark void needed for natural mouth opening without forcing a smile.
-    positive_prefix: "medium shot, looking at viewer, symmetrical face, centered composition, eye contact, slightly parted lips, "
-    negative_prefix: "profile view, side view, looking away, skewed, distorted, back of head, asymmetrical, closed mouth, sealed lips"
-  driver_audio:
-    enabled: true
-    sample_rate: 16000
-    pad_silence_sec: 0.2
+    # NOTE: Focused on keyframe generation quality for CogVideoX input
+    positive_prefix: "medium shot, looking at viewer, symmetrical face, centered composition, eye contact, "
+    negative_prefix: "profile view, side view, looking away, skewed, distorted, back of head, asymmetrical"
   camera_shake:
     enabled: true
     strength: 0.002
     zoom: 0.002
-
-  # Audio-gated motion driver settings
-  audio_driver:
-    # Asymmetric physics smoothing: fast close, slow open (biomechanical)
-    # Phase 1 - safe to enable, replaces Gaussian smoothing
-    asymmetric_smoothing: true
-    # Wav2Vec2 MLP for phoneme-aware mouth mapping
-    # Phase 2 - enable after validation, uses learned bilabial detection
-    # Fixes: /m/, /b/, /p/ sounds incorrectly opening the mouth
-    use_mlp: false
-
-  # Lip inpainting: creates mouth void texture before animation
-  # Phase 3 - enable after VRAM testing, higher complexity
-  # Fixes: "rubber mask" artifact where lip skin stretches instead of
-  # revealing teeth/cavity when jaw opens
-  lip_inpainting:
-    enabled: false
-    # Pixels to dilate lip mask (softens inpainting boundary)
-    dilation_px: 8
-    # How much to regenerate (0.0=none, 1.0=full). 0.45 adds texture without
-    # dramatically changing the lip appearance
-    denoising_strength: 0.45
-    # Prompt for the inpainted region
-    prompt: "slightly parted lips, visible teeth, natural shadow"
 
 outputs:
   # Persist RenderResult to disk after successful generation
@@ -119,7 +101,7 @@ renderers:
   # Directory containing renderer folders with manifest.yaml
   directory: "renderers"
   # Default renderer to use (must match a registered renderer name)
-  default: "default-flux-liveportrait"
+  default: "default-narrative-chain"
   # Renderer policy limits
   policy:
     # Maximum VRAM any renderer can declare (GB)
@@ -182,7 +164,7 @@ orchestration:
   timeouts:
     audio_s: 5     # Kokoro TTS timeout (2s target)
     image_s: 20    # Flux-Schnell timeout (12s target)
-    video_s: 30    # LivePortrait timeout (25s with audio-gated driver)
+    video_s: 120   # CogVideoX timeout (60-90s typical)
     clip_s: 5      # Dual CLIP ensemble timeout (1s target)
 
   # Retry policy per stage (0 = no retry)
