@@ -1,0 +1,231 @@
+{
+  "version": "1.0.0",
+  "description": "ToonGen MVP Scenario Library - 25 Interdimensional Cable scenarios",
+  "scenarios": [
+    {
+      "id": "ants_in_eyes",
+      "name": "Ants in My Eyes Johnson Electronics",
+      "prompt": "cartoon style electronics store interior, disheveled salesman with bulging eyes full of ants, TVs and appliances everywhere, chaotic energy, fluorescent lighting, 1980s aesthetic, bold colors",
+      "script": "Hi I'm Ants in My Eyes Johnson! Everything's black, I can't see a thing! And I also can't feel anything either, did I mention that? But that's not as catchy as having ants in your eyes!",
+      "voice_style": "manic_salesman",
+      "bgm": "cheesy_elevator",
+      "sfx": "static_glitch"
+    },
+    {
+      "id": "fake_doors",
+      "name": "Real Fake Doors",
+      "prompt": "cartoon style showroom full of doors mounted on walls, enthusiastic salesman gesturing at wooden doors, bright studio lighting, infomercial set, pastel background",
+      "script": "Hey are you tired of real doors cluttering up your house where you open em and you actually go somewhere? Come on down to Real Fake Doors! Won't open, won't open, not this one, not this one!",
+      "voice_style": "excited_host",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "personal_space",
+      "name": "The Personal Space Show",
+      "prompt": "cartoon style TV talk show set, creepy host in suit sitting too close to camera, uncomfortable atmosphere, studio audience in background, harsh studio lights",
+      "script": "Hi I'm Phillip Jacobs and let me tell you about personal space. One: personal space. Two: personal space. Three: stay out of my personal space!",
+      "voice_style": "whispering_creep",
+      "bgm": "80s_synth",
+      "sfx": null
+    },
+    {
+      "id": "gazorpazorp",
+      "name": "Gazorpazorpfield",
+      "prompt": "cartoon style sitcom living room, orange alien cat monster on armchair, scared human Jon character nearby, lasagna on table, distorted reality, sitcom lighting with laugh track feel",
+      "script": "Hey Jon, it's me Gazorpazorpfield. Boy, I really hate Mondays but I'm totally not into that. Now give me my enchiladas!",
+      "voice_style": "angry_chef",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "turbulent_juice",
+      "name": "Turbulent Juice",
+      "prompt": "cartoon style extreme sports energy drink commercial, glowing green liquid in futuristic bottle, explosion background, lightning bolts, neon colors, aggressive marketing aesthetic",
+      "script": "Turbulent Juice! It's like getting kicked in the face but from the inside! Warning: may cause interdimensional rifts. Turbulent Juice - ride the chaos!",
+      "voice_style": "surfer_dude",
+      "bgm": "80s_synth",
+      "sfx": "explosion_short"
+    },
+    {
+      "id": "baby_legs",
+      "name": "Baby Legs Detective",
+      "prompt": "cartoon style noir detective office, tough detective with tiny baby legs at desk, case files scattered, venetian blinds casting shadows, cigarette smoke, dramatic lighting",
+      "script": "The name's Baby Legs. I'm a detective, and this is my partner, Regular Legs. We're gonna solve this case... even if I have to waddle there.",
+      "voice_style": "deadpan_narrator",
+      "bgm": "80s_synth",
+      "sfx": null
+    },
+    {
+      "id": "plumbus",
+      "name": "How They Do It: Plumbus",
+      "prompt": "cartoon style factory documentary, pink fleshy plumbus objects on conveyor belt, industrial machinery, workers in hazmat suits, clinical lighting, nature documentary style",
+      "script": "Everyone has a plumbus in their home. First they take the dinglebop and push it through the grumbo. Then the schleem is repurposed for later batches.",
+      "voice_style": "deadpan_narrator",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "scary_terry",
+      "name": "Scary Terry Nightmares",
+      "prompt": "cartoon style nightmare scene, small man with knives for fingers and fedora, horror movie aesthetic, dark foggy alley, red glowing eyes, menacing but oddly cute",
+      "script": "You can run but you can't hide, bitch! Welcome to your nightmare, bitch! I'm Scary Terry, bitch! Aww don't be scared, I just say bitch a lot!",
+      "voice_style": "angry_chef",
+      "bgm": "static_void_hum",
+      "sfx": "static_glitch"
+    },
+    {
+      "id": "ball_fondlers",
+      "name": "Ball Fondlers Action Trailer",
+      "prompt": "cartoon style action movie poster, team of muscle-bound heroes with guns, explosions background, dramatic poses, 80s action movie aesthetic, lens flare, orange and teal colors",
+      "script": "This summer, the Ball Fondlers are back. More balls. More fondling. And this time... it's personal. Ball Fondlers 3: Fondle Harder.",
+      "voice_style": "deadpan_narrator",
+      "bgm": "80s_synth",
+      "sfx": "explosion_short"
+    },
+    {
+      "id": "eyehole_man",
+      "name": "Eyehole Man Warning PSA",
+      "prompt": "cartoon style public service announcement, muscular angry man in eyehole mask, cereal box with eyeballs, dramatic warning aesthetic, bold red warning text, urgent feeling",
+      "script": "Get up on outta here with my eyeholes! These are MY eyeholes! I'm the Eyehole Man! Warning: consumption of eyeholes may result in severe beatings.",
+      "voice_style": "angry_chef",
+      "bgm": null,
+      "sfx": "explosion_short"
+    },
+    {
+      "id": "interdimensional_ad_1",
+      "name": "Glip Glop Cereal",
+      "prompt": "cartoon style breakfast cereal commercial, colorful alien cereal with strange shapes, happy alien family at breakfast table, bright kitchen, morning sunshine, wholesome but weird",
+      "script": "Start your morning with Glip Glop! The only cereal with real interdimensional flavor crystals! Now with fifty percent more glop! Glip Glop - it's a racial slur in some dimensions!",
+      "voice_style": "excited_host",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "interdimensional_ad_2",
+      "name": "Schmeckles Bank",
+      "prompt": "cartoon style bank commercial, alien bank interior with strange currency, friendly alien teller, vault full of glowing orbs, professional but otherworldly, trustworthy aesthetic",
+      "script": "At Schmeckles Bank, your schmeckles are safe with us. Open a checking account and get twenty-five schmeckles free! That's almost enough for a plumbus! Schmeckles Bank - we're worth it!",
+      "voice_style": "deadpan_narrator",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "interdimensional_ad_3",
+      "name": "Interdimensional Travel Agency",
+      "prompt": "cartoon style travel agency poster, portals showing different alien worlds, vacation scenes with bizarre landscapes, palm trees on alien beach, exciting adventure aesthetic",
+      "script": "Tired of your boring dimension? Visit Dimension J-19 Zeta 7 - where the air smells like cinnamon! Or try the Cromulon homeworld! Interdimensional Travel - because reality is just a suggestion!",
+      "voice_style": "excited_host",
+      "bgm": "80s_synth",
+      "sfx": "static_glitch"
+    },
+    {
+      "id": "interdimensional_ad_4",
+      "name": "Blips and Chitz Arcade",
+      "prompt": "cartoon style alien arcade, neon lights everywhere, bizarre video game cabinets, aliens playing games, Roy Life Simulator prominent, exciting atmosphere, 80s arcade aesthetic",
+      "script": "Blips and Chitz! Come play Roy and live an entire human life! Or try our new game, Alien Invasion 5 - you're the alien! Blips and Chitz - waste your life responsibly!",
+      "voice_style": "manic_salesman",
+      "bgm": "80s_synth",
+      "sfx": null
+    },
+    {
+      "id": "interdimensional_ad_5",
+      "name": "Simple Rick's Wafers",
+      "prompt": "cartoon style premium snack commercial, elegant wafer cookies in fancy packaging, content Rick face on box, factory setting with happy workers, warm nostalgic lighting, emotional",
+      "script": "Come home to the impossible flavor of your own completion. Come home to Simple Rick's. Every wafer contains the essence of a Rick experiencing true happiness. Simple Rick's - taste the contentment.",
+      "voice_style": "old_timey",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "news_broadcast_1",
+      "name": "Interdimensional News Update",
+      "prompt": "cartoon style alien news desk, professional alien newscaster with multiple eyes, holographic displays showing bizarre headlines, serious journalism aesthetic, studio lighting",
+      "script": "Breaking news from Dimension C-137! A local Rick has been spotted not caring about anything! In other news, the Galactic Federation reports that everything is fine. Probably.",
+      "voice_style": "deadpan_narrator",
+      "bgm": null,
+      "sfx": "static_glitch"
+    },
+    {
+      "id": "cooking_show",
+      "name": "Cooking with Squanchy",
+      "prompt": "cartoon style cooking show kitchen, furry cat-like alien chef with wild hair, bizarre alien ingredients on counter, professional cooking set, warm kitchen lighting",
+      "script": "Today we're gonna squanch up some real squanchy cuisine! Just take your squanch, add some squanch, and baby you got a squanch going! Squanchy approved!",
+      "voice_style": "angry_chef",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "lawyer_ad",
+      "name": "Morty's Law Firm",
+      "prompt": "cartoon style cheap lawyer commercial, nervous young man in oversized suit at desk, diploma on wall, late night TV ad aesthetic, fluorescent lighting, budget production",
+      "script": "Oh geez, did you get injured in an interdimensional accident? I'm Lawyer Morty and I can help! I've won zero cases but I try really hard! Call now, my grandpa makes me do this!",
+      "voice_style": "nervous_morty",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "mattress_store",
+      "name": "Sleepy Gary's Mattresses",
+      "prompt": "cartoon style mattress store, friendly salesman with perfect smile, rows of mattresses, dreamy atmosphere, soft lighting, trustworthy suburban aesthetic, too perfect",
+      "script": "Hi I'm Sleepy Gary, and I'm definitely your real husband and not a parasite! Come down to Sleepy Gary's Mattresses! Our beds are so comfortable you'll create false memories!",
+      "voice_style": "excited_host",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "car_dealership",
+      "name": "Wacky Waving Dealership",
+      "prompt": "cartoon style car dealership lot, wacky waving inflatable tube man everywhere, used cars, over-excited salesman, balloons, banners, chaotic energy, bright sunny day",
+      "script": "Wacky Waving Inflatable Arm Flailing Tube Men! Wacky Waving Inflatable Arm Flailing Tube Men! Come on down to our lot! We've got cars probably! Financing available in most realities!",
+      "voice_style": "manic_salesman",
+      "bgm": "80s_synth",
+      "sfx": null
+    },
+    {
+      "id": "therapy_ad",
+      "name": "Dr. Wong's Therapy",
+      "prompt": "cartoon style therapy office, professional woman therapist at desk, comfortable couch, diplomas on wall, calming earth tones, professional and serene atmosphere",
+      "script": "Feeling like you're the smartest being in the universe and everyone else is an idiot? That's called being a Rick. I'm Dr. Wong. Let's talk about why that's your problem, not theirs.",
+      "voice_style": "deadpan_narrator",
+      "bgm": null,
+      "sfx": null
+    },
+    {
+      "id": "fast_food",
+      "name": "Shoney's All Day Breakfast",
+      "prompt": "cartoon style diner commercial, classic American diner interior, breakfast food piled high, happy family eating, warm nostalgic glow, comfort food aesthetic, 1950s vibe",
+      "script": "Come to Shoney's where the breakfast never ends and neither do the fake realities! Try our new Szechuan sauce - we promise it's not a simulation! Shoney's - is any of this real?",
+      "voice_style": "old_timey",
+      "bgm": "cheesy_elevator",
+      "sfx": null
+    },
+    {
+      "id": "alien_greeting",
+      "name": "Earth Welcome Message",
+      "prompt": "cartoon style alien PSA, friendly alien diplomat at podium, Earth visible through window, UN-style assembly hall, official governmental aesthetic, welcoming but ominous",
+      "script": "Greetings Earth humans! We come in peace to observe your primitive customs! Please do not resist the probing - it's purely scientific! Welcome to the Galactic Federation. Compliance is appreciated!",
+      "voice_style": "alien_visitor",
+      "bgm": "static_void_hum",
+      "sfx": "static_glitch"
+    },
+    {
+      "id": "dating_app",
+      "name": "Glorp Dating App",
+      "prompt": "cartoon style dating app commercial, happy alien couples of various species, smartphone showing dating profiles, hearts floating, modern tech aesthetic, inclusive and bizarre",
+      "script": "Find your perfect match across infinite dimensions with Glorp! Swipe right on a Gazorpian! Match with a Meeseeks! Glorp - because love has no dimensional boundaries! Warning: some species may eat you.",
+      "voice_style": "excited_host",
+      "bgm": "80s_synth",
+      "sfx": null
+    },
+    {
+      "id": "finale",
+      "name": "Stay Tuned - Test Pattern",
+      "prompt": "cartoon style TV test pattern with color bars, retro television static, interdimensional symbols, hypnotic spiral in center, vintage broadcast aesthetic, eerie and nostalgic",
+      "script": "This has been Interdimensional Cable. We now return you to your regularly scheduled reality. Please stand by. Or don't. We're not your dad. Probably.",
+      "voice_style": "monotone_bot",
+      "bgm": "static_void_hum",
+      "sfx": "static_glitch"
+    }
+  ]
+}
