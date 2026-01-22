@@ -19,13 +19,13 @@ vram:
 
 models:
   # Model precision overrides (for debugging or VRAM optimization)
-  # Production values: flux=nf4, cogvideox=int8, kokoro=fp32, clip=fp16
+  # Production values: flux=nf4, cogvideox=int8, bark=fp32, clip=fp16
   # Note: CLIP INT8 disabled due to open_clip compatibility issues; FP16 saves ~50% VRAM
   precision:
     flux: "nf4"           # 4-bit NormalFloat quantization
     cogvideox: "int8"     # INT8 quantization for VRAM efficiency
     showrunner: "external" # Ollama runs externally (not GPU-resident)
-    kokoro: "fp32"        # Full precision (small model, quality matters)
+    bark: "fp32"          # Full precision for expressive audio quality
     clip_b: "fp16"        # Half precision (INT8 incompatible with open_clip)
     clip_l: "fp16"        # Half precision (INT8 incompatible with open_clip)
 
@@ -162,7 +162,7 @@ plugins:
 orchestration:
   # Per-stage timeouts (seconds) - prevent infinite hangs
   timeouts:
-    audio_s: 5     # Kokoro TTS timeout (2s target)
+    audio_s: 45    # Bark TTS timeout (20-40s typical for 15s audio)
     image_s: 20    # Flux-Schnell timeout (12s target)
     video_s: 120   # CogVideoX timeout (60-90s typical)
     clip_s: 5      # Dual CLIP ensemble timeout (1s target)
