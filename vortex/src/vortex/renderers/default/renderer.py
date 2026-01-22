@@ -2,7 +2,7 @@
 
 This renderer implements the Montage pipeline for Lane 0 video generation:
 1. Showrunner (LLM) generates comedic script with 3-scene storyboard
-2. Kokoro synthesizes script to audio (sets duration)
+2. Bark synthesizes script to audio (sets duration)
 3. Flux generates 3 independent keyframes (one per storyboard scene)
 4. CogVideoX generates 3 independent video clips (5s each)
 5. Clips concatenated with hard cuts for 15s montage
@@ -10,13 +10,13 @@ This renderer implements the Montage pipeline for Lane 0 video generation:
 
 Architecture:
     - Showrunner (external Ollama): Generates script with setup/punchline/storyboard[3]
-    - Kokoro-82M (FP32, 0.4GB): Text-to-speech synthesis at 24kHz
+    - Bark (FP16, ~1.5GB): Text-to-speech synthesis at 24kHz with emotion support
     - Flux-Schnell (NF4, 6.0GB): Generates 3 keyframe images from storyboard
     - CogVideoX-5B (INT8, ~10-11GB): Generates 3 video clips from keyframes
     - CLIP ViT-B-32 + ViT-L-14 (FP16, 0.6GB): Dual ensemble semantic verification
 
 Pipeline Flow (Montage):
-    Recipe -> Showrunner (script with 3-scene storyboard) -> Kokoro (TTS) -> Audio
+    Recipe -> Showrunner (script with 3-scene storyboard) -> Bark (TTS) -> Audio
 
     For each scene in storyboard:
         scene_prompt -> Flux (keyframe)
@@ -44,9 +44,9 @@ import torch
 import torch.nn as nn
 import yaml
 
+from vortex.models.bark import load_bark
 from vortex.models.clip_ensemble import ClipEnsemble, DualClipResult
 from vortex.models.cogvideox import CogVideoXModel, VideoGenerationConfig
-from vortex.models.kokoro import load_kokoro
 from vortex.models.showrunner import Script, Showrunner
 from vortex.renderers.base import DeterministicVideoRenderer
 from vortex.renderers.recipe_schema import merge_with_defaults, validate_recipe
@@ -80,7 +80,7 @@ class _ModelRegistry:
 
     Models:
     - flux: Keyframe image generation (6GB)
-    - kokoro: TTS audio synthesis (0.4GB)
+    - bark: TTS audio synthesis with emotion support (~1.5GB)
     - cogvideox: Video generation (10-11GB with INT8)
     - clip_ensemble: Semantic verification (0.6GB)
     """
@@ -139,17 +139,17 @@ class _ModelRegistry:
 
         For Narrative Chain, we load:
         - flux (keyframe generation) - placeholder until implemented
-        - kokoro (TTS)
+        - bark (TTS with emotion support)
         - clip_ensemble (verification) - placeholder until implemented
         - cogvideox (video generation) - handled separately
         """
         try:
-            # Load Kokoro TTS
-            logger.info("Loading model: kokoro")
+            # Load Bark TTS
+            logger.info("Loading model: bark")
             target_device = "cpu" if self._offloading_enabled else self.device
-            kokoro = load_kokoro(device=target_device)
-            self._models["kokoro"] = kokoro
-            log_vram_snapshot("after_kokoro_load")
+            bark = load_bark(device=target_device)
+            self._models["bark"] = bark
+            log_vram_snapshot("after_bark_load")
 
             # Load Flux-Schnell keyframe generator
             from vortex.models.flux import FluxModel
@@ -223,7 +223,7 @@ class _ModelRegistry:
 
         # Map stages to required models
         stage_models = {
-            "audio": "kokoro",
+            "audio": "bark",
             "image": "flux",
             "video": None,  # CogVideoX handles its own offloading
             "clip": "clip_ensemble",
@@ -281,7 +281,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
     This renderer implements the full Narrative Chain pipeline:
     1. Showrunner (LLM) generates script from theme
-    2. Kokoro synthesizes script to speech
+    2. Bark synthesizes script to speech with emotion
     3. Flux generates keyframe image
     4. CogVideoX generates video from keyframe
     5. CLIP verifies semantic consistency
@@ -417,7 +417,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
         Pipeline Flow:
         1. Script Generation: Showrunner (LLM) generates script or use provided
-        2. Audio Generation: Kokoro TTS synthesizes speech
+        2. Audio Generation: Bark TTS synthesizes speech with emotion
         3. Keyframe Generation: Flux generates scene image
         4. Video Generation: CogVideoX animates keyframe
         5. CLIP Verification: Dual ensemble semantic check
@@ -484,7 +484,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 2: Audio Generation (Kokoro ~0.4GB)
+            # Phase 2: Audio Generation (Bark ~1.5GB)
             self._model_registry.prepare_for_stage("audio")
             full_script = f"{script.setup} {script.punchline}"
             audio_result = await self._generate_audio(full_script, recipe, seed)
@@ -617,7 +617,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
     async def _generate_audio(
         self, script: str, recipe: dict[str, Any], seed: int
     ) -> torch.Tensor:
-        """Generate audio waveform using Kokoro TTS.
+        """Generate audio waveform using Bark TTS.
 
         Args:
             script: Full text to synthesize (setup + punchline)
@@ -630,13 +630,12 @@ class DefaultRenderer(DeterministicVideoRenderer):
         assert self._model_registry is not None
         assert self._audio_buffer is not None
 
-        # Get Kokoro model from registry
-        kokoro = self._model_registry.get_model("kokoro")
+        # Get Bark model from registry
+        bark = self._model_registry.get_model("bark")
 
         # Extract audio parameters from recipe
         audio_config = recipe.get("audio", {})
-        voice_id = audio_config.get("voice_id", "af_heart")
-        speed = audio_config.get("speed", 1.0)
+        voice_id = audio_config.get("voice_id", "v2/en_speaker_6")
 
         # Validate script is not empty
         if not script or not script.strip():
@@ -645,28 +644,31 @@ class DefaultRenderer(DeterministicVideoRenderer):
             return self._audio_buffer
 
         # Check if model has synthesize method (real vs mock)
-        if not hasattr(kokoro, "synthesize"):
-            logger.warning("Kokoro model missing synthesize(); using zeroed buffer")
+        if not hasattr(bark, "synthesize"):
+            logger.warning("Bark model missing synthesize(); using zeroed buffer")
             self._audio_buffer.zero_()
             return self._audio_buffer
 
-        # Generate audio with deterministic seed (wrap in thread to avoid blocking)
+        # Generate audio with Bark (wrap in thread to avoid blocking)
         try:
+            # Extract emotion from recipe (default to neutral)
+            emotion = audio_config.get("emotion", "neutral")
+
             audio = await asyncio.to_thread(
-                kokoro.synthesize,
+                bark.synthesize,
                 text=script,
                 voice_id=voice_id,
-                speed=speed,
+                emotion=emotion,
                 output=self._audio_buffer,
                 seed=seed,
             )
             return audio
         except ValueError as e:
-            logger.warning(f"Kokoro synthesis failed: {e}, using zeroed buffer")
+            logger.warning(f"Bark synthesis failed: {e}, using zeroed buffer")
             self._audio_buffer.zero_()
             return self._audio_buffer
         except Exception as e:
-            logger.error(f"Unexpected Kokoro error: {e}", exc_info=True)
+            logger.error(f"Unexpected Bark error: {e}", exc_info=True)
             self._audio_buffer.zero_()
             return self._audio_buffer
 
@@ -972,7 +974,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             return False
 
         # Check all required models are loaded
-        required_models = ["flux", "kokoro", "cogvideox", "clip_ensemble"]
+        required_models = ["flux", "bark", "cogvideox", "clip_ensemble"]
         for model_name in required_models:
             if model_name not in self._model_registry:
                 logger.warning(f"Health check failed: model '{model_name}' not loaded")
