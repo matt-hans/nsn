@@ -493,13 +493,6 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 extra={"audio_samples": audio_result.shape[0]},
             )
 
-            # Check deadline before video generation (montage takes ~60s for 3 scenes)
-            time_remaining = deadline - time.time()
-            if time_remaining < 70.0:
-                raise TimeoutError(
-                    f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
-                )
-
             # Phase 3: Video Montage Generation (Flux keyframes + CogVideoX clips)
             # The _generate_video method now handles:
             # - Generating 3 keyframes (one per storyboard scene)
@@ -524,13 +517,6 @@ class DefaultRenderer(DeterministicVideoRenderer):
             cogvideox.unload()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
-            # Check deadline before CLIP
-            time_remaining = deadline - time.time()
-            if time_remaining < 5.0:
-                raise TimeoutError(
-                    f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
-                )
 
             # Phase 4: CLIP Verification (~0.6GB)
             # Uses first scene prompt for semantic verification of the montage
