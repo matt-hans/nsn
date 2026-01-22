@@ -59,6 +59,9 @@ repomix-output.xml
 *.mp3
 *.npy
 
+# Exception: versioned audio assets
+!vortex/assets/voices/fallback_audio.wav
+
 # Secrets
 *.pem
 *.key
