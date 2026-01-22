@@ -57,7 +57,8 @@ class VideoGenerationConfig:
 
     Attributes:
         num_frames: Number of frames to generate (default 49, ~6 seconds at 8fps)
-        guidance_scale: Classifier-free guidance scale (higher = more prompt adherence)
+        guidance_scale: Classifier-free guidance scale (default 5.0 for artifact-free output)
+        use_dynamic_cfg: Enable dynamic CFG scheduling for better motion (default True)
         num_inference_steps: Denoising steps (more = better quality, slower)
         fps: Output frame rate
         height: Video height in pixels (must be divisible by 16)
@@ -65,7 +66,8 @@ class VideoGenerationConfig:
     """
 
     num_frames: int = 49  # CogVideoX default (~6 seconds at 8fps)
-    guidance_scale: float = 6.0  # CFG scale
+    guidance_scale: float = 5.0  # CFG scale (reduced from 6.0 to minimize artifacts)
+    use_dynamic_cfg: bool = True  # Enable dynamic CFG scheduling for better motion
     num_inference_steps: int = 50
     fps: int = 8  # Output frame rate
     height: int = 480  # CogVideoX I2V native resolution
@@ -438,6 +440,94 @@ class CogVideoXModel:
 
         return video
 
+    async def generate_montage(
+        self,
+        keyframes: list[torch.Tensor],
+        prompts: list[str],
+        config: VideoGenerationConfig | None = None,
+        seed: int | None = None,
+        trim_frames: int = 40,  # Trim each 49-frame clip to 40 frames (~5s)
+        progress_callback: Callable[[int, int], None] | None = None,
+    ) -> torch.Tensor:
+        """Generate video montage from multiple independent keyframes.
+
+        Unlike generate_chain(), this method generates each clip independently
+        from its own keyframe, avoiding autoregressive degradation.
+
+        Args:
+            keyframes: List of keyframe tensors [C, H, W] (one per scene)
+            prompts: List of text prompts (one per scene)
+            config: Optional generation config
+            seed: Optional base seed (scene seeds = seed + scene_idx)
+            trim_frames: Frames to keep per clip (default 40 = 5s @ 8fps).
+                        Set to 0 to disable trimming and keep all frames.
+            progress_callback: Optional callback(scene_num, total_scenes) called
+                              before each scene and after completion
+
+        Returns:
+            Concatenated video tensor [total_frames, C, H, W]
+
+        Example:
+            >>> video = await model.generate_montage(
+            ...     keyframes=[img1, img2, img3],
+            ...     prompts=["Scene 1...", "Scene 2...", "Scene 3..."],
+            ...     seed=42,
+            ... )
+            >>> print(video.shape)  # [120, 3, 480, 720] for 3x40 frames
+        """
+        if config is None:
+            config = VideoGenerationConfig()
+
+        if len(keyframes) != len(prompts):
+            raise ValueError(
+                f"keyframes ({len(keyframes)}) and prompts ({len(prompts)}) must match"
+            )
+
+        if len(keyframes) == 0:
+            raise ValueError("keyframes list cannot be empty")
+
+        num_scenes = len(keyframes)
+        logger.info(f"Generating {num_scenes}-scene montage...")
+
+        clips = []
+        for i, (keyframe, prompt) in enumerate(zip(keyframes, prompts)):
+            if progress_callback:
+                progress_callback(i, num_scenes)
+
+            # Derived seed for determinism
+            scene_seed = seed + i if seed is not None else None
+
+            logger.info(f"Generating scene {i+1}/{num_scenes}: {prompt[:50]}...")
+
+            # Generate clip from fresh keyframe
+            clip = await self.generate_chunk(
+                image=keyframe,
+                prompt=prompt,
+                config=config,
+                seed=scene_seed,
+            )
+
+            # Trim to target frames (remove potential tail degradation)
+            if trim_frames and clip.shape[0] > trim_frames:
+                clip = clip[:trim_frames]
+                logger.debug(f"Trimmed scene {i+1} to {trim_frames} frames")
+
+            clips.append(clip)
+            logger.info(f"Scene {i+1} complete: {clip.shape[0]} frames")
+
+        # Hard cut concatenation
+        video = torch.cat(clips, dim=0)
+
+        if progress_callback:
+            progress_callback(num_scenes, num_scenes)
+
+        logger.info(
+            f"Montage complete: {video.shape[0]} frames "
+            f"({video.shape[0] / config.fps:.1f}s @ {config.fps}fps)"
+        )
+
+        return video
+
     def _generate_sync(
         self,
         image: Image.Image,
@@ -463,6 +553,7 @@ class CogVideoXModel:
             height=config.height,
             width=config.width,
             guidance_scale=config.guidance_scale,
+            use_dynamic_cfg=config.use_dynamic_cfg,
             num_inference_steps=config.num_inference_steps,
             generator=generator,
         )

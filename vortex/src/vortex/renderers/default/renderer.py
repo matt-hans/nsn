@@ -1,27 +1,32 @@
-"""Default Lane 0 renderer implementation with Narrative Chain architecture.
+"""Default Lane 0 renderer implementation with Montage architecture.
 
-This renderer implements the Narrative Chain pipeline for Lane 0 video generation:
-1. Showrunner (LLM) generates comedic script
+This renderer implements the Montage pipeline for Lane 0 video generation:
+1. Showrunner (LLM) generates comedic script with 3-scene storyboard
 2. Kokoro synthesizes script to audio (sets duration)
-3. Flux generates keyframe image
-4. CogVideoX animates keyframe to video
-5. CLIP verifies semantic consistency
+3. Flux generates 3 independent keyframes (one per storyboard scene)
+4. CogVideoX generates 3 independent video clips (5s each)
+5. Clips concatenated with hard cuts for 15s montage
+6. CLIP verifies semantic consistency
 
 Architecture:
-    - Showrunner (external Ollama): Generates script with setup/punchline/visual_prompt
+    - Showrunner (external Ollama): Generates script with setup/punchline/storyboard[3]
     - Kokoro-82M (FP32, 0.4GB): Text-to-speech synthesis at 24kHz
-    - Flux-Schnell (NF4, 6.0GB): Generates keyframe images from prompts
-    - CogVideoX-5B (INT8, ~10-11GB): Generates video from keyframe + prompt
+    - Flux-Schnell (NF4, 6.0GB): Generates 3 keyframe images from storyboard
+    - CogVideoX-5B (INT8, ~10-11GB): Generates 3 video clips from keyframes
     - CLIP ViT-B-32 + ViT-L-14 (FP16, 0.6GB): Dual ensemble semantic verification
 
-Pipeline Flow:
-    Recipe -> Showrunner (script) -> Kokoro (TTS) -> Audio
-                                  -> Flux (keyframe) -> Image
-    Image + Prompt -> CogVideoX (video) -> Video
+Pipeline Flow (Montage):
+    Recipe -> Showrunner (script with 3-scene storyboard) -> Kokoro (TTS) -> Audio
+
+    For each scene in storyboard:
+        scene_prompt -> Flux (keyframe)
+
+    All 3 keyframes -> CogVideoX (montage) -> 3 clips -> concatenate -> Video
+
     Video -> CLIP (verify) -> Embedding
 
 VRAM Budget: ~11GB peak during CogVideoX phase
-Target Duration: 10-15 seconds at 8fps
+Target Duration: 15 seconds (3 scenes × 5s each) at 8fps = 120 frames
 """
 
 from __future__ import annotations
@@ -237,56 +242,6 @@ class _ModelRegistry:
     def offloading_enabled(self) -> bool:
         """Check if offloading is enabled."""
         return self._offloading_enabled
-
-
-class _FluxPlaceholder(nn.Module):
-    """Placeholder for Flux-Schnell keyframe generator.
-
-    This placeholder will be replaced with the actual Flux implementation
-    in Phase 4.3. For now, it generates random noise images to allow
-    pipeline testing.
-    """
-
-    def __init__(self, device: str = "cuda"):
-        super().__init__()
-        self.device = device
-        logger.warning(
-            "Using Flux placeholder - actual model not implemented yet"
-        )
-
-    def generate(
-        self,
-        prompt: str,
-        negative_prompt: str = "",
-        num_inference_steps: int = 4,
-        guidance_scale: float = 0.0,
-        output: torch.Tensor | None = None,
-        seed: int | None = None,
-    ) -> torch.Tensor:
-        """Generate a placeholder keyframe image.
-
-        Args:
-            prompt: Text prompt (logged but not used)
-            negative_prompt: Negative prompt (ignored)
-            num_inference_steps: Inference steps (ignored)
-            guidance_scale: Guidance scale (ignored)
-            output: Optional pre-allocated buffer
-            seed: Random seed for reproducibility
-
-        Returns:
-            Random noise tensor [3, 512, 512]
-        """
-        logger.warning(f"Flux placeholder generating noise for prompt: {prompt[:50]}...")
-
-        if seed is not None:
-            torch.manual_seed(seed)
-
-        # Generate random image with slight structure (colored noise)
-        if output is not None:
-            output.uniform_(0, 1)
-            return output
-        else:
-            return torch.rand(3, 512, 512, device=self.device)
 
 
 class _VRAMMonitor:
@@ -515,7 +470,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 extra={
                     "setup_length": len(script.setup),
                     "punchline_length": len(script.punchline),
-                    "visual_prompt_length": len(script.visual_prompt),
+                    "storyboard_scenes": len(script.storyboard),
                 },
             )
 
@@ -538,43 +493,26 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 extra={"audio_samples": audio_result.shape[0]},
             )
 
-            # Phase 3: Keyframe Generation (Flux ~6GB)
-            self._model_registry.prepare_for_stage("image")
-            # Combine visual_prompt with video.style_prompt
-            video_config = recipe.get("video", {})
-            style_prompt = video_config.get("style_prompt", "")
-            combined_prompt = f"{script.visual_prompt}, {style_prompt}".strip(", ")
-            keyframe = await self._generate_keyframe(combined_prompt, recipe, seed)
-            logger.info(
-                "Keyframe generated",
-                extra={"keyframe_shape": list(keyframe.shape)},
-            )
-
-            # Unload Flux before CogVideoX (which needs ~10-11GB)
-            # This is critical to avoid VRAM fragmentation
-            if self._model_registry.offloading_enabled:
-                flux = self._model_registry.get_model("flux")
-                if hasattr(flux, "unload"):
-                    logger.info("Unloading Flux model before CogVideoX")
-                    flux.unload()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    gc.collect()
-
-            # Check deadline before video generation
+            # Check deadline before video generation (montage takes ~60s for 3 scenes)
             time_remaining = deadline - time.time()
-            if time_remaining < 30.0:
+            if time_remaining < 70.0:
                 raise TimeoutError(
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 4: Video Generation (CogVideoX ~10-11GB)
-            self._model_registry.prepare_for_stage("video")
+            # Phase 3: Video Montage Generation (Flux keyframes + CogVideoX clips)
+            # The _generate_video method now handles:
+            # - Generating 3 keyframes (one per storyboard scene)
+            # - Generating 3 CogVideoX clips (one per keyframe)
+            # - Concatenating with hard cuts
+            # - Model offloading between Flux and CogVideoX
             video_result = await self._generate_video(
-                keyframe, script.visual_prompt, recipe, seed
+                script=script,
+                recipe=recipe,
+                seed=seed,
             )
             logger.info(
-                "Video generated",
+                "Video montage generated",
                 extra={
                     "video_frames": video_result.shape[0],
                     "video_shape": list(video_result.shape),
@@ -594,7 +532,8 @@ class DefaultRenderer(DeterministicVideoRenderer):
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 5: CLIP Verification (~0.6GB)
+            # Phase 4: CLIP Verification (~0.6GB)
+            # Uses first scene prompt for semantic verification of the montage
             self._model_registry.prepare_for_stage("clip")
             clip_embedding = await self._verify_semantic(
                 video_result, script.visual_prompt, recipe
@@ -815,60 +754,91 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
     async def _generate_video(
         self,
-        keyframe: torch.Tensor,
-        visual_prompt: str,
+        script: Script,
         recipe: dict[str, Any],
         seed: int,
     ) -> torch.Tensor:
-        """Generate video using CogVideoX from keyframe.
+        """Generate video montage from script storyboard.
+
+        Uses the montage architecture: 3 independent Flux keyframes ->
+        3 independent CogVideoX clips -> concatenate with hard cuts.
+
+        This approach generates each scene independently from its own keyframe,
+        avoiding the quality degradation that occurs with autoregressive chaining.
 
         Args:
-            keyframe: Keyframe image tensor [3, H, W]
-            visual_prompt: Scene description for video generation
-            recipe: Recipe with slot_params and video sections
-            seed: Deterministic seed
+            script: Script object with 3-scene storyboard
+            recipe: Recipe with video configuration
+            seed: Deterministic seed for reproducibility
 
         Returns:
-            Video frames tensor [num_frames, 3, H, W]
+            Video frames tensor [num_frames, 3, H, W] (approximately 15s at 8fps)
+
+        Raises:
+            ValueError: If script doesn't have exactly 3 storyboard scenes
         """
         assert self._model_registry is not None
 
+        storyboard = script.storyboard
+        if not storyboard or len(storyboard) < 3:
+            raise ValueError(
+                f"Script must have 3-scene storyboard, got "
+                f"{len(storyboard) if storyboard else 0}"
+            )
+
+        style_prompt = recipe.get("video", {}).get(
+            "style_prompt",
+            "cartoon style, vibrant colors, surreal, interdimensional cable aesthetic"
+        )
+
+        # Phase 1: Generate 3 keyframes (Flux)
+        logger.info(f"Generating {len(storyboard)} keyframes for montage...")
+        self._model_registry.prepare_for_stage("image")
+
+        keyframes = []
+        for i, scene_prompt in enumerate(storyboard):
+            scene_seed = seed + i  # Derived seed for determinism
+            full_prompt = f"{scene_prompt}, {style_prompt}"
+
+            logger.info(f"Keyframe {i+1}/3: {scene_prompt[:40]}...")
+            keyframe = await self._generate_keyframe(full_prompt, recipe, scene_seed)
+            keyframes.append(keyframe)
+
+        # Unload Flux before CogVideoX (which needs ~10-11GB)
+        if self._model_registry.offloading_enabled:
+            flux = self._model_registry.get_model("flux")
+            if hasattr(flux, "unload"):
+                logger.info("Unloading Flux model before CogVideoX")
+                flux.unload()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                gc.collect()
+
+        # Phase 2: Generate 3 clips (CogVideoX montage)
+        logger.info("Switching to video generation...")
+        self._model_registry.prepare_for_stage("video")
         cogvideox = self._model_registry.get_cogvideox()
 
-        # Extract parameters from recipe
-        slot_params = recipe.get("slot_params", {})
-        target_duration = slot_params.get("target_duration", 12.0)
-        fps = slot_params.get("fps", 8)
-
-        video_config = recipe.get("video", {})
-        guidance_scale = video_config.get("guidance_scale", 6.0)
-
-        # Build video generation config
+        # Configure for montage: lower guidance, dynamic CFG
         config = VideoGenerationConfig(
-            fps=fps,
-            guidance_scale=guidance_scale,
+            num_frames=49,
+            guidance_scale=5.0,  # Lower to reduce artifacts
+            use_dynamic_cfg=True,  # Better motion adherence
+            fps=8,
+        )
+
+        video = await cogvideox.generate_montage(
+            keyframes=keyframes,
+            prompts=storyboard,
+            config=config,
+            seed=seed,
+            trim_frames=40,  # 5s per scene @ 8fps = 15s total
         )
 
         logger.info(
-            "Starting CogVideoX video generation",
-            extra={
-                "target_duration": target_duration,
-                "fps": fps,
-                "guidance_scale": guidance_scale,
-                "keyframe_shape": list(keyframe.shape),
-            },
+            f"Montage complete: {video.shape[0]} frames ({video.shape[0]/8:.1f}s)"
         )
-
-        # Generate video chain for target duration
-        video_frames = await cogvideox.generate_chain(
-            keyframe=keyframe,
-            prompt=visual_prompt,
-            target_duration=target_duration,
-            config=config,
-            seed=seed,
-        )
-
-        return video_frames
+        return video
 
     async def _verify_semantic(
         self,
@@ -1053,7 +1023,6 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
         # Clear pre-allocated buffers
         self._actor_buffer = None
-        self._video_buffer = None
         self._audio_buffer = None
 
         # Clear GPU cache

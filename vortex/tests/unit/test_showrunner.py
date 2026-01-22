@@ -31,26 +31,58 @@ class TestFallbackTemplates:
             f"Expected at least 10 templates, found {len(FALLBACK_TEMPLATES)}"
         )
 
-    def test_fallback_templates_have_required_fields(self):
-        """Each template must have setup, punchline, and visual_prompt."""
-        required_fields = {"setup", "punchline", "visual_prompt"}
-
+    def test_fallback_templates_are_script_objects(self):
+        """Each template must be a Script object with required attributes."""
         for i, template in enumerate(FALLBACK_TEMPLATES):
-            missing = required_fields - set(template.keys())
-            assert not missing, (
-                f"Template {i} missing required fields: {missing}"
+            assert isinstance(template, Script), (
+                f"Template {i} must be a Script object, got {type(template).__name__}"
             )
+            # Check that Script has expected attributes
+            assert hasattr(template, "setup"), f"Template {i} missing 'setup'"
+            assert hasattr(template, "punchline"), f"Template {i} missing 'punchline'"
+            assert hasattr(template, "storyboard"), f"Template {i} missing 'storyboard'"
+            # visual_prompt is a property derived from storyboard
+            assert hasattr(template, "visual_prompt"), f"Template {i} missing 'visual_prompt'"
 
     def test_fallback_templates_have_non_empty_strings(self):
         """All template fields must be non-empty strings."""
         for i, template in enumerate(FALLBACK_TEMPLATES):
-            for field in ["setup", "punchline", "visual_prompt"]:
-                value = template[field]
-                assert isinstance(value, str), (
-                    f"Template {i} field '{field}' must be a string"
+            # Check setup and punchline
+            assert isinstance(template.setup, str), (
+                f"Template {i} field 'setup' must be a string"
+            )
+            assert template.setup.strip(), (
+                f"Template {i} field 'setup' cannot be empty"
+            )
+            assert isinstance(template.punchline, str), (
+                f"Template {i} field 'punchline' must be a string"
+            )
+            assert template.punchline.strip(), (
+                f"Template {i} field 'punchline' cannot be empty"
+            )
+            # visual_prompt is derived from storyboard[0]
+            assert isinstance(template.visual_prompt, str), (
+                f"Template {i} field 'visual_prompt' must be a string"
+            )
+            assert template.visual_prompt.strip(), (
+                f"Template {i} field 'visual_prompt' cannot be empty"
+            )
+
+    def test_fallback_templates_have_3_scene_storyboards(self):
+        """Each template must have exactly 3 scenes in storyboard."""
+        for i, template in enumerate(FALLBACK_TEMPLATES):
+            assert isinstance(template.storyboard, list), (
+                f"Template {i} storyboard must be a list"
+            )
+            assert len(template.storyboard) == 3, (
+                f"Template {i} must have exactly 3 scenes, got {len(template.storyboard)}"
+            )
+            for j, scene in enumerate(template.storyboard):
+                assert isinstance(scene, str), (
+                    f"Template {i} scene {j+1} must be a string"
                 )
-                assert value.strip(), (
-                    f"Template {i} field '{field}' cannot be empty"
+                assert scene.strip(), (
+                    f"Template {i} scene {j+1} cannot be empty"
                 )
 
 
@@ -149,7 +181,7 @@ class TestShowrunnerGetFallbackScript:
         script = showrunner.get_fallback_script("test theme")
 
         # Check that the script matches one of the templates
-        template_setups = {t["setup"] for t in FALLBACK_TEMPLATES}
+        template_setups = {t.setup for t in FALLBACK_TEMPLATES}
         assert script.setup in template_setups, (
             "Script setup should match a template"
         )
@@ -317,7 +349,7 @@ class TestShowrunnerGenerateScript:
         mock_response.status_code = 200
         json_response = (
             '{"setup": "Test setup", "punchline": "Test punch", '
-            '"visual_prompt": "Test visual"}'
+            '"storyboard": ["Scene 1: Visual 1", "Scene 2: Visual 2", "Scene 3: Visual 3"]}'
         )
         mock_response.json.return_value = {"response": json_response}
         mock_client.post = AsyncMock(return_value=mock_response)
@@ -328,7 +360,13 @@ class TestShowrunnerGenerateScript:
         assert isinstance(script, Script)
         assert script.setup == "Test setup"
         assert script.punchline == "Test punch"
-        assert script.visual_prompt == "Test visual"
+        assert script.storyboard == [
+            "Scene 1: Visual 1",
+            "Scene 2: Visual 2",
+            "Scene 3: Visual 3",
+        ]
+        # visual_prompt returns first scene for backward compatibility
+        assert script.visual_prompt == "Scene 1: Visual 1"
 
     @pytest.mark.asyncio
     @patch("vortex.models.showrunner.httpx.AsyncClient")
@@ -341,7 +379,8 @@ class TestShowrunnerGenerateScript:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "response": '{"setup": "S", "punchline": "P", "visual_prompt": "V"}'
+            "response": '{"setup": "S", "punchline": "P", '
+                        '"storyboard": ["S1", "S2", "S3"]}'
         }
         mock_client.post = AsyncMock(return_value=mock_response)
 
@@ -367,7 +406,7 @@ class TestShowrunnerGenerateScript:
 {
   "setup": "Markdown setup",
   "punchline": "Markdown punch",
-  "visual_prompt": "Markdown visual"
+  "storyboard": ["Scene 1: MD visual", "Scene 2: MD visual", "Scene 3: MD visual"]
 }
 ```
 Hope you like it!"""
@@ -382,7 +421,50 @@ Hope you like it!"""
 
         assert script.setup == "Markdown setup"
         assert script.punchline == "Markdown punch"
-        assert script.visual_prompt == "Markdown visual"
+        assert script.storyboard == [
+            "Scene 1: MD visual",
+            "Scene 2: MD visual",
+            "Scene 3: MD visual",
+        ]
+        # visual_prompt returns first scene for backward compatibility
+        assert script.visual_prompt == "Scene 1: MD visual"
+
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_handles_legacy_visual_prompt_format(self, mock_client_class):
+        """Should handle legacy visual_prompt format by converting to 3-scene storyboard.
+
+        This test ensures backward compatibility with older Ollama models that may
+        return the legacy format with single visual_prompt instead of storyboard.
+        """
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        # Legacy format with visual_prompt instead of storyboard
+        legacy_json_response = (
+            '{"setup": "Legacy setup", "punchline": "Legacy punch", '
+            '"visual_prompt": "Legacy visual description"}'
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"response": legacy_json_response}
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        script = await sr.generate_script("test")
+
+        # Should convert legacy visual_prompt to 3-scene storyboard
+        assert script.setup == "Legacy setup"
+        assert script.punchline == "Legacy punch"
+        # Legacy visual_prompt gets duplicated to all 3 scenes
+        assert script.storyboard == [
+            "Legacy visual description",
+            "Legacy visual description",
+            "Legacy visual description",
+        ]
+        assert script.visual_prompt == "Legacy visual description"
 
     @pytest.mark.asyncio
     @patch("vortex.models.showrunner.httpx.AsyncClient")
@@ -573,31 +655,44 @@ End of script."""
 
     def test_parse_script_response_validates_string_types(self, showrunner):
         """Should raise ShowrunnerError when fields are not strings."""
-        json_str = '{"setup": 123, "punchline": "P", "visual_prompt": "V"}'
+        json_str = '{"setup": 123, "punchline": "P", "storyboard": ["S1", "S2", "S3"]}'
         with pytest.raises(ShowrunnerError) as exc_info:
             showrunner._parse_script_response(json_str)
         assert "string" in str(exc_info.value).lower()
 
     def test_parse_script_response_validates_non_empty_fields(self, showrunner):
         """Should raise ShowrunnerError when fields are empty strings."""
-        json_str = '{"setup": "", "punchline": "P", "visual_prompt": "V"}'
+        json_str = '{"setup": "", "punchline": "P", "storyboard": ["S1", "S2", "S3"]}'
         with pytest.raises(ShowrunnerError) as exc_info:
             showrunner._parse_script_response(json_str)
         assert "empty" in str(exc_info.value).lower()
 
     def test_parse_script_response_validates_whitespace_only_fields(self, showrunner):
         """Should raise ShowrunnerError when fields are whitespace-only."""
-        json_str = '{"setup": "   ", "punchline": "P", "visual_prompt": "V"}'
+        json_str = '{"setup": "   ", "punchline": "P", "storyboard": ["S1", "S2", "S3"]}'
         with pytest.raises(ShowrunnerError) as exc_info:
             showrunner._parse_script_response(json_str)
         assert "empty" in str(exc_info.value).lower()
 
     def test_parse_script_response_strips_whitespace(self, showrunner):
         """Should strip leading/trailing whitespace from fields."""
-        json_str = '{"setup": "  Setup  ", "punchline": "  Punch  ", "visual_prompt": "  Visual  "}'
+        json_str = (
+            '{"setup": "  Setup  ", "punchline": "  Punch  ", '
+            '"storyboard": ["  S1  ", "  S2  ", "  S3  "]}'
+        )
         script = showrunner._parse_script_response(json_str)
         assert script.setup == "Setup"
         assert script.punchline == "Punch"
+        assert script.storyboard == ["S1", "S2", "S3"]
+
+    def test_parse_script_response_handles_legacy_visual_prompt(self, showrunner):
+        """Should convert legacy visual_prompt to 3-scene storyboard."""
+        json_str = '{"setup": "Setup", "punchline": "Punch", "visual_prompt": "Visual"}'
+        script = showrunner._parse_script_response(json_str)
+        assert script.setup == "Setup"
+        assert script.punchline == "Punch"
+        # Legacy visual_prompt gets duplicated to all 3 scenes
+        assert script.storyboard == ["Visual", "Visual", "Visual"]
         assert script.visual_prompt == "Visual"
 
 

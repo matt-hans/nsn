@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""End-to-end test for Narrative Chain pipeline.
+"""End-to-end test for Montage pipeline.
 
 Verifies the full pipeline produces animated video with audio matching target duration.
+The montage architecture generates 3 independent 5-second clips (15s total at 8fps).
 
-Pipeline: Showrunner -> Kokoro TTS -> Flux keyframe -> CogVideoX video -> CLIP
+Pipeline: Showrunner (3-scene storyboard) -> Kokoro TTS -> Flux keyframe -> CogVideoX video -> CLIP
 
 Usage:
-    python scripts/e2e_narrative_test.py --theme "bizarre infomercial" --duration 12
+    python scripts/e2e_narrative_test.py --theme "bizarre infomercial" --duration 15
     python scripts/e2e_narrative_test.py --seed 42 --output-dir /tmp/test_output
     python scripts/e2e_narrative_test.py --help
 
 Manual Checklist After Running:
 - [ ] Video shows actual motion (frames differ significantly)
 - [ ] Audio has audible speech
-- [ ] Duration matches target (+/- 2s)
+- [ ] Duration matches target (+/- 3s)
 - [ ] Style matches "Interdimensional Cable" aesthetic
 - [ ] No warping/distortion artifacts
+- [ ] Script has valid 3-scene storyboard
 """
 
 from __future__ import annotations
@@ -397,6 +399,56 @@ def verify_duration(video_path: str, target_duration: float, tolerance: float = 
         )
 
 
+def verify_storyboard(result) -> TestResult:
+    """Verify script has valid 3-scene storyboard.
+
+    Args:
+        result: Generation result from orchestrator
+
+    Returns:
+        TestResult with pass/fail status
+    """
+    if not hasattr(result, "script") or result.script is None:
+        return TestResult(
+            name="Script Storyboard",
+            passed=False,
+            message="No script in result",
+        )
+
+    storyboard = getattr(result.script, "storyboard", None)
+    if storyboard is None:
+        return TestResult(
+            name="Script Storyboard",
+            passed=False,
+            message="Script missing storyboard attribute",
+        )
+
+    if len(storyboard) != 3:
+        return TestResult(
+            name="Script Storyboard",
+            passed=False,
+            message=f"Expected 3 scenes, got {len(storyboard)}",
+            details={"scene_count": len(storyboard)},
+        )
+
+    # Check each scene is non-empty
+    for i, scene in enumerate(storyboard):
+        if not scene or len(scene.strip()) < 10:
+            return TestResult(
+                name="Script Storyboard",
+                passed=False,
+                message=f"Scene {i+1} is too short or empty",
+                details={"scene": scene, "scene_index": i},
+            )
+
+    return TestResult(
+        name="Script Storyboard",
+        passed=True,
+        message=f"Storyboard OK: {len(storyboard)} scenes",
+        details={"scenes": storyboard},
+    )
+
+
 def verify_frame_count(video_path: str, min_frames: int = 10) -> TestResult:
     """Verify video has minimum number of frames.
 
@@ -515,7 +567,7 @@ async def run_e2e_test(
         0 for success, 1 for failure
     """
     print("=" * 70)
-    print("NARRATIVE CHAIN E2E TEST")
+    print("MONTAGE PIPELINE E2E TEST")
     print("=" * 70)
     print(f"  Theme:           {theme}")
     print(f"  Target Duration: {duration}s")
@@ -624,14 +676,20 @@ async def run_e2e_test(
     tests.append(verify_audio_waveform(result.audio_path))
     print(f"       {tests[-1]}")
 
-    # Duration matches target
-    tests.append(verify_duration(result.video_path, duration, tolerance=2.0))
+    # Duration matches target (montage has 3 independent clips, so wider tolerance)
+    tests.append(verify_duration(result.video_path, duration, tolerance=3.0))
     print(f"       {tests[-1]}")
 
     # Frame count adequate
-    min_frames = max(10, int(duration * 6))  # At least 6fps worth
+    # Montage: 3 scenes x 40 frames each = 120 frames @ 8fps = 15s
+    min_frames = max(10, int(duration * 8))  # 8fps for montage
     tests.append(verify_frame_count(result.video_path, min_frames=min_frames))
     print(f"       {tests[-1]}")
+
+    # Storyboard verification (if script available in result)
+    if hasattr(result, "script"):
+        tests.append(verify_storyboard(result))
+        print(f"       {tests[-1]}")
 
     # Step 5: Cleanup
     print("\n[5/6] Shutting down orchestrator...")
@@ -670,6 +728,7 @@ async def run_e2e_test(
         print("  [ ] Audio has audible speech (play the .wav file)")
         print("  [ ] Style matches 'Interdimensional Cable' aesthetic")
         print("  [ ] No warping/distortion artifacts")
+        print("  [ ] Script has valid 3-scene storyboard")
     else:
         print("E2E TEST FAILED")
         print(f"  {len(passed_tests)}/{len(tests)} tests passed")
@@ -715,11 +774,11 @@ async def run_e2e_test(
 def main() -> int:
     """Parse arguments and run E2E test."""
     parser = argparse.ArgumentParser(
-        description="End-to-end test for Narrative Chain pipeline",
+        description="End-to-end test for Montage pipeline (3 scenes x 5s = 15s)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Basic test with default settings
+    # Basic test with default settings (15s montage)
     python scripts/e2e_narrative_test.py
 
     # Custom theme and duration
@@ -741,8 +800,8 @@ Examples:
     parser.add_argument(
         "--duration",
         type=float,
-        default=12.0,
-        help="Target video duration in seconds (default: 12.0)",
+        default=15.0,
+        help="Target video duration in seconds (default: 15.0 for 3-scene montage)",
     )
     parser.add_argument(
         "--seed",

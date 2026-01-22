@@ -26,7 +26,8 @@ class TestVideoGenerationConfig:
         """Test default configuration values."""
         config = VideoGenerationConfig()
         assert config.num_frames == 49
-        assert config.guidance_scale == 6.0
+        assert config.guidance_scale == 5.0  # Reduced from 6.0 to minimize artifacts
+        assert config.use_dynamic_cfg is True  # Dynamic CFG for better motion
         assert config.num_inference_steps == 50
         assert config.fps == 8
         assert config.height == 480
@@ -313,6 +314,271 @@ class TestGenerateChainLogic:
             # generate_chunk should be called with seed=None
             call_args = mock_gen.call_args
             assert call_args.kwargs.get("seed") is None
+
+
+class TestGenerateMontageSignature:
+    """Tests for the generate_montage method signature."""
+
+    def test_generate_montage_exists(self) -> None:
+        """Test that generate_montage method exists."""
+        assert hasattr(CogVideoXModel, "generate_montage")
+
+    def test_generate_montage_is_async(self) -> None:
+        """Test that generate_montage is an async method."""
+        assert inspect.iscoroutinefunction(CogVideoXModel.generate_montage)
+
+    def test_generate_montage_parameters(self) -> None:
+        """Test generate_montage has correct parameters."""
+        sig = inspect.signature(CogVideoXModel.generate_montage)
+        params = list(sig.parameters.keys())
+        expected_params = [
+            "self",
+            "keyframes",
+            "prompts",
+            "config",
+            "seed",
+            "trim_frames",
+            "progress_callback",
+        ]
+        assert params == expected_params
+
+    def test_generate_montage_parameter_defaults(self) -> None:
+        """Test generate_montage parameter defaults."""
+        sig = inspect.signature(CogVideoXModel.generate_montage)
+
+        # Required params have no default
+        assert sig.parameters["keyframes"].default is inspect.Parameter.empty
+        assert sig.parameters["prompts"].default is inspect.Parameter.empty
+
+        # Optional params have defaults
+        assert sig.parameters["config"].default is None
+        assert sig.parameters["seed"].default is None
+        assert sig.parameters["trim_frames"].default == 40
+        assert sig.parameters["progress_callback"].default is None
+
+    def test_generate_montage_annotations(self) -> None:
+        """Test generate_montage has correct type annotations."""
+        ann = CogVideoXModel.generate_montage.__annotations__
+
+        assert "list" in str(ann.get("keyframes"))
+        assert "list" in str(ann.get("prompts"))
+        assert "VideoGenerationConfig" in str(ann.get("config"))
+        assert "int" in str(ann.get("seed"))
+        assert "int" in str(ann.get("trim_frames"))
+        assert "Callable" in str(ann.get("progress_callback"))
+        assert "torch.Tensor" in str(ann.get("return"))
+
+
+class TestGenerateMontageLogic:
+    """Tests for the generate_montage method logic (with mocking)."""
+
+    @pytest.fixture
+    def mock_model(self) -> CogVideoXModel:
+        """Create a CogVideoXModel instance for testing."""
+        return CogVideoXModel()
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_single_scene(self, mock_model: CogVideoXModel) -> None:
+        """Test generate_montage with a single scene."""
+        # Create mock chunk output (49 frames)
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720)]
+            prompts = ["Scene 1 description"]
+            result = await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                seed=42,
+            )
+
+            # Should have called generate_chunk once
+            assert mock_gen.call_count == 1
+
+            # Result should be trimmed to 40 frames (default trim_frames)
+            assert result.shape[0] == 40
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_multiple_scenes(self, mock_model: CogVideoXModel) -> None:
+        """Test generate_montage with multiple scenes."""
+        # Create mock chunk outputs
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
+            prompts = ["Scene 1", "Scene 2", "Scene 3"]
+            result = await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                seed=42,
+            )
+
+            # Should have called generate_chunk three times
+            assert mock_gen.call_count == 3
+
+            # Result should be 3 * 40 = 120 frames
+            assert result.shape[0] == 120
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_derived_seeds(self, mock_model: CogVideoXModel) -> None:
+        """Test that each scene gets a derived seed."""
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
+            prompts = ["Scene 1", "Scene 2", "Scene 3"]
+            await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                seed=100,
+            )
+
+            # Check seeds: 100, 101, 102
+            for i, call in enumerate(mock_gen.call_args_list):
+                assert call.kwargs.get("seed") == 100 + i
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_no_seed(self, mock_model: CogVideoXModel) -> None:
+        """Test generate_montage without seed (non-deterministic)."""
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720)]
+            prompts = ["Scene 1"]
+            await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                seed=None,
+            )
+
+            # Should have called with seed=None
+            call_args = mock_gen.call_args
+            assert call_args.kwargs.get("seed") is None
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_custom_trim_frames(self, mock_model: CogVideoXModel) -> None:
+        """Test generate_montage with custom trim_frames."""
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720), torch.rand(3, 480, 720)]
+            prompts = ["Scene 1", "Scene 2"]
+            result = await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                trim_frames=30,  # Custom trim
+            )
+
+            # Result should be 2 * 30 = 60 frames
+            assert result.shape[0] == 60
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_no_trim(self, mock_model: CogVideoXModel) -> None:
+        """Test generate_montage without trimming (trim_frames=0)."""
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720)]
+            prompts = ["Scene 1"]
+            result = await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                trim_frames=0,  # No trimming
+            )
+
+            # Result should keep all 49 frames
+            assert result.shape[0] == 49
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_mismatched_lengths(
+        self, mock_model: CogVideoXModel
+    ) -> None:
+        """Test that mismatched keyframes and prompts raises ValueError."""
+        keyframes = [torch.rand(3, 480, 720), torch.rand(3, 480, 720)]
+        prompts = ["Only one prompt"]
+
+        with pytest.raises(ValueError, match="keyframes .* and prompts .* must match"):
+            await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+            )
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_empty_keyframes(
+        self, mock_model: CogVideoXModel
+    ) -> None:
+        """Test that empty keyframes list raises ValueError."""
+        with pytest.raises(ValueError, match="keyframes list cannot be empty"):
+            await mock_model.generate_montage(
+                keyframes=[],
+                prompts=[],
+            )
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_independent_keyframes(
+        self, mock_model: CogVideoXModel
+    ) -> None:
+        """Test that each scene uses its own keyframe (not autoregressive)."""
+        mock_frames = torch.rand(49, 3, 480, 720)
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            # Create distinct keyframes
+            keyframe1 = torch.rand(3, 480, 720)
+            keyframe2 = torch.rand(3, 480, 720)
+            keyframe3 = torch.rand(3, 480, 720)
+
+            await mock_model.generate_montage(
+                keyframes=[keyframe1, keyframe2, keyframe3],
+                prompts=["Scene 1", "Scene 2", "Scene 3"],
+            )
+
+            # Verify each call uses the correct independent keyframe
+            assert torch.equal(mock_gen.call_args_list[0].kwargs["image"], keyframe1)
+            assert torch.equal(mock_gen.call_args_list[1].kwargs["image"], keyframe2)
+            assert torch.equal(mock_gen.call_args_list[2].kwargs["image"], keyframe3)
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_progress_callback(
+        self, mock_model: CogVideoXModel
+    ) -> None:
+        """Test that progress callback is called correctly for montage."""
+        mock_frames = torch.rand(49, 3, 480, 720)
+        callback_calls: list[tuple[int, int]] = []
+
+        def progress_callback(scene_num: int, total_scenes: int) -> None:
+            callback_calls.append((scene_num, total_scenes))
+
+        with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
+            mock_gen.return_value = mock_frames
+
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
+            prompts = ["Scene 1", "Scene 2", "Scene 3"]
+            await mock_model.generate_montage(
+                keyframes=keyframes,
+                prompts=prompts,
+                progress_callback=progress_callback,
+            )
+
+            # Should have called callback before each scene and after completion
+            assert (0, 3) in callback_calls  # Before scene 0
+            assert (1, 3) in callback_calls  # Before scene 1
+            assert (2, 3) in callback_calls  # Before scene 2
+            assert (3, 3) in callback_calls  # Completion
+            assert len(callback_calls) == 4
 
 
 class TestLoadCogVideoX:
