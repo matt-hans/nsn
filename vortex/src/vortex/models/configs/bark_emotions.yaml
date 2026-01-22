@@ -1,0 +1,65 @@
+# Bark TTS Emotion Configuration
+#
+# Bark doesn't have explicit emotion controls like Kokoro's speed parameter.
+# Instead, we control emotion through:
+#   1. Temperature settings (coarse_temp, fine_temp)
+#   2. Optional text prefixes (experimental, may or may not influence output)
+#
+# Temperature Guide:
+#   - coarse_temp: Controls prosody/rhythm variation (0.0-1.0)
+#     Lower = more monotone, Higher = more varied intonation
+#   - fine_temp: Controls acoustic detail variation (0.0-1.0)
+#     Lower = cleaner audio, Higher = more artifacts/texture
+#
+# For "Interdimensional Cable" aesthetic:
+#   - Higher coarse_temp = more chaotic prosody (good)
+#   - Moderate fine_temp = some texture without too much hiss
+
+neutral:
+  text_prefix: ""
+  coarse_temp: 0.7
+  fine_temp: 0.5
+  description: "Standard delivery, balanced chaos"
+
+excited:
+  text_prefix: ""
+  coarse_temp: 0.85
+  fine_temp: 0.55
+  description: "Enthusiastic, upbeat, more prosodic variation"
+
+sad:
+  text_prefix: ""
+  coarse_temp: 0.5
+  fine_temp: 0.4
+  description: "Subdued, slower, less variation"
+
+angry:
+  text_prefix: ""
+  coarse_temp: 0.85
+  fine_temp: 0.6
+  description: "Intense, forceful, high variation"
+
+manic:
+  text_prefix: ""
+  coarse_temp: 0.95
+  fine_temp: 0.7
+  description: "Frenzied, erratic, maximum chaos (Rick's signature)"
+
+calm:
+  text_prefix: ""
+  coarse_temp: 0.5
+  fine_temp: 0.4
+  description: "Soothing, peaceful, minimal variation"
+
+fearful:
+  text_prefix: ""
+  coarse_temp: 0.9
+  fine_temp: 0.6
+  description: "Anxious, nervous, high pitch variation"
+
+# Default fallback (same as neutral)
+default:
+  text_prefix: ""
+  coarse_temp: 0.7
+  fine_temp: 0.5
+  description: "Fallback emotion settings"
