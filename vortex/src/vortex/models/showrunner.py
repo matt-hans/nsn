@@ -37,6 +37,19 @@ logger = logging.getLogger(__name__)
 # Valid tone options for script generation
 ToneType = Literal["absurd", "deadpan", "manic"]
 
+# Bark TTS paralinguistic token instructions for script generation
+BARK_TOKEN_INSTRUCTIONS = """
+For dialogue, you may use these audio tokens to add expressiveness:
+- [laughter] or [laughs] - character laughs
+- [sighs] - character sighs
+- [gasps] - character gasps in surprise
+- [clears throat] - character clears throat
+- ... (ellipsis) - hesitation or trailing off
+- CAPITALIZED WORDS - shouting or emphasis
+
+Example: "[gasps] Oh my GOD... [laughs] That's the most ridiculous thing I've ever seen!"
+"""
+
 
 class ShowrunnerError(Exception):
     """Base exception for Showrunner errors.
@@ -73,8 +86,8 @@ class Script:
 FALLBACK_TEMPLATES: list[Script] = [
     # Fake commercials - products that shouldn't exist
     Script(
-        setup="Are you tired of your regular teeth?",
-        punchline="Try Teeth-B-Gone! Now your mouth is just a smooth hole!",
+        setup="[clears throat] Are you tired of your... regular teeth?",
+        punchline="Try Teeth-B-Gone! [laughs] Now your mouth is just a SMOOTH hole!",
         storyboard=[
             (
                 "Scene 1: A frustrated cartoon man pointing at his normal teeth "
@@ -109,8 +122,8 @@ FALLBACK_TEMPLATES: list[Script] = [
         ],
     ),
     Script(
-        setup="Do your hands keep falling off?",
-        punchline="Stick-It-Back Hand Glue - because duct tape is for quitters!",
+        setup="[sighs] Do your hands keep falling off?",
+        punchline="Stick-It-Back Hand Glue - because duct tape is for QUITTERS!",
         storyboard=[
             (
                 "Scene 1: A cartoon person looking sadly at their detached hand "
@@ -127,8 +140,8 @@ FALLBACK_TEMPLATES: list[Script] = [
         ],
     ),
     Script(
-        setup="Tired of sleeping horizontally like some kind of floor person?",
-        punchline="The Vertical Sleep Pod - stand up and pass out like nature intended!",
+        setup="[gasps] Tired of sleeping horizontally like some kind of FLOOR person?",
+        punchline="The Vertical Sleep Pod - stand up and pass out like NATURE intended!",
         storyboard=[
             (
                 "Scene 1: A person lying in bed looking disgusted at themselves, "
@@ -147,12 +160,12 @@ FALLBACK_TEMPLATES: list[Script] = [
     # Talk shows with weird hosts
     Script(
         setup=(
-            "Welcome back to Cooking with Regret, "
+            "[sighs] Welcome back to Cooking with Regret... "
             "I'm your host, a sentient cloud of disappointment."
         ),
         punchline=(
             "Today we're making my father's approval - "
-            "just kidding, that's impossible!"
+            "[laughs] just kidding, that's IMPOSSIBLE!"
         ),
         storyboard=[
             (
@@ -196,11 +209,11 @@ FALLBACK_TEMPLATES: list[Script] = [
     # News broadcasts with absurd topics
     Script(
         setup=(
-            "Breaking news: local man discovers "
-            "his reflection has been living a better life."
+            "[clears throat] Breaking news: local man discovers "
+            "his reflection has been living a BETTER life."
         ),
         punchline=(
-            "The reflection reportedly has a nicer apartment "
+            "[gasps] The reflection reportedly has a nicer apartment "
             "and remembers birthdays!"
         ),
         storyboard=[
@@ -323,8 +336,8 @@ FALLBACK_TEMPLATES: list[Script] = [
         ],
     ),
     Script(
-        setup="Can't stop thinking about that embarrassing thing from eight years ago?",
-        punchline="Memory Hole - just pour it in your ear and forget responsibly!",
+        setup="[sighs] Can't stop thinking about that embarrassing thing from eight years ago?",
+        punchline="Memory Hole - just pour it in your ear and forget RESPONSIBLY! [laughs]",
         storyboard=[
             (
                 "Scene 1: Person lying awake at 3am with thought bubble showing cringe moment, "
@@ -383,7 +396,7 @@ FALLBACK_TEMPLATES: list[Script] = [
 
 
 # Prompt template for generating Interdimensional Cable scripts with 3-scene storyboard
-SCRIPT_PROMPT_TEMPLATE = """You are a writer for "Interdimensional Cable" - absurdist TV commercials.
+SCRIPT_PROMPT_TEMPLATE = """You are a writer for "Interdimensional Cable" - absurdist commercials.
 Write a SHORT surreal commercial about: {theme}
 Tone: {tone}
 
@@ -391,7 +404,7 @@ The commercial has 3 QUICK CUTS (5 seconds each):
 - Scene 1: Setup - Introduce the absurd product/situation
 - Scene 2: Escalation - Things get weirder
 - Scene 3: Punchline - Maximum chaos/absurdity
-
+{bark_tokens}
 Format your response ONLY as JSON (no markdown, no explanation):
 {{
   "setup": "One sentence premise",
@@ -406,7 +419,8 @@ Format your response ONLY as JSON (no markdown, no explanation):
 Rules:
 - Keep each scene description under 50 words
 - Focus on VISUALS, not dialogue
-- Include style words like "cartoon", "surreal", "neon colors"\
+- Include style words like "cartoon", "surreal", "neon colors"
+- Use Bark audio tokens in setup/punchline for expressive speech\
 """
 
 
@@ -533,8 +547,10 @@ class Showrunner:
         if not theme or not theme.strip():
             raise ShowrunnerError("Theme cannot be empty")
 
-        # Build the prompt
-        prompt = SCRIPT_PROMPT_TEMPLATE.format(theme=theme, tone=tone)
+        # Build the prompt with Bark TTS token instructions
+        prompt = SCRIPT_PROMPT_TEMPLATE.format(
+            theme=theme, tone=tone, bark_tokens=BARK_TOKEN_INSTRUCTIONS
+        )
 
         logger.debug(
             "Generating script",
