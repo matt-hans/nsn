@@ -1,0 +1,65 @@
+# Voice Profiles for Bark TTS
+#
+# This configuration maps character voice IDs to Bark speaker presets
+# and optional reference audio for zero-shot cloning.
+#
+# Types:
+#   - preset: Uses built-in Bark speaker (no reference audio needed)
+#   - cloned: Uses reference audio to clone voice (requires .wav file)
+#
+# Bark speaker presets (v2/en_speaker_N where N=0-9):
+#   0: Neutral male narrator
+#   1: Calm female
+#   2: Energetic male
+#   3: Soft female
+#   4: Deep male
+#   5: Young female
+#   6: Gruff/raspy male (good for "Rick" style)
+#   7: Warm female
+#   8: Fast-talking male
+#   9: Higher-pitched male (good for "Morty" style)
+
+# Main character voices (mapped from Kokoro equivalents)
+rick_c137:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_6"
+  description: "Manic scientist - gruff, raspy, energetic"
+
+morty:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_9"
+  description: "Anxious teen - higher pitch, nervous"
+
+summer:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_5"
+  description: "Confident female teenager"
+
+# Additional character voices
+jerry:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_0"
+  description: "Hesitant, average male voice"
+
+beth:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_7"
+  description: "Mature, professional female"
+
+mr_meeseeks:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_2"
+  description: "High energy, helpful voice"
+
+# Default fallback
+default:
+  type: "preset"
+  bark_speaker: "v2/en_speaker_0"
+  description: "Generic neutral narrator"
+
+# Example cloned voice (template for user-created voices)
+# custom_alien:
+#   type: "cloned"
+#   reference_audio: "assets/voices/alien_sample.wav"
+#   history_prompt: "assets/voices/alien_sample.npz"
+#   description: "User-created alien voice"
