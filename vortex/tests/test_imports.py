@@ -18,12 +18,13 @@ except Exception as e:
 
 try:
     from vortex.models import (
+        BarkVoiceEngine,
         CogVideoXModel,
-        KokoroWrapper,
         Showrunner,
+        load_bark,
     )
     print("✓ vortex.models imports successfully")
-    print(f"  Available models: CogVideoXModel, KokoroWrapper, Showrunner")
+    print(f"  Available models: BarkVoiceEngine, CogVideoXModel, Showrunner")
 except Exception as e:
     print(f"✗ vortex.models import failed: {e}")
     sys.exit(1)
