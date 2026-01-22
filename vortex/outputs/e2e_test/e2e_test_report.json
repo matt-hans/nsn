@@ -1,0 +1,78 @@
+{
+  "success": true,
+  "theme": "bizarre infomercial",
+  "target_duration": 12.0,
+  "seed": 42,
+  "generation_time_ms": 1219246.491909027,
+  "video_path": "outputs/e2e_test/render_slot9999_seed42_20260122_015407.mp4",
+  "audio_path": "outputs/e2e_test/render_slot9999_seed42_20260122_015407.wav",
+  "tests": [
+    {
+      "name": "Video File Exists",
+      "passed": true,
+      "message": "Video file exists (1.32 MB)",
+      "details": {
+        "size_bytes": 1383526,
+        "size_mb": 1.3194332122802734
+      }
+    },
+    {
+      "name": "Audio File Exists",
+      "passed": true,
+      "message": "Audio file exists (573.1 KB)",
+      "details": {
+        "size_bytes": 586844,
+        "size_kb": 573.08984375
+      }
+    },
+    {
+      "name": "Video Animation",
+      "passed": true,
+      "message": "Motion detected: avg=0.0469, max=0.0890",
+      "details": {
+        "avg_motion": 0.04690643439088598,
+        "max_motion": 0.08895622276688453,
+        "min_motion": 0.023786136831275718,
+        "frame_diffs": [
+          0.03874808611716291,
+          0.036135291848220764,
+          0.023786136831275718,
+          0.08895622276688453
+        ],
+        "threshold": 0.01
+      }
+    },
+    {
+      "name": "Audio Waveform",
+      "passed": true,
+      "message": "Audio OK: 12.2s, RMS=0.1054, peak=0.9000",
+      "details": {
+        "rms": 0.1054239925843787,
+        "peak": 0.89996337890625,
+        "duration_sec": 12.225,
+        "sample_rate": 24000,
+        "samples": 293400
+      }
+    },
+    {
+      "name": "Video Duration",
+      "passed": true,
+      "message": "Duration OK: 12.0s (target 12.0s +/-2.0s)",
+      "details": {
+        "actual_duration": 12.032,
+        "target_duration": 12.0,
+        "difference": 0.03200000000000003,
+        "tolerance": 2.0
+      }
+    },
+    {
+      "name": "Frame Count",
+      "passed": true,
+      "message": "Frame count OK: 96 frames",
+      "details": {
+        "frame_count": 96,
+        "min_frames": 72
+      }
+    }
+  ]
+}

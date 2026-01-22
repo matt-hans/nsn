@@ -27,6 +27,7 @@ Target Duration: 10-15 seconds at 8fps
 from __future__ import annotations
 
 import asyncio
+import gc
 import hashlib
 import json
 import logging
@@ -38,6 +39,7 @@ import torch
 import torch.nn as nn
 import yaml
 
+from vortex.models.clip_ensemble import ClipEnsemble, DualClipResult
 from vortex.models.cogvideox import CogVideoXModel, VideoGenerationConfig
 from vortex.models.kokoro import load_kokoro
 from vortex.models.showrunner import Script, Showrunner
@@ -48,25 +50,6 @@ from vortex.utils.memory import get_current_vram_usage, get_vram_stats, log_vram
 
 # Type alias for model names - used for type hints
 ModelName = str
-
-# Placeholder for CLIP ensemble result type until implemented
-class DualClipResult:
-    """Placeholder for CLIP ensemble verification result."""
-    def __init__(
-        self,
-        score_clip_b: float = 0.0,
-        score_clip_l: float = 0.0,
-        ensemble_score: float = 0.0,
-        self_check_passed: bool = True,
-        outlier_detected: bool = False,
-        embedding: torch.Tensor | None = None,
-    ):
-        self.score_clip_b = score_clip_b
-        self.score_clip_l = score_clip_l
-        self.ensemble_score = ensemble_score
-        self.self_check_passed = self_check_passed
-        self.outlier_detected = outlier_detected
-        self.embedding = embedding if embedding is not None else torch.randn(512)
 
 logger = logging.getLogger(__name__)
 
@@ -163,15 +146,17 @@ class _ModelRegistry:
             self._models["kokoro"] = kokoro
             log_vram_snapshot("after_kokoro_load")
 
-            # Flux placeholder - will be implemented in Phase 4.3
-            # For now, create a stub that logs warnings when used
-            logger.info("Initializing Flux placeholder (not yet implemented)")
-            self._models["flux"] = _FluxPlaceholder(device=self.device)
+            # Load Flux-Schnell keyframe generator
+            from vortex.models.flux import FluxModel
+            logger.info("Loading model: flux")
+            flux = FluxModel(device=self.device, cache_dir=self._cache_dir)
+            # Lazy load - will load when first used (via generate() method)
+            self._models["flux"] = flux
             log_vram_snapshot("after_flux_load")
 
             # CLIP ensemble placeholder - will be implemented in Phase 4.4
             logger.info("Initializing CLIP ensemble placeholder (not yet implemented)")
-            self._models["clip_ensemble"] = _ClipEnsemblePlaceholder(device=self.device)
+            self._models["clip_ensemble"] = ClipEnsemble(device=self.device)
             log_vram_snapshot("after_clip_ensemble_load")
 
             # Initialize CogVideoX (lazy-loaded, doesn't load weights yet)
@@ -302,53 +287,6 @@ class _FluxPlaceholder(nn.Module):
             return output
         else:
             return torch.rand(3, 512, 512, device=self.device)
-
-
-class _ClipEnsemblePlaceholder(nn.Module):
-    """Placeholder for dual CLIP ensemble verifier.
-
-    This placeholder will be replaced with the actual CLIP implementation
-    in Phase 4.4. For now, it returns mock verification results.
-    """
-
-    def __init__(self, device: str = "cuda"):
-        super().__init__()
-        self.device = device
-        logger.warning(
-            "Using CLIP ensemble placeholder - actual model not implemented yet"
-        )
-
-    def verify(
-        self,
-        video_frames: torch.Tensor,
-        prompt: str,
-        threshold: float = 0.70,
-        seed: int | None = None,
-    ) -> DualClipResult:
-        """Return mock CLIP verification result.
-
-        Args:
-            video_frames: Video tensor [T, C, H, W] (not analyzed)
-            prompt: Text prompt (logged but not used)
-            threshold: Score threshold (ignored)
-            seed: Random seed (ignored)
-
-        Returns:
-            Mock DualClipResult with passing scores
-        """
-        logger.warning(
-            f"CLIP placeholder verifying {video_frames.shape[0]} frames for: {prompt[:50]}..."
-        )
-
-        # Return mock passing result
-        return DualClipResult(
-            score_clip_b=0.75,
-            score_clip_l=0.78,
-            ensemble_score=0.76,
-            self_check_passed=True,
-            outlier_detected=False,
-            embedding=torch.randn(512, device=self.device),
-        )
 
 
 class _VRAMMonitor:
@@ -581,6 +519,9 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 },
             )
 
+            # Unload Ollama model to free VRAM for subsequent stages
+            await self._showrunner.unload_model()
+
             # Check deadline after script generation
             time_remaining = deadline - time.time()
             if time_remaining < 50.0:
@@ -609,10 +550,16 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 extra={"keyframe_shape": list(keyframe.shape)},
             )
 
-            # Offload Flux before CogVideoX (which needs ~10-11GB)
+            # Unload Flux before CogVideoX (which needs ~10-11GB)
+            # This is critical to avoid VRAM fragmentation
             if self._model_registry.offloading_enabled:
+                flux = self._model_registry.get_model("flux")
+                if hasattr(flux, "unload"):
+                    logger.info("Unloading Flux model before CogVideoX")
+                    flux.unload()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+                    gc.collect()
 
             # Check deadline before video generation
             time_remaining = deadline - time.time()

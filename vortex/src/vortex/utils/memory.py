@@ -168,7 +168,7 @@ class VRAMSnapshot:
         ...     vram_usage_gb=10.95,
         ...     vram_allocated_gb=10.85,
         ...     vram_reserved_gb=11.2,
-        ...     models={"flux": 6.0, "liveportrait": 3.5, "kokoro": 0.4}
+        ...     models={"flux": 6.0, "cogvideox": 10.5, "kokoro": 0.4}
         ... )
     """
 
@@ -335,7 +335,7 @@ class VRAMMonitor:
             >>> snapshot = monitor.log_snapshot(
             ...     "post_generation",
             ...     slot=12345,
-            ...     models={"flux": 6.0, "liveportrait": 3.5}
+            ...     models={"flux": 6.0, "cogvideox": 10.5}
             ... )
         """
         if not torch.cuda.is_available():

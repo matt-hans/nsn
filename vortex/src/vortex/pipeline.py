@@ -178,7 +178,7 @@ class VortexPipeline:
 
         # Get renderer name
         renderer_name = renderer_name or renderers_config.get(
-            "default", "default-flux-liveportrait"
+            "default", "default-narrative-chain"
         )
 
         # Get and initialize renderer
@@ -226,7 +226,7 @@ class VortexPipeline:
         """Generate a single slot (45-second video) from recipe.
 
         Delegates generation to the configured renderer. The renderer handles:
-        - Model orchestration (Flux, LivePortrait, Kokoro, CLIP)
+        - Model orchestration (Flux, CogVideoX, Kokoro, CLIP)
         - VRAM management
         - Deterministic seed propagation
         - Deadline tracking

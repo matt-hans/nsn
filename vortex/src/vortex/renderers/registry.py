@@ -153,7 +153,7 @@ class RendererRegistry:
 
     Example:
         >>> registry = RendererRegistry.from_directory(Path("renderers"), policy)
-        >>> renderer = registry.get("default-flux-liveportrait")
+        >>> renderer = registry.get("default-narrative-chain")
         >>> await renderer.initialize("cuda:0", config)
     """
 

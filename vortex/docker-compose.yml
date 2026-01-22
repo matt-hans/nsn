@@ -27,7 +27,6 @@ services:
     # Model volumes (external, not baked into image)
     volumes:
       - ./models/checkpoints:/app/ComfyUI/models/checkpoints:ro
-      - ./models/liveportrait:/app/ComfyUI/models/liveportrait:ro
       - ./models/animatediff_models:/app/ComfyUI/models/animatediff_models:ro
       - ./models/clip:/app/ComfyUI/models/clip:ro
       # Input/Output (shared with orchestrator)

@@ -14,7 +14,7 @@ GPU Memory Management:
     The orchestrator manages VRAM handoff between audio and visual models:
     - Audio models (F5-TTS/Kokoro) load for voice generation
     - Audio models unload before ComfyUI visual generation
-    - ComfyUI manages its own models (Flux, LivePortrait, etc.)
+    - ComfyUI manages its own models (Flux, CogVideoX, etc.)
 
     Models are loaded lazily on first /generate request and remain in VRAM
     for fast subsequent generations. To free GPU memory for other processes:

@@ -7,7 +7,7 @@ Orchestrates Vortex AI generation pipeline within strict 45-second glass-to-glas
 The SlotScheduler coordinates 4 AI generation phases to meet ICN's critical timing requirements:
 
 1. **Parallel Phase (0-12s)**: Audio (Kokoro) ∥ Image (Flux) generation
-2. **Video Phase (12-20s)**: LivePortrait warping (waits for audio completion)
+2. **Video Phase (12-20s)**: CogVideoX warping (waits for audio completion)
 3. **Verification Phase (20-21s)**: Dual CLIP ensemble semantic verification
 4. **BFT Phase (21-26s)**: Off-chain consensus (separate task)
 
@@ -48,7 +48,7 @@ The SlotScheduler coordinates 4 AI generation phases to meet ICN's critical timi
 ├───────────────────┤ Image (Flux-Schnell)                   │
 │                   └─► 12s target, 15s timeout              │
 │                                                             │
-                    ├────────┤ Video (LivePortrait)          │
+                    ├────────┤ Video (CogVideoX)          │
                     │        └─► 8s target, 10s timeout      │
                     │                                         │
                              ├─┤ CLIP Verification           │
@@ -120,7 +120,7 @@ orchestration:
   timeouts:
     audio_s: 3     # Kokoro TTS timeout
     image_s: 15    # Flux-Schnell timeout
-    video_s: 10    # LivePortrait timeout
+    video_s: 10    # CogVideoX timeout
     clip_s: 2      # Dual CLIP ensemble timeout
 
   # Retry policy per stage
@@ -202,7 +202,7 @@ Each stage has a maximum timeout to prevent infinite hangs:
 |-------|-------------|---------|-------|
 | Audio (Kokoro) | 2s | 3s | 1× |
 | Image (Flux) | 12s | 15s | None |
-| Video (LivePortrait) | 8s | 10s | None |
+| Video (CogVideoX) | 8s | 10s | None |
 | CLIP Verification | 1s | 2s | None |
 
 Timeouts use `asyncio.wait_for()`:
@@ -317,7 +317,7 @@ python vortex/benchmarks/parallel_vs_sequential.py
 
 - **T014**: Vortex Core Pipeline - Base VortexPipeline implementation
 - **T015**: Flux-Schnell Integration - Image generation
-- **T016**: LivePortrait Integration - Video warping
+- **T016**: CogVideoX Integration - Video warping
 - **T017**: Kokoro-82M TTS Integration - Audio generation
 - **T018**: Dual CLIP Ensemble - Semantic verification
 - **T019**: VRAM Manager - Memory monitoring (soft dependency)

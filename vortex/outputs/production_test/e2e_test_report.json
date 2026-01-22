@@ -1,0 +1,78 @@
+{
+  "success": false,
+  "theme": "bizarre infomercial",
+  "target_duration": 12.0,
+  "seed": 42,
+  "generation_time_ms": 1226187.1254444122,
+  "video_path": "outputs/production_test/render_slot9999_seed42_20260121_234923.mp4",
+  "audio_path": "outputs/production_test/render_slot9999_seed42_20260121_234923.wav",
+  "tests": [
+    {
+      "name": "Video File Exists",
+      "passed": true,
+      "message": "Video file exists (2.28 MB)",
+      "details": {
+        "size_bytes": 2390460,
+        "size_mb": 2.2797203063964844
+      }
+    },
+    {
+      "name": "Audio File Exists",
+      "passed": true,
+      "message": "Audio file exists (703.2 KB)",
+      "details": {
+        "size_bytes": 720044,
+        "size_kb": 703.16796875
+      }
+    },
+    {
+      "name": "Video Animation",
+      "passed": true,
+      "message": "Motion detected: avg=0.0861, max=0.1155",
+      "details": {
+        "avg_motion": 0.08609905478395062,
+        "max_motion": 0.11553200647542967,
+        "min_motion": 0.06570708893125152,
+        "frame_diffs": [
+          0.11553200647542967,
+          0.06570708893125152,
+          0.0810601246671508,
+          0.08209699906197047
+        ],
+        "threshold": 0.01
+      }
+    },
+    {
+      "name": "Audio Waveform",
+      "passed": false,
+      "message": "Audio appears silent: RMS=0.000000",
+      "details": {
+        "rms": 0.0,
+        "peak": 0.0,
+        "duration_sec": 15.0,
+        "sample_rate": 24000,
+        "samples": 360000
+      }
+    },
+    {
+      "name": "Video Duration",
+      "passed": true,
+      "message": "Duration OK: 12.0s (target 12.0s +/-2.0s)",
+      "details": {
+        "actual_duration": 12.032,
+        "target_duration": 12.0,
+        "difference": 0.03200000000000003,
+        "tolerance": 2.0
+      }
+    },
+    {
+      "name": "Frame Count",
+      "passed": true,
+      "message": "Frame count OK: 96 frames",
+      "details": {
+        "frame_count": 96,
+        "min_frames": 72
+      }
+    }
+  ]
+}

@@ -156,8 +156,7 @@ class CogVideoXModel:
         logger.info(f"Loading CogVideoX from {self.model_id}...")
 
         try:
-            from diffusers import CogVideoXImageToVideoPipeline
-            from diffusers.quantizers import PipelineQuantizationConfig
+            from diffusers import CogVideoXImageToVideoPipeline, PipelineQuantizationConfig, TorchAoConfig
         except ImportError as e:
             logger.error(
                 "Failed to import diffusers. Install with: pip install diffusers>=0.30.0",
@@ -171,10 +170,9 @@ class CogVideoXModel:
         try:
             # Configure INT8 quantization via torchao for the transformer
             # This reduces VRAM from ~26GB to ~10GB
+            # Uses new quant_mapping API (diffusers >= 0.32)
             pipeline_quant_config = PipelineQuantizationConfig(
-                quant_backend="torchao",
-                quant_kwargs={"quant_type": "int8wo"},
-                components_to_quantize=["transformer"],
+                quant_mapping={"transformer": TorchAoConfig("int8wo")}
             )
 
             # Load pipeline with quantization config
@@ -193,6 +191,13 @@ class CogVideoXModel:
                 # Move entire pipeline to device (requires more VRAM)
                 self._pipe = self._pipe.to(self.device)
                 logger.info(f"CogVideoX loaded on {self.device}")
+
+            # Enable VAE tiling to reduce VRAM during decode
+            # This processes video in spatial tiles instead of all at once
+            # Critical for avoiding OOM during VAE decode (44GB -> ~7GB)
+            if hasattr(self._pipe, "vae") and hasattr(self._pipe.vae, "enable_tiling"):
+                self._pipe.vae.enable_tiling()
+                logger.info("CogVideoX VAE tiling enabled")
 
             logger.info(
                 "CogVideoX model loaded successfully",

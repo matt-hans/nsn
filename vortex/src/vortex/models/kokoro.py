@@ -197,6 +197,13 @@ class KokoroWrapper(nn.Module):
                 import numpy as np
                 waveform = np.concatenate(audio_chunks, axis=0)
 
+            # CRITICAL FIX: Convert numpy to tensor on CPU first for precision
+            # Moving directly to CUDA can cause precision loss with small magnitude values
+            import numpy as np
+            if isinstance(waveform, np.ndarray):
+                # Keep on CPU for precision, convert to float32
+                waveform = torch.from_numpy(waveform.copy()).float()
+
             return waveform
         except Exception as e:
             logger.error(f"Kokoro generation failed: {e}", exc_info=True)
@@ -214,23 +221,28 @@ class KokoroWrapper(nn.Module):
         Returns:
             torch.Tensor: Processed waveform
         """
-        # Ensure tensor on correct device
+        # CRITICAL FIX: Ensure tensor on CPU first for precision
+        # Moving directly to CUDA can cause precision loss with small magnitude values
+        import numpy as np
         if not isinstance(waveform, torch.Tensor):
-            waveform = torch.tensor(waveform, dtype=torch.float32, device=self.device)
-        else:
-            waveform = waveform.to(self.device)
+            if isinstance(waveform, np.ndarray):
+                waveform = torch.from_numpy(waveform.copy()).float()
+            else:
+                waveform = torch.tensor(waveform, dtype=torch.float32)
+        # Keep on CPU for now - don't move to device yet
 
         # Ensure mono (squeeze if needed)
         if waveform.dim() > 1:
             waveform = waveform.squeeze()
 
-        # Normalize to [-1, 1]
+        # CRITICAL: Normalize BEFORE moving to device for precision
         waveform = self._normalize_audio(waveform)
 
-        # Apply emotion modulation if not natively supported
+        # Apply emotion modulation on CPU
         waveform = self._apply_emotion_modulation(waveform, emotion_params)
 
-        return waveform
+        # Only move to device at the very end
+        return waveform.to(self.device)
 
     def _write_to_buffer(
         self, waveform: torch.Tensor, output: Optional[torch.Tensor]
@@ -246,6 +258,17 @@ class KokoroWrapper(nn.Module):
         """
         if output is not None:
             num_samples = waveform.shape[0]
+            buffer_size = output.shape[0]
+
+            # Handle overflow: truncate waveform if larger than buffer
+            if num_samples > buffer_size:
+                logger.warning(
+                    f"Audio waveform ({num_samples} samples) exceeds buffer "
+                    f"({buffer_size} samples), truncating"
+                )
+                waveform = waveform[:buffer_size]
+                num_samples = buffer_size
+
             output[:num_samples].copy_(waveform)
             return output[:num_samples]
         return waveform
@@ -316,8 +339,16 @@ class KokoroWrapper(nn.Module):
             torch.Tensor: Normalized waveform
         """
         max_val = waveform.abs().max()
-        if max_val > 1e-8:  # Avoid division by zero
-            waveform = waveform / max_val
+
+        # Use more lenient threshold - 1e-4 for audible content
+        # Kokoro outputs are typically in reasonable ranges
+        if max_val > 1e-4:
+            # Normalize to 0.9 max to avoid clipping
+            waveform = waveform * (0.9 / max_val)
+        else:
+            # Audio is essentially silent - log warning
+            logger.warning(f"Audio appears silent (max_val={max_val:.2e})")
+
         return waveform
 
     def _apply_emotion_modulation(

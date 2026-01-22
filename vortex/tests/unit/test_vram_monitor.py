@@ -121,7 +121,7 @@ class TestVRAMMonitor:
     ):
         """Test log_snapshot with CUDA available."""
         monitor = VRAMMonitor()
-        models = {"flux": 6.0, "liveportrait": 3.5, "kokoro": 0.4}
+        models = {"flux": 6.0, "cogvideox": 10.5, "kokoro": 0.4}
         snapshot = monitor.log_snapshot("post_generation", slot=12345, models=models)
 
         assert isinstance(snapshot, VRAMSnapshot)
@@ -253,7 +253,7 @@ class TestVRAMSnapshot:
             vram_usage_gb=10.95,
             vram_allocated_gb=10.85,
             vram_reserved_gb=11.2,
-            models={"flux": 6.0, "liveportrait": 3.5},
+            models={"flux": 6.0, "cogvideox": 10.5},
         )
 
         assert snapshot.timestamp == "2025-12-24T12:00:00Z"
@@ -262,7 +262,7 @@ class TestVRAMSnapshot:
         assert snapshot.vram_usage_gb == pytest.approx(10.95)
         assert snapshot.vram_allocated_gb == pytest.approx(10.85)
         assert snapshot.vram_reserved_gb == pytest.approx(11.2)
-        assert snapshot.models == {"flux": 6.0, "liveportrait": 3.5}
+        assert snapshot.models == {"flux": 6.0, "cogvideox": 10.5}
 
     def test_snapshot_without_optional_fields(self):
         """Test VRAMSnapshot creation without optional fields."""

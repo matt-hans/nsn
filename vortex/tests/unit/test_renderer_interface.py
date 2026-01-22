@@ -48,7 +48,7 @@ class TestRendererManifest:
             "description": "A test renderer",
             "deterministic": True,
             "resources": {"vram_gb": 11.8, "max_latency_ms": 21000},
-            "model_dependencies": ["flux-schnell", "liveportrait"],
+            "model_dependencies": ["flux-schnell", "cogvideox"],
         }
         manifest = RendererManifest.from_dict(data)
         assert manifest.name == "test-renderer"

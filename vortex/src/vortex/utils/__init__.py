@@ -5,8 +5,8 @@ This package provides:
 - Exception types for memory pressure handling
 - Model offloading utilities
 
-Legacy modules (lipsync, face_landmarks) have been removed
-as their functionality is now integrated into liveportrait_features.
+Legacy modules (lipsync, face_landmarks, liveportrait_features) have been removed
+as they are no longer used in the Narrative Chain pipeline.
 """
 
 from .exceptions import (

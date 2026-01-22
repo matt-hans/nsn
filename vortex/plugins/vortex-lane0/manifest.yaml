@@ -2,7 +2,7 @@ schema_version: "1.0"
 name: "vortex-lane0"
 version: "1.0.0"
 entrypoint: "plugin:VortexLane0Plugin"
-description: "Lane 0 deterministic video generation via Vortex pipeline (Flux+LivePortrait+Kokoro+CLIP)"
+description: "Lane 0 deterministic video generation via Vortex pipeline (Flux+CogVideoX+Kokoro+CLIP)"
 supported_lanes:
   - lane0
 deterministic: true

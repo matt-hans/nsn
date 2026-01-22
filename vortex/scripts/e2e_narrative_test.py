@@ -583,7 +583,7 @@ async def run_e2e_test(
             theme=theme,
             tone="absurd",
             target_duration=duration,
-            deadline_sec=300.0,  # 5 minute deadline
+            deadline_sec=1800.0,  # 30 minute deadline (CogVideoX takes ~20 min)
         )
     except Exception as e:
         print(f"       ERROR: Generation failed - {e}")

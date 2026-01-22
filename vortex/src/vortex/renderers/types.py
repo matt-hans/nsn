@@ -34,7 +34,7 @@ class RendererManifest:
 
     Attributes:
         schema_version: Manifest format version (e.g., "1.0")
-        name: Unique renderer identifier (e.g., "default-flux-liveportrait")
+        name: Unique renderer identifier (e.g., "default-narrative-chain")
         version: Renderer version (semantic versioning, e.g., "1.0.0")
         entrypoint: Module:Class path for loading (e.g., "renderer:DefaultRenderer")
         description: Human-readable description

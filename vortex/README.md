@@ -6,22 +6,21 @@ GPU-resident AI pipeline for video generation. All models remain loaded in VRAM 
 
 | Component | Model | Precision | VRAM |
 |-----------|-------|-----------|------|
-| Actor Generation | Flux-Schnell | NF4 | ~6.0 GB |
-| Video Warping | LivePortrait | FP16 | ~3.5 GB |
+| Keyframe Generation | Flux-Schnell | NF4 | ~6.0 GB |
+| Video Generation | CogVideoX-5B | INT8 | ~10-11 GB |
 | Text-to-Speech | Kokoro-82M | FP32 | ~0.4 GB |
-| Semantic Verify | CLIP-ViT-B-32 | INT8 | ~0.3 GB |
-| Semantic Verify | CLIP-ViT-L-14 | INT8 | ~0.6 GB |
+| Semantic Verify | CLIP Ensemble | FP16 | ~0.6 GB |
 | System Overhead | PyTorch/CUDA | - | ~1.0 GB |
 
-**Minimum GPU:** RTX 3060 12GB
+**Minimum GPU:** RTX 3060 12GB (models loaded sequentially due to CogVideoX size)
 
-## Pipeline Timing (45s slot)
+## Pipeline Architecture (Narrative Chain)
 
-1. **Parallel Phase (0-12s):** Audio (Kokoro) + Actor image (Flux) generated simultaneously
-2. **Sequential Phase (12-15s):** Video warping (LivePortrait)
-3. **Verification (15-17s):** Dual CLIP embedding + self-check
-4. **BFT (17-30s):** Exchange embeddings, consensus
-5. **Propagation (30-45s):** Distribution to network
+1. **Script Generation:** Showrunner (LLM) generates comedic script
+2. **Audio Generation:** Kokoro synthesizes script to speech (sets duration)
+3. **Keyframe Generation:** Flux generates scene image from visual prompt
+4. **Video Generation:** CogVideoX animates keyframe to video
+5. **Verification:** CLIP verifies semantic consistency
 
 ## Installation
 
@@ -258,10 +257,9 @@ vram:
 models:
   precision:
     flux: "nf4"           # NF4 quantization
-    liveportrait: "fp16"  # Half precision
+    cogvideox: "int8"     # INT8 quantization
     kokoro: "fp32"        # Full precision
-    clip_b: "int8"        # 8-bit quantization
-    clip_l: "int8"
+    clip: "fp16"          # Half precision
 
 buffers:
   actor: {height: 512, width: 512, channels: 3}
@@ -276,10 +274,10 @@ pipeline:
 ## Task Status
 
 - **T014 (Core Pipeline):** ✅ Complete - Static VRAM manager, async orchestration
-- **T015 (Flux-Schnell):** ✅ Complete - NF4 quantized image generation (~6GB VRAM)
-- **T016 (LivePortrait):** Pending - Real LivePortrait integration
+- **T015 (Flux-Schnell):** ✅ Complete - NF4 quantized keyframe generation (~6GB VRAM)
+- **T016 (CogVideoX):** ✅ Complete - INT8 quantized video generation (~10-11GB VRAM)
 - **T017 (Kokoro TTS):** ✅ Complete - FP32 text-to-speech with voice/emotion control (~0.4GB VRAM)
-- **T018 (Dual CLIP):** Pending - Real CLIP ensemble integration
+- **T018 (Dual CLIP):** Pending - Real CLIP ensemble integration (placeholder active)
 - **T019 (VRAM Manager):** ✅ Complete (integrated in T014)
 - **T020 (Slot Timing):** Pending - Slot scheduler and deadline management
 
@@ -343,9 +341,9 @@ python benchmarks/kokoro_latency.py --iterations 50
 
 ## Known Limitations
 
-1. **Partial Model Integration:** Flux-Schnell (T015) integrated. LivePortrait, Kokoro, CLIP pending (T016-T018).
+1. **CLIP Placeholder:** CLIP verification returns mock scores. Real implementation pending Phase 4.4.
 2. **CPU Fallback:** Tests run on CPU. GPU required for production (RTX 3060+ 12GB).
-3. **Integration Testing:** Full end-to-end benchmarks deferred to T020 (requires all models).
+3. **Sequential Loading:** CogVideoX requires ~10-11GB VRAM, so models are loaded sequentially.
 
 ## Flux-Schnell Usage (T015)
 
@@ -406,7 +404,6 @@ python vortex/benchmarks/flux_latency.py --iterations 50 --plot
 
 ## Next Steps
 
-1. **T016:** Integrate LivePortrait with FP16 (3.5GB VRAM)
-2. **T017:** Integrate Kokoro-82M TTS with FP32 (0.4GB VRAM)
-3. **T018:** Integrate dual CLIP ensemble (0.9GB VRAM combined)
-4. **T020:** Implement slot scheduler with deadline management
+1. **Phase 4.4:** Implement real dual CLIP ensemble verification
+2. **T020:** Implement slot scheduler with deadline management
+3. **Phase 5:** BFT consensus integration

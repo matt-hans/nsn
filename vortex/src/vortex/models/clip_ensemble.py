@@ -1,18 +1,18 @@
-"""CLIP Dual Ensemble for semantic verification.
+"""CLIP ensemble placeholder for semantic verification.
 
-This is a placeholder module that provides the DualClipResult dataclass.
-The actual CLIP ensemble implementation will be integrated later when the
-Narrative Chain pipeline is fully operational.
-
-For the new pipeline, CLIP verification is handled by the _ClipEnsemblePlaceholder
-in vortex.renderers.default.renderer until the full implementation is ready.
+NOTE: This is a placeholder implementation. Real CLIP verification
+will be implemented in Phase 4.4. Currently returns mock passing scores.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import torch
+import torch.nn as nn
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -26,6 +26,7 @@ class DualClipResult:
         self_check_passed: True if score exceeds threshold
         outlier_detected: True if scores diverge significantly
         embedding: Combined 512-dim embedding for BFT consensus
+        is_placeholder: True if this result came from placeholder implementation
     """
 
     score_clip_b: float = 0.0
@@ -34,36 +35,22 @@ class DualClipResult:
     self_check_passed: bool = True
     outlier_detected: bool = False
     embedding: torch.Tensor = field(default_factory=lambda: torch.zeros(512))
+    is_placeholder: bool = False
 
 
-def load_clip_ensemble(
-    device: str = "cuda",
-    precision: str = "fp16",
-    local_only: bool = False,
-) -> "ClipEnsemble":
-    """Load CLIP dual ensemble for semantic verification.
+class ClipEnsemble(nn.Module):
+    """Placeholder CLIP ensemble - returns mock verification scores.
 
-    Args:
-        device: Target device ("cuda" or "cpu")
-        precision: Compute precision ("fp16" or "fp32")
-        local_only: Only use local model cache
-
-    Returns:
-        ClipEnsemble instance (placeholder implementation)
-    """
-    return ClipEnsemble(device=device, precision=precision)
-
-
-class ClipEnsemble:
-    """Placeholder CLIP ensemble for semantic verification.
-
-    This is a stub implementation that returns passing results.
-    The full implementation will use actual CLIP models.
+    TODO(Phase 4.4): Implement real dual-CLIP verification using:
+    - OpenAI CLIP ViT-L/14
+    - SigLIP ViT-SO400M
     """
 
     def __init__(self, device: str = "cuda", precision: str = "fp16"):
+        super().__init__()
         self.device = device
         self.precision = precision
+        self._warned = False
 
     def verify(
         self,
@@ -72,22 +59,60 @@ class ClipEnsemble:
         threshold: float = 0.70,
         seed: int | None = None,
     ) -> DualClipResult:
-        """Verify video-prompt semantic similarity.
+        """Return mock verification result.
 
         Args:
-            video_frames: Video tensor [T, C, H, W]
-            prompt: Text prompt to verify against
-            threshold: Minimum score to pass
+            video_frames: Video tensor [T, C, H, W] (not analyzed in placeholder)
+            prompt: Text prompt to verify against (logged but not used)
+            threshold: Minimum score to pass (ignored in placeholder)
             seed: Optional seed (unused in placeholder)
 
         Returns:
-            DualClipResult with placeholder passing values
+            DualClipResult with mock passing values and is_placeholder=True
         """
+        if not self._warned:
+            logger.warning(
+                "Using CLIP placeholder - verification scores are mock values. "
+                "Real implementation pending Phase 4.4."
+            )
+            self._warned = True
+
         return DualClipResult(
-            score_clip_b=0.85,
-            score_clip_l=0.82,
-            ensemble_score=0.835,
+            score_clip_b=0.78,
+            score_clip_l=0.76,
+            ensemble_score=0.77,
             self_check_passed=True,
             outlier_detected=False,
             embedding=torch.randn(512, device=self.device),
+            is_placeholder=True,
         )
+
+    def get_embedding(self, image: torch.Tensor) -> torch.Tensor:
+        """Return random embedding (placeholder).
+
+        Args:
+            image: Image tensor (not analyzed in placeholder)
+
+        Returns:
+            Random 512-dim embedding tensor
+        """
+        return torch.randn(512, device=self.device)
+
+
+def load_clip_ensemble(
+    device: str = "cuda",
+    precision: str = "fp16",
+    local_only: bool = False,
+) -> ClipEnsemble:
+    """Load CLIP ensemble placeholder.
+
+    Args:
+        device: Target device ("cuda" or "cpu")
+        precision: Compute precision ("fp16" or "fp32")
+        local_only: Only use local model cache (ignored in placeholder)
+
+    Returns:
+        ClipEnsemble placeholder instance
+    """
+    logger.info("Loading CLIP ensemble placeholder (real implementation pending Phase 4.4)")
+    return ClipEnsemble(device=device, precision=precision)

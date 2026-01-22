@@ -1,8 +1,8 @@
 """Vortex Lane 0 Plugin - Deterministic video generation for BFT consensus.
 
 This plugin provides Lane 0 video generation through the Vortex pipeline:
-- Flux-Schnell for actor image generation (NF4 quantized, ~6GB VRAM)
-- LivePortrait for video animation
+- Flux-Schnell for keyframe image generation (NF4 quantized, ~6GB VRAM)
+- CogVideoX for video generation (INT8 quantized, ~10-11GB VRAM)
 - Kokoro TTS for audio synthesis
 - Dual CLIP ensemble for semantic verification
 

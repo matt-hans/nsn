@@ -44,8 +44,8 @@ llm:
   # Ollama configuration for script generation
   provider: "ollama"
   base_url: "http://localhost:11434"
-  model: "llama3:8b"
-  timeout_s: 30
+  model: "qwen2.5:32b-instruct"  # Available locally (was: llama3:8b not installed)
+  timeout_s: 60  # Increased for larger model
   # Fallback to templates if Ollama unavailable
   fallback_to_templates: true
 

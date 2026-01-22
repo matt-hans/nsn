@@ -31,14 +31,13 @@ def mock_config():
         "models": {
             "precision": {
                 "flux": "nf4",
-                "liveportrait": "fp16",
+                "cogvideox": "int8",
                 "kokoro": "fp32",
-                "clip_b": "int8",
-                "clip_l": "int8",
+                "clip": "fp16",
             }
         },
         "buffers": {
-            # Must be 512x512 for LivePortrait compatibility
+            # Must be 512x512 for CogVideoX compatibility
             "actor": {"height": 512, "width": 512, "channels": 3},
             "video": {"frames": 24, "height": 512, "width": 512, "channels": 3},
             "audio": {"samples": 24000, "sample_rate": 24000, "duration_sec": 1},

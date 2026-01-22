@@ -99,13 +99,19 @@ class TestKokoroWrapper:
         assert isinstance(result_neutral, torch.Tensor)
         assert isinstance(result_excited, torch.Tensor)
 
-    def test_synthesize_invalid_voice_id(self, wrapper):
-        """Test that invalid voice ID raises ValueError."""
-        with pytest.raises(ValueError, match="Unknown voice_id"):
-            wrapper.synthesize(
-                text="Test",
-                voice_id="invalid_voice"
-            )
+    def test_synthesize_invalid_voice_id(self, wrapper, mock_kokoro_model):
+        """Test that unknown voice IDs are passed through to Kokoro (ToonGen support).
+
+        NOTE: The wrapper now allows passthrough of raw Kokoro voice IDs
+        (e.g., "af_heart") in addition to mapped ICN voice IDs (e.g., "rick_c137").
+        This enables ToonGen to use Kokoro's native voice selection.
+        """
+        # Unknown voice IDs are passed through, not rejected
+        result = wrapper.synthesize(
+            text="Test",
+            voice_id="some_raw_kokoro_voice"
+        )
+        assert isinstance(result, torch.Tensor)
 
     def test_synthesize_invalid_emotion(self, wrapper, mock_kokoro_model):
         """Test that invalid emotion falls back to neutral."""

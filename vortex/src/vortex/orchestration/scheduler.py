@@ -14,7 +14,7 @@ Timeline (45-second slot):
 - 0-12s: GENERATION PHASE (audio ∥ image → video → CLIP)
   - 0-2s: Audio (Kokoro) - parallel with Flux
   - 0-12s: Actor image (Flux) - parallel with audio
-  - 12-20s: Video warping (LivePortrait) - waits for audio
+  - 12-20s: Video generation (CogVideoX) - waits for audio
   - 20-21s: CLIP verification (dual ensemble)
 - 21-26s: BFT PHASE (off-chain, separate task)
 - 26-40s: PROPAGATION PHASE (off-chain, separate task)
@@ -98,7 +98,7 @@ class SlotScheduler:
 
         Orchestrates:
         1. Parallel: Audio (Kokoro) + Actor image (Flux)
-        2. Sequential: Video warping (LivePortrait, waits for audio)
+        2. Sequential: Video generation (CogVideoX, waits for audio)
         3. Verification: Dual CLIP embedding
 
         Args:

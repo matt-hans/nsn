@@ -2,7 +2,7 @@
 
 This test verifies:
 1. Pipeline initialization with RendererRegistry
-2. DefaultRenderer (Flux+LivePortrait) is loaded correctly
+2. DefaultRenderer (Narrative Chain) is loaded correctly
 3. Full video generation works end-to-end
 4. Output meets Lane 0 constraints
 """
@@ -16,13 +16,13 @@ from vortex.pipeline import VortexPipeline
 
 @pytest.mark.asyncio
 async def test_pipeline_with_default_renderer():
-    """Test full pipeline with DefaultRenderer (Flux+LivePortrait)."""
+    """Test full pipeline with DefaultRenderer (Narrative Chain)."""
     # Create pipeline with default renderer
     pipeline = await VortexPipeline.create(device="cuda:0")
 
     # Verify renderer loaded
     assert pipeline.renderer is not None
-    assert pipeline.renderer.manifest.name == "default-flux-liveportrait"
+    assert pipeline.renderer.manifest.name == "default-narrative-chain"
     assert pipeline.renderer.manifest.deterministic is True
 
     # Check Lane 0 constraints
