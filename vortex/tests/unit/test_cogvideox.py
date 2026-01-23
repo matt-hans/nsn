@@ -1,7 +1,7 @@
 """Unit tests for CogVideoX model wrapper.
 
-Tests the CogVideoXModel class including the generate_chain method
-for autoregressive video chaining.
+Tests the CogVideoXModel class including the generate_chunk method with I2V
+(Image-to-Video) architecture where a keyframe image is required for generation.
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ class TestCogVideoXModel:
     def test_default_initialization(self) -> None:
         """Test default model initialization."""
         model = CogVideoXModel()
-        assert model.model_id == "THUDM/CogVideoX-5b"  # T2V model (was CogVideoX-5b-I2V)
+        assert model.model_id == "THUDM/CogVideoX-5b-I2V"  # I2V model
         assert model.device == "cuda"
         assert model.enable_cpu_offload is True
         assert model.cache_dir is None
@@ -103,6 +103,54 @@ class TestCogVideoXModel:
         """Test that device must be 'cuda' or 'cpu'."""
         with pytest.raises(ValueError, match="device must be 'cuda' or 'cpu'"):
             CogVideoXModel(device="tpu")
+
+
+class TestGenerateChunkSignature:
+    """Tests for the generate_chunk method signature (I2V architecture)."""
+
+    def test_generate_chunk_exists(self) -> None:
+        """Test that generate_chunk method exists."""
+        assert hasattr(CogVideoXModel, "generate_chunk")
+
+    def test_generate_chunk_is_async(self) -> None:
+        """Test that generate_chunk is an async method."""
+        assert inspect.iscoroutinefunction(CogVideoXModel.generate_chunk)
+
+    def test_generate_chunk_parameters(self) -> None:
+        """Test generate_chunk has correct parameters for I2V."""
+        sig = inspect.signature(CogVideoXModel.generate_chunk)
+        params = list(sig.parameters.keys())
+        expected_params = [
+            "self",
+            "image",  # Required: keyframe image
+            "prompt",
+            "config",
+            "seed",
+        ]
+        assert params == expected_params
+
+    def test_generate_chunk_parameter_defaults(self) -> None:
+        """Test generate_chunk parameter defaults."""
+        sig = inspect.signature(CogVideoXModel.generate_chunk)
+
+        # Required params have no default
+        assert sig.parameters["image"].default is inspect.Parameter.empty
+        assert sig.parameters["prompt"].default is inspect.Parameter.empty
+
+        # Optional params default to None
+        assert sig.parameters["config"].default is None
+        assert sig.parameters["seed"].default is None
+
+    def test_generate_chunk_annotations(self) -> None:
+        """Test generate_chunk has correct type annotations."""
+        ann = CogVideoXModel.generate_chunk.__annotations__
+
+        # Image can be tensor or PIL Image
+        assert "torch.Tensor" in str(ann.get("image")) or "Image" in str(ann.get("image"))
+        assert "str" in str(ann.get("prompt"))
+        assert "VideoGenerationConfig" in str(ann.get("config"))
+        assert "int" in str(ann.get("seed"))
+        assert "torch.Tensor" in str(ann.get("return"))
 
 
 class TestGenerateChainSignature:
@@ -162,8 +210,8 @@ class TestGenerateChainLogic:
     """Tests for the deprecated generate_chain method logic (with mocking).
 
     Note: generate_chain is deprecated in favor of generate_montage.
-    The keyframe parameter is now ignored as CogVideoX-5b T2V generates
-    video directly from text prompts.
+    The keyframe parameter is now used with I2V to generate video from
+    the initial keyframe image.
     """
 
     @pytest.fixture
@@ -232,6 +280,10 @@ class TestGenerateChainLogic:
             call_args_2 = mock_gen.call_args_list[1]
             assert call_args_1.kwargs.get("seed") == 42
             assert call_args_2.kwargs.get("seed") == 43
+
+            # First call should use original keyframe, second uses last frame of chunk1
+            assert call_args_1.kwargs.get("image") is not None
+            assert call_args_2.kwargs.get("image") is not None
 
     @pytest.mark.asyncio
     async def test_generate_chain_frame_overlap(self, mock_model: CogVideoXModel) -> None:
@@ -329,11 +381,12 @@ class TestGenerateMontageSignature:
         assert inspect.iscoroutinefunction(CogVideoXModel.generate_montage)
 
     def test_generate_montage_parameters(self) -> None:
-        """Test generate_montage has correct parameters for T2V (no keyframes)."""
+        """Test generate_montage has correct parameters for I2V (with keyframes)."""
         sig = inspect.signature(CogVideoXModel.generate_montage)
         params = list(sig.parameters.keys())
         expected_params = [
             "self",
+            "keyframes",
             "prompts",
             "config",
             "seed",
@@ -346,7 +399,8 @@ class TestGenerateMontageSignature:
         """Test generate_montage parameter defaults."""
         sig = inspect.signature(CogVideoXModel.generate_montage)
 
-        # Required param has no default
+        # Required params have no default
+        assert sig.parameters["keyframes"].default is inspect.Parameter.empty
         assert sig.parameters["prompts"].default is inspect.Parameter.empty
 
         # Optional params have defaults
@@ -359,6 +413,7 @@ class TestGenerateMontageSignature:
         """Test generate_montage has correct type annotations."""
         ann = CogVideoXModel.generate_montage.__annotations__
 
+        assert "list" in str(ann.get("keyframes"))
         assert "list" in str(ann.get("prompts"))
         assert "VideoGenerationConfig" in str(ann.get("config"))
         assert "int" in str(ann.get("seed"))
@@ -370,8 +425,8 @@ class TestGenerateMontageSignature:
 class TestGenerateMontageLogic:
     """Tests for the generate_montage method logic (with mocking).
 
-    Updated for T2V architecture where generate_montage takes prompts only
-    (no keyframes). Each scene is generated directly from text prompt.
+    Updated for I2V architecture where generate_montage takes keyframes and prompts.
+    Each scene is generated from its corresponding keyframe image and text prompt.
     """
 
     @pytest.fixture
@@ -388,8 +443,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720)]
             prompts = ["Scene 1 description"]
             result = await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 seed=42,
             )
@@ -409,8 +466,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
             prompts = ["Scene 1", "Scene 2", "Scene 3"]
             result = await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 seed=42,
             )
@@ -429,8 +488,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
             prompts = ["Scene 1", "Scene 2", "Scene 3"]
             await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 seed=100,
             )
@@ -447,8 +508,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720)]
             prompts = ["Scene 1"]
             await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 seed=None,
             )
@@ -465,8 +528,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720) for _ in range(2)]
             prompts = ["Scene 1", "Scene 2"]
             result = await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 trim_frames=30,  # Custom trim
             )
@@ -482,8 +547,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720)]
             prompts = ["Scene 1"]
             result = await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 trim_frames=0,  # No trimming
             )
@@ -498,20 +565,34 @@ class TestGenerateMontageLogic:
         """Test that empty prompts list raises ValueError."""
         with pytest.raises(ValueError, match="prompts list cannot be empty"):
             await mock_model.generate_montage(
+                keyframes=[],
                 prompts=[],
             )
 
     @pytest.mark.asyncio
-    async def test_generate_montage_uses_prompt_per_scene(
+    async def test_generate_montage_mismatched_lengths(
         self, mock_model: CogVideoXModel
     ) -> None:
-        """Test that each scene uses its own prompt (T2V generation)."""
+        """Test that mismatched keyframes/prompts lengths raises ValueError."""
+        with pytest.raises(ValueError, match="keyframes and prompts must have same length"):
+            await mock_model.generate_montage(
+                keyframes=[torch.rand(3, 480, 720)],
+                prompts=["Scene 1", "Scene 2"],  # 2 prompts but only 1 keyframe
+            )
+
+    @pytest.mark.asyncio
+    async def test_generate_montage_uses_keyframe_and_prompt_per_scene(
+        self, mock_model: CogVideoXModel
+    ) -> None:
+        """Test that each scene uses its own keyframe and prompt (I2V generation)."""
         mock_frames = torch.rand(49, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
             await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=["Scene 1 prompt", "Scene 2 prompt", "Scene 3 prompt"],
             )
 
@@ -519,6 +600,10 @@ class TestGenerateMontageLogic:
             assert mock_gen.call_args_list[0].kwargs["prompt"] == "Scene 1 prompt"
             assert mock_gen.call_args_list[1].kwargs["prompt"] == "Scene 2 prompt"
             assert mock_gen.call_args_list[2].kwargs["prompt"] == "Scene 3 prompt"
+
+            # Verify each call uses a keyframe
+            for call in mock_gen.call_args_list:
+                assert call.kwargs.get("image") is not None
 
     @pytest.mark.asyncio
     async def test_generate_montage_progress_callback(
@@ -534,8 +619,10 @@ class TestGenerateMontageLogic:
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
 
+            keyframes = [torch.rand(3, 480, 720) for _ in range(3)]
             prompts = ["Scene 1", "Scene 2", "Scene 3"]
             await mock_model.generate_montage(
+                keyframes=keyframes,
                 prompts=prompts,
                 progress_callback=progress_callback,
             )
