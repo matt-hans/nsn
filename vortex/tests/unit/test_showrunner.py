@@ -15,11 +15,50 @@ import httpx
 import pytest
 
 from vortex.models.showrunner import (
-    FALLBACK_TEMPLATES,
     Script,
     Showrunner,
     ShowrunnerError,
+    _get_fallback_templates,
+    ADULT_SWIM_STYLE,
 )
+
+
+class TestScriptVideoPrompts:
+    """Test suite for Script.video_prompts field."""
+
+    def test_script_has_video_prompts_attribute(self):
+        """Script should have video_prompts attribute."""
+        script = Script(
+            setup="Test setup",
+            punchline="Test punchline",
+            subject_visual="test subject",
+            storyboard=["Scene 1", "Scene 2", "Scene 3"],
+            video_prompts=["Prompt 1", "Prompt 2", "Prompt 3"],
+        )
+        assert hasattr(script, "video_prompts")
+        assert len(script.video_prompts) == 3
+
+    def test_visual_prompt_returns_first_video_prompt(self):
+        """Script.visual_prompt should return first video_prompt."""
+        script = Script(
+            setup="Test",
+            punchline="Test",
+            subject_visual="subject",
+            storyboard=["S1", "S2", "S3"],
+            video_prompts=["First prompt", "Second prompt", "Third prompt"],
+        )
+        assert script.visual_prompt == "First prompt"
+
+    def test_visual_prompt_returns_empty_for_empty_video_prompts(self):
+        """Script.visual_prompt should return empty string for empty video_prompts."""
+        script = Script(
+            setup="Test",
+            punchline="Test",
+            subject_visual="subject",
+            storyboard=["S1", "S2", "S3"],
+            video_prompts=[],
+        )
+        assert script.visual_prompt == ""
 
 
 class TestFallbackTemplates:
@@ -27,13 +66,15 @@ class TestFallbackTemplates:
 
     def test_fallback_templates_has_minimum_count(self):
         """Ensure we have at least 10 diverse templates."""
-        assert len(FALLBACK_TEMPLATES) >= 10, (
-            f"Expected at least 10 templates, found {len(FALLBACK_TEMPLATES)}"
+        templates = _get_fallback_templates()
+        assert len(templates) >= 10, (
+            f"Expected at least 10 templates, found {len(templates)}"
         )
 
     def test_fallback_templates_are_script_objects(self):
         """Each template must be a Script object with required attributes."""
-        for i, template in enumerate(FALLBACK_TEMPLATES):
+        templates = _get_fallback_templates()
+        for i, template in enumerate(templates):
             assert isinstance(template, Script), (
                 f"Template {i} must be a Script object, got {type(template).__name__}"
             )
@@ -41,12 +82,35 @@ class TestFallbackTemplates:
             assert hasattr(template, "setup"), f"Template {i} missing 'setup'"
             assert hasattr(template, "punchline"), f"Template {i} missing 'punchline'"
             assert hasattr(template, "storyboard"), f"Template {i} missing 'storyboard'"
-            # visual_prompt is a property derived from storyboard
+            assert hasattr(template, "video_prompts"), f"Template {i} missing 'video_prompts'"
+            # visual_prompt is a property derived from video_prompts
             assert hasattr(template, "visual_prompt"), f"Template {i} missing 'visual_prompt'"
+
+    def test_fallback_templates_have_video_prompts(self):
+        """Each template must have exactly 3 video_prompts."""
+        templates = _get_fallback_templates()
+        for i, template in enumerate(templates):
+            assert hasattr(template, "video_prompts"), (
+                f"Template {i} missing 'video_prompts'"
+            )
+            assert isinstance(template.video_prompts, list), (
+                f"Template {i} video_prompts must be a list"
+            )
+            assert len(template.video_prompts) == 3, (
+                f"Template {i} must have exactly 3 video_prompts, got {len(template.video_prompts)}"
+            )
+            for j, prompt in enumerate(template.video_prompts):
+                assert isinstance(prompt, str), (
+                    f"Template {i} video_prompt {j+1} must be a string"
+                )
+                assert prompt.strip(), (
+                    f"Template {i} video_prompt {j+1} cannot be empty"
+                )
 
     def test_fallback_templates_have_non_empty_strings(self):
         """All template fields must be non-empty strings."""
-        for i, template in enumerate(FALLBACK_TEMPLATES):
+        templates = _get_fallback_templates()
+        for i, template in enumerate(templates):
             # Check setup and punchline
             assert isinstance(template.setup, str), (
                 f"Template {i} field 'setup' must be a string"
@@ -60,7 +124,7 @@ class TestFallbackTemplates:
             assert template.punchline.strip(), (
                 f"Template {i} field 'punchline' cannot be empty"
             )
-            # visual_prompt is derived from storyboard[0]
+            # visual_prompt is derived from video_prompts[0]
             assert isinstance(template.visual_prompt, str), (
                 f"Template {i} field 'visual_prompt' must be a string"
             )
@@ -70,7 +134,8 @@ class TestFallbackTemplates:
 
     def test_fallback_templates_have_3_scene_storyboards(self):
         """Each template must have exactly 3 scenes in storyboard."""
-        for i, template in enumerate(FALLBACK_TEMPLATES):
+        templates = _get_fallback_templates()
+        for i, template in enumerate(templates):
             assert isinstance(template.storyboard, list), (
                 f"Template {i} storyboard must be a list"
             )
@@ -177,11 +242,12 @@ class TestShowrunnerGetFallbackScript:
         assert isinstance(script, Script)
 
     def test_get_fallback_script_returns_template_from_collection(self, showrunner):
-        """Returned script should come from FALLBACK_TEMPLATES."""
+        """Returned script should come from fallback templates."""
         script = showrunner.get_fallback_script("test theme")
 
         # Check that the script matches one of the templates
-        template_setups = {t.setup for t in FALLBACK_TEMPLATES}
+        templates = _get_fallback_templates()
+        template_setups = {t.setup for t in templates}
         assert script.setup in template_setups, (
             "Script setup should match a template"
         )
@@ -347,9 +413,12 @@ class TestShowrunnerGenerateScript:
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        # Include video_prompts in the response (new T2V format)
         json_response = (
             '{"setup": "Test setup", "punchline": "Test punch", '
-            '"storyboard": ["Scene 1: Visual 1", "Scene 2: Visual 2", "Scene 3: Visual 3"]}'
+            '"subject_visual": "a test subject", '
+            '"storyboard": ["Scene 1: Visual 1", "Scene 2: Visual 2", "Scene 3: Visual 3"], '
+            '"video_prompts": ["Video prompt 1", "Video prompt 2", "Video prompt 3"]}'
         )
         mock_response.json.return_value = {"response": json_response}
         mock_client.post = AsyncMock(return_value=mock_response)
@@ -365,8 +434,8 @@ class TestShowrunnerGenerateScript:
             "Scene 2: Visual 2",
             "Scene 3: Visual 3",
         ]
-        # visual_prompt returns first scene for backward compatibility
-        assert script.visual_prompt == "Scene 1: Visual 1"
+        # visual_prompt returns first video_prompt (T2V)
+        assert script.visual_prompt == "Video prompt 1"
 
     @pytest.mark.asyncio
     @patch("vortex.models.showrunner.httpx.AsyncClient")
@@ -406,7 +475,9 @@ class TestShowrunnerGenerateScript:
 {
   "setup": "Markdown setup",
   "punchline": "Markdown punch",
-  "storyboard": ["Scene 1: MD visual", "Scene 2: MD visual", "Scene 3: MD visual"]
+  "subject_visual": "a cartoon host",
+  "storyboard": ["Scene 1: MD visual", "Scene 2: MD visual", "Scene 3: MD visual"],
+  "video_prompts": ["MD video 1", "MD video 2", "MD video 3"]
 }
 ```
 Hope you like it!"""
@@ -426,8 +497,8 @@ Hope you like it!"""
             "Scene 2: MD visual",
             "Scene 3: MD visual",
         ]
-        # visual_prompt returns first scene for backward compatibility
-        assert script.visual_prompt == "Scene 1: MD visual"
+        # visual_prompt returns first video_prompt (T2V)
+        assert script.visual_prompt == "MD video 1"
 
     @pytest.mark.asyncio
     @patch("vortex.models.showrunner.httpx.AsyncClient")
@@ -436,6 +507,7 @@ Hope you like it!"""
 
         This test ensures backward compatibility with older Ollama models that may
         return the legacy format with single visual_prompt instead of storyboard.
+        When video_prompts are missing, they are auto-generated from storyboard.
         """
         mock_client = AsyncMock()
         mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
@@ -464,7 +536,10 @@ Hope you like it!"""
             "Legacy visual description",
             "Legacy visual description",
         ]
-        assert script.visual_prompt == "Legacy visual description"
+        # video_prompts are auto-generated from storyboard + subject + style
+        # visual_prompt returns first video_prompt which contains the scene + style
+        assert "Legacy visual description" in script.visual_prompt
+        assert ADULT_SWIM_STYLE in script.visual_prompt
 
     @pytest.mark.asyncio
     @patch("vortex.models.showrunner.httpx.AsyncClient")
@@ -686,14 +761,19 @@ End of script."""
         assert script.storyboard == ["S1", "S2", "S3"]
 
     def test_parse_script_response_handles_legacy_visual_prompt(self, showrunner):
-        """Should convert legacy visual_prompt to 3-scene storyboard."""
+        """Should convert legacy visual_prompt to 3-scene storyboard.
+
+        When video_prompts are missing, they are auto-generated from storyboard + style.
+        """
         json_str = '{"setup": "Setup", "punchline": "Punch", "visual_prompt": "Visual"}'
         script = showrunner._parse_script_response(json_str)
         assert script.setup == "Setup"
         assert script.punchline == "Punch"
         # Legacy visual_prompt gets duplicated to all 3 scenes
         assert script.storyboard == ["Visual", "Visual", "Visual"]
-        assert script.visual_prompt == "Visual"
+        # video_prompts auto-generated: visual_prompt returns first which includes style
+        assert "Visual" in script.visual_prompt
+        assert ADULT_SWIM_STYLE in script.visual_prompt
 
 
 class TestShowrunnerError:

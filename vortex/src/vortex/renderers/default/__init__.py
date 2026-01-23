@@ -1,4 +1,4 @@
-"""Default Lane 0 renderer using Narrative Chain: Showrunner, Kokoro, Flux, CogVideoX, CLIP."""
+"""Default Lane 0 renderer using T2V Montage: Showrunner, Bark, CogVideoX T2V, CLIP."""
 
 from vortex.renderers.default.renderer import DefaultRenderer
 

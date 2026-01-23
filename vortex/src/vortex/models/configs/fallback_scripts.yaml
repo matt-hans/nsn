@@ -1,0 +1,136 @@
+# Fallback scripts for when Ollama is unavailable
+# Each template follows Interdimensional Cable's absurdist style
+# Bark TTS tokens: [laughs], [sighs], [gasps], [clears throat]
+
+style_suffix: "2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+templates:
+  # === BIZARRE INFOMERCIAL/PRODUCT COMMERCIALS (4) ===
+
+  - setup: "[sighs] My knees used to make noise when I walked. Every step was creak creak creak."
+    punchline: "Now with Knee Silencers, I'm completely undetectable! [laughs] My family hasn't seen me in weeks!"
+    subject_visual: "a cheerful elderly cartoon woman with gray curly hair wearing a purple tracksuit"
+    storyboard:
+      - "Scene 1: An elderly woman walks through a living room, visible sound waves emanating from her knees"
+      - "Scene 2: She attaches sleek black devices to her knees, they glow and hum"
+      - "Scene 3: She sneaks past her confused family members who look right through her"
+    video_prompts:
+      - "A cheerful elderly cartoon woman with gray curly hair wearing a purple tracksuit walks painfully through a dated 1970s living room with orange shag carpet. Visible neon-green sound waves radiate from her knees with each step. Her family members on the couch cover their ears in exaggerated agony. Camera follows her movement at knee level. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A cheerful elderly cartoon woman with gray curly hair wearing a purple tracksuit sits on a bench attaching sleek obsidian-black devices to her knees. The devices pulse with eerie blue light and emit a soft harmonic hum. Her expression shifts from pained to unnervingly serene. Camera circles around her as the transformation completes. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A cheerful elderly cartoon woman with gray curly hair wearing a purple tracksuit glides silently through her kitchen as her confused family members look directly through her as if she were invisible. She waves her hands frantically but they cannot perceive her existence. Camera shows her isolated in a spotlight while family remains oblivious. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  - setup: "Do your hands feel too... connected to your body?"
+    punchline: "[gasps] Introducing Detachable Dan's Hand Emancipation Service! Your hands deserve FREEDOM!"
+    subject_visual: "a slick salesman cartoon character with a pencil mustache and shiny green suit"
+    storyboard:
+      - "Scene 1: A nervous office worker looks at their hands with existential dread"
+      - "Scene 2: The salesman demonstrates hands floating freely around a room"
+      - "Scene 3: Multiple happy customers wave goodbye with their now-independent floating hands"
+    video_prompts:
+      - "A slick salesman cartoon character with a pencil mustache and shiny green suit appears on a TV infomercial screen, gesturing dramatically at before-and-after images of hands still attached versus hands gloriously liberated. He winks at the camera while pointing at a nervous office worker in the corner who stares at their connected hands in horror. Dramatic infomercial lighting creates long shadows. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A slick salesman cartoon character with a pencil mustache and shiny green suit gestures dramatically in a showroom as multiple pairs of disembodied hands float gracefully through the air like butterflies. The hands perform a synchronized dance routine. Spotlights follow the liberated appendages as the salesman beams proudly. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A slick salesman cartoon character with a pencil mustache and shiny green suit stands proudly as a row of satisfied customers wave goodbye with their newly independent floating hands hovering beside them. Each pair of hands has developed its own distinct personality and fashion accessories. Camera pulls back to reveal an endless line of hand-liberated citizens. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  - setup: "[clears throat] In my dimension, we thought pillows were our enemies for centuries."
+    punchline: "Then we discovered REVERSE pillows! [laughs] Now WE sleep on THEM! The pillows are furious!"
+    subject_visual: "an alien ambassador with three eyes and blue skin in formal diplomatic robes"
+    storyboard:
+      - "Scene 1: Historical footage of aliens fighting aggressive pillows in battle"
+      - "Scene 2: Scientists discover the pillow reversal technology in a lab"
+      - "Scene 3: A content alien sleeps while an angry pillow is trapped beneath them"
+    video_prompts:
+      - "An alien ambassador with three eyes and blue skin watches grainy sepia-toned historical footage of their ancestors in medieval armor battling enormous aggressive pillows on a wartorn battlefield. Feathers explode like shrapnel as pillows charge with murderous intent. The camera zooms into the footage showing the desperate pillow wars. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "An alien ambassador with three eyes and blue skin narrates as cartoon alien scientists in a gleaming white laboratory celebrate discovering pillow reversal technology. One scientist holds up a glowing device triumphantly while a test pillow screams in the background. Charts and diagrams of pillow molecular structures cover the walls. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "An alien ambassador with three eyes and blue skin in formal diplomatic robes sleeps peacefully in a ornate bedroom while a furious sentient pillow is trapped beneath their head, its embroidered face contorted in impotent rage. The pillow shakes tiny fists as the alien snores contentedly. Camera slowly pans across this scene of reversed oppression. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  # === SURREAL TALK SHOWS (2) ===
+
+  - setup: "Welcome back to Good Morning Void! [laughs] I'm your host, and today's guest is... the concept of Thursday!"
+    punchline: "[gasps] Thursday, you look different! Have you been working out, or did you consume Wednesday again?"
+    subject_visual: "a perky talk show host with big blonde hair and an impossibly wide smile"
+    storyboard:
+      - "Scene 1: A colorful talk show set with an empty guest chair that somehow emanates Thursday energy"
+      - "Scene 2: The host leans in to interview the abstract concept, gesturing at nothing"
+      - "Scene 3: A calendar appears showing Wednesday being devoured by an expanding Thursday"
+    video_prompts:
+      - "A perky talk show host with big blonde hair and an impossibly wide smile sits on a bright pink couch in a surreal talk show set with floating clocks and melting calendars. The guest chair opposite her is empty yet radiates an unmistakable aura of Thursday-ness with faint day-of-week energy waves. Camera establishes the absurd set with a wide shot. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A perky talk show host with big blonde hair and an impossibly wide smile leans forward enthusiastically, gesturing and nodding at the empty guest chair as if conducting a riveting interview with the abstract concept of a weekday. Her eyes track an invisible presence while cue cards float nearby with questions like HOW DOES IT FEEL TO BE AFTER WEDNESDAY. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A perky talk show host with big blonde hair and an impossibly wide smile gasps in horror as a giant calendar materializes behind her showing the word THURSDAY grotesquely expanding and consuming WEDNESDAY letter by letter. The host watches with morbid fascination as temporal cannibalism occurs live on air. Camera pushes in on the calendar carnage. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  - setup: "[sighs] Tonight on Cooking with Regret, we're making my grandmother's famous recipe for Disappointment Soup."
+    punchline: "The secret ingredient? [clears throat] It's the dreams you gave up on! Let them simmer for forty years!"
+    subject_visual: "a melancholic middle-aged chef with tired eyes and a stained white apron"
+    storyboard:
+      - "Scene 1: A dreary kitchen set with the sad chef holding a pot of gray liquid"
+      - "Scene 2: The chef adds ghostly transparent images of abandoned dreams to the pot"
+      - "Scene 3: The chef taste-tests and a single tear rolls down while giving a thumbs up"
+    video_prompts:
+      - "A melancholic middle-aged chef with tired eyes and a stained white apron stands in a dreary institutional kitchen with flickering lights and peeling wallpaper. He holds a dented pot filled with murky gray liquid that bubbles sadly. The camera frames him against a wall of faded family photos and participation trophies. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A melancholic middle-aged chef with tired eyes and a stained white apron reaches into his chest and pulls out translucent ghostly images of abandoned dreams including a diploma and a novel manuscript and a happy family photo. He drops each one into the bubbling pot where they dissolve into gray mist. Camera captures each dream before it vanishes. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A melancholic middle-aged chef with tired eyes and a stained white apron brings a wooden spoon of gray Disappointment Soup to his lips and tastes it. A single perfect tear rolls down his cheek as he slowly raises a trembling thumbs up to the camera. Studio audience applause signs flicker weakly in the background. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  # === BREAKING NEWS FROM ABSURD REALITIES (2) ===
+
+  - setup: "Breaking news! [gasps] The moon has filed for divorce from Earth, citing irreconcilable gravitational differences!"
+    punchline: "The moon's lawyer says, and I quote, [clears throat] She never let me be full more than once a month!"
+    subject_visual: "a serious news anchor with perfect gray hair and an oversized red tie"
+    storyboard:
+      - "Scene 1: A news desk with urgent graphics showing the moon with a suitcase leaving Earth"
+      - "Scene 2: Courtroom sketch of the moon on the witness stand crying"
+      - "Scene 3: Earth looking sad and alone while the moon drives away in a tiny car"
+    video_prompts:
+      - "A serious news anchor with perfect gray hair and an oversized red tie sits at a polished news desk with BREAKING NEWS graphics flashing urgently behind him. The screen shows an image of a cartoon moon with sunglasses dragging a suitcase away from a weeping Earth. Papers scatter dramatically as the anchor delivers this cosmic bombshell. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A serious news anchor with perfect gray hair and an oversized red tie gestures toward a courtroom sketch showing the moon sitting on a witness stand dabbing tears with a crater. A shark-faced lawyer in a pinstripe suit stands beside the emotional celestial body. The judge is the sun wearing reading glasses and looking exhausted. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A serious news anchor with perfect gray hair and an oversized red tie watches live footage of the sad cartoon moon driving away in a comically tiny red convertible while Earth sits alone on a park bench surrounded by scattered tidal wave debris. The moon honks twice and flips Earth off as it disappears into the void. Camera slowly zooms on Earth sobbing. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  - setup: "This just in from Dimension J-19! [laughs] Their president, a very confident ham sandwich, has declared war on napkins!"
+    punchline: "[gasps] The ham sandwich was quoted saying, They know what they did! They KNOW!"
+    subject_visual: "a frazzled field reporter with windswept hair holding a microphone"
+    storyboard:
+      - "Scene 1: A reporter stands outside a condiment-stained government building"
+      - "Scene 2: The ham sandwich president gives an angry speech at a podium made of bread"
+      - "Scene 3: Napkins are rounded up by mustard-colored military forces"
+    video_prompts:
+      - "A frazzled field reporter with windswept hair holding a microphone stands outside a grand government building covered in condiment stains and pickle juice in an alternate dimension. The building's architecture is vaguely sandwich-inspired with lettuce awnings and tomato windows. Citizens who are various lunch items flee in panic behind her. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A frazzled field reporter narrates as an angry ham sandwich wearing a tiny presidential sash pounds a podium made of two slices of bread during a furious speech. The ham sandwich's mustard eyebrows are furrowed intensely as it shakes a tiny fist at a projection of napkins. Cabinet members who are various condiments nod solemnly. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A frazzled field reporter with windswept hair holding a microphone watches in horror as terrified sentient napkins are herded into transport vehicles by mustard-colored military soldiers with relish-green helmets. The napkins wave tiny white flags of surrender but the soldiers are unmoved. Camera captures the grim napkin roundup in documentary style. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  # === PUBLIC SERVICE ANNOUNCEMENTS GONE WRONG (2) ===
+
+  - setup: "This is a public service announcement. [clears throat] Have you checked behind you recently?"
+    punchline: "[gasps] No don't actually look! [laughs] It's too late now. It saw you looking. Good luck!"
+    subject_visual: "a friendly government spokesperson in a beige suit with an unsettling smile"
+    storyboard:
+      - "Scene 1: A PSA-style set with the spokesperson gesturing warmly at the camera"
+      - "Scene 2: The spokesperson's smile falters as something moves in the shadows behind them"
+      - "Scene 3: The spokesperson runs away as the screen cuts to a cheerful STAY VIGILANT logo"
+    video_prompts:
+      - "A friendly government spokesperson in a beige suit with an unsettling smile stands in a sterile government PSA studio with a pale blue backdrop and potted plastic plants. They gesture warmly at the camera while informational graphics about LOOKING BEHIND YOU float nearby. The lighting is slightly too bright and artificial. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A friendly government spokesperson in a beige suit has their unsettling smile falter as something dark and indistinct shifts in the shadows behind the pale blue backdrop. Their eye twitches as they try to maintain composure while clearly aware of the presence. The studio lights flicker ominously as they continue reading the teleprompter. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A friendly government spokesperson in a beige suit sprints away screaming as the camera cuts to a cheerful pastel graphic reading STAY VIGILANT with a cartoon eye mascot giving a thumbs up. Peaceful hold music plays as destruction sounds continue offscreen. The graphic remains onscreen for an uncomfortably long time. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  - setup: "[sighs] Remember kids, sharing is caring. But what if you shared... TOO much?"
+    punchline: "That's right! [laughs] Tommy shared so much he became a concept! Now he exists everywhere and nowhere! Don't be like Tommy!"
+    subject_visual: "a concerned cartoon teacher with glasses and a sweater vest pointing at a chalkboard"
+    storyboard:
+      - "Scene 1: A classroom with children as the teacher points to SHARING = GOOD on the board"
+      - "Scene 2: A boy named Tommy shares so aggressively he begins to pixelate and spread"
+      - "Scene 3: The teacher points to where Tommy used to be, now just a Tommy-shaped void"
+    video_prompts:
+      - "A concerned cartoon teacher with glasses and a sweater vest stands in a colorful elementary classroom pointing at a green chalkboard that reads SHARING IS CARING in childish letters. Rows of attentive cartoon children sit at tiny desks. Educational posters about friendship and vegetables cover the walls. Camera frames the wholesome scene from a low child's-eye angle. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A concerned cartoon teacher with glasses and a sweater vest watches in horror as a boy named Tommy shares his lunch so enthusiastically that he begins to pixelate and fragment. Pieces of Tommy spread across the classroom like a virus of generosity infecting every surface. Other children scream as Tommy becomes omnipresent. Camera spirals around the disintegrating boy. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "A concerned cartoon teacher with glasses and a sweater vest points solemnly at a Tommy-shaped void in the classroom where the boy used to sit. The void pulses with abstract conceptual energy as the remaining traumatized children stare. A poster now reads SHARE RESPONSIBLY with Tommy's smiling face crossed out in red. Camera slowly pushes into the void. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+
+  # === MISCELLANEOUS - GAME SHOW (1) ===
+
+  - setup: "Welcome to Guess That Smell! [laughs] Our contestant today has been blindfolded for six weeks!"
+    punchline: "[gasps] Oh no, contestant Jerry has identified the smell as his own forgotten potential! [sighs] That's... that's not even one of the options, Jerry!"
+    subject_visual: "an overly enthusiastic game show host in a sparkly purple jacket"
+    storyboard:
+      - "Scene 1: A flashy game show set with a confused blindfolded contestant at a podium"
+      - "Scene 2: The host presents various bizarre smells in fancy containers"
+      - "Scene 3: Jerry has an existential crisis while confetti falls inappropriately"
+    video_prompts:
+      - "An overly enthusiastic game show host in a sparkly purple jacket stands on a garish neon game show set with spinning wheels and flashing lights. A confused blindfolded contestant named Jerry stands at a podium covered in question marks. Giant nostrils decorate the set as the GUESS THAT SMELL logo spins overhead. Camera sweeps across the tacky extravagant set. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "An overly enthusiastic game show host in a sparkly purple jacket presents a series of ornate crystal containers holding various bizarre smells including BURNING AMBITION and STALE REGRET and FRESH EXISTENTIAL DREAD. Visible stink lines in different colors waft toward the blindfolded contestant Jerry. Showgirls in nose-shaped costumes gesture dramatically at each option. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+      - "An overly enthusiastic game show host in a sparkly purple jacket looks concerned as blindfolded contestant Jerry collapses to his knees having an existential crisis. Confetti and balloons fall inappropriately around him as he weeps. The scoreboard glitches between numbers and philosophical questions. Camera captures the cognitive dissonance of celebration meeting despair. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, exaggerated proportions, squash and stretch animation"

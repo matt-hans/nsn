@@ -1,23 +1,22 @@
-"""CogVideoX-5B Image-to-Video model wrapper for Vortex pipeline.
+"""CogVideoX-5B Text-to-Video model wrapper for Vortex pipeline.
 
-This module provides the CogVideoXModel class that generates video from keyframe
-images using CogVideoX-5B with INT8 quantization for memory efficiency on 12GB GPUs.
+This module provides the CogVideoXModel class that generates video directly
+from text prompts using CogVideoX-5B with INT8 quantization for memory efficiency.
 
 The CogVideoX model is part of the Narrative Chain pipeline (Phase 3) and:
-- Generates video chunks from keyframe images
+- Generates video directly from text prompts (no keyframe required)
 - Uses INT8 quantization to fit in 12GB VRAM (down from ~26GB)
 - Supports CPU offloading for memory efficiency
 - Returns video frames as torch tensors for downstream processing
 
 VRAM Budget: ~10-11 GB (INT8 quantized with CPU offload)
-Output: 49 frames at 720x480 (native I2V resolution) at 8fps (~6 seconds)
+Output: 49 frames at 720x480 at 8fps (~6 seconds)
 
 Example:
     >>> model = CogVideoXModel()
     >>> model.load()
     >>> frames = await model.generate_chunk(
-    ...     image=keyframe_tensor,
-    ...     prompt="A person slowly turning their head",
+    ...     prompt="A cartoon man waving at the camera in a colorful studio",
     ...     seed=42
     ... )
     >>> print(frames.shape)  # [49, 3, 480, 720]
@@ -28,15 +27,12 @@ from __future__ import annotations
 import asyncio
 import gc
 import logging
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-
-if TYPE_CHECKING:
-    from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +62,12 @@ class VideoGenerationConfig:
     """
 
     num_frames: int = 49  # CogVideoX default (~6 seconds at 8fps)
-    guidance_scale: float = 5.0  # CFG scale (reduced from 6.0 to minimize artifacts)
+    guidance_scale: float = 3.5  # CFG scale (lowered from 5.0 to reduce "deep fry" artifacts)
     use_dynamic_cfg: bool = True  # Enable dynamic CFG scheduling for better motion
     num_inference_steps: int = 50
     fps: int = 8  # Output frame rate
-    height: int = 480  # CogVideoX I2V native resolution
-    width: int = 720  # CogVideoX I2V native resolution (3:2 aspect)
+    height: int = 480  # CogVideoX native resolution
+    width: int = 720  # CogVideoX native resolution (3:2 aspect)
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
@@ -91,9 +87,9 @@ class VideoGenerationConfig:
 
 @dataclass
 class CogVideoXModel:
-    """CogVideoX-5B Image-to-Video model wrapper.
+    """CogVideoX-5B Text-to-Video model wrapper.
 
-    Generates video from a keyframe image using CogVideoX-5B with INT8
+    Generates video directly from text prompts using CogVideoX-5B with INT8
     quantization for memory efficiency on 12GB GPUs.
 
     This model uses:
@@ -102,7 +98,7 @@ class CogVideoXModel:
     - bfloat16 compute dtype for inference quality
 
     Attributes:
-        model_id: HuggingFace model ID for CogVideoX-5B I2V
+        model_id: HuggingFace model ID for CogVideoX-5B T2V
         device: Target device ("cuda" or "cpu")
         enable_cpu_offload: Whether to use model CPU offload for VRAM efficiency
         cache_dir: Optional cache directory for model weights
@@ -111,13 +107,12 @@ class CogVideoXModel:
         >>> model = CogVideoXModel(enable_cpu_offload=True)
         >>> model.load()
         >>> frames = await model.generate_chunk(
-        ...     image=keyframe,
-        ...     prompt="slow camera pan with gentle motion"
+        ...     prompt="A cartoon character waving at the camera"
         ... )
         >>> model.unload()
     """
 
-    model_id: str = "THUDM/CogVideoX-5b-I2V"
+    model_id: str = "THUDM/CogVideoX-5b"  # T2V model (was: CogVideoX-5b-I2V)
     device: str = "cuda"
     enable_cpu_offload: bool = True
     cache_dir: str | None = None
@@ -159,7 +154,7 @@ class CogVideoXModel:
 
         try:
             from diffusers import (
-                CogVideoXImageToVideoPipeline,
+                CogVideoXPipeline,  # T2V pipeline (was: CogVideoXImageToVideoPipeline)
                 PipelineQuantizationConfig,
                 TorchAoConfig,
             )
@@ -182,7 +177,7 @@ class CogVideoXModel:
             )
 
             # Load pipeline with quantization config
-            self._pipe = CogVideoXImageToVideoPipeline.from_pretrained(
+            self._pipe = CogVideoXPipeline.from_pretrained(  # T2V pipeline
                 self.model_id,
                 quantization_config=pipeline_quant_config,
                 torch_dtype=torch.bfloat16,
@@ -245,22 +240,17 @@ class CogVideoXModel:
 
     async def generate_chunk(
         self,
-        image: torch.Tensor | Image.Image,
         prompt: str,
         config: VideoGenerationConfig | None = None,
         seed: int | None = None,
     ) -> torch.Tensor:
-        """Generate a video chunk from a keyframe image.
+        """Generate a video chunk from a text prompt.
 
-        Takes an input keyframe and generates a video sequence showing motion
-        guided by the text prompt. The video starts from the provided image
-        and evolves according to the prompt description.
+        Generates a video sequence directly from text description using
+        CogVideoX-5B text-to-video model.
 
         Args:
-            image: Input keyframe as either:
-                   - torch.Tensor [3, H, W] or [C, H, W] with values in 0-1 range
-                   - PIL.Image.Image
-            prompt: Text prompt describing the desired motion/action
+            prompt: Text prompt describing the desired video content
             config: Optional generation configuration (uses defaults if None)
             seed: Optional seed for deterministic/reproducible generation
 
@@ -270,12 +260,11 @@ class CogVideoXModel:
 
         Raises:
             CogVideoXError: If generation fails or model not loaded
-            ValueError: If image format is invalid
+            ValueError: If prompt is empty
 
         Example:
             >>> frames = await model.generate_chunk(
-            ...     image=keyframe_tensor,  # [3, 480, 720] tensor
-            ...     prompt="slowly pan camera to the right",
+            ...     prompt="A cartoon character waving at the camera",
             ...     config=VideoGenerationConfig(num_frames=49),
             ...     seed=42
             ... )
@@ -291,9 +280,6 @@ class CogVideoXModel:
         # Validate prompt
         if not prompt or not prompt.strip():
             raise ValueError("prompt cannot be empty")
-
-        # Convert image to PIL if needed
-        pil_image = self._to_pil_image(image)
 
         # Set up generator for deterministic results
         generator = None
@@ -318,7 +304,6 @@ class CogVideoXModel:
             video_frames = await loop.run_in_executor(
                 None,
                 self._generate_sync,
-                pil_image,
                 prompt,
                 config,
                 generator,
@@ -343,7 +328,7 @@ class CogVideoXModel:
 
     async def generate_chain(
         self,
-        keyframe: torch.Tensor,
+        keyframe: torch.Tensor,  # noqa: ARG002 - deprecated, ignored
         prompt: str,
         target_duration: float,
         config: VideoGenerationConfig | None = None,
@@ -352,11 +337,13 @@ class CogVideoXModel:
     ) -> torch.Tensor:
         """Generate a long video by chaining multiple chunks.
 
-        Uses autoregressive chaining: each chunk's last frame becomes
-        the next chunk's keyframe, ensuring visual continuity.
+        .. deprecated::
+            This method is deprecated. Use generate_montage() instead.
+            The keyframe parameter is now ignored as CogVideoX-5b T2V
+            generates video directly from text prompts.
 
         Args:
-            keyframe: Initial keyframe tensor (RGB, 0-1 range) [C, H, W]
+            keyframe: DEPRECATED - ignored, kept for API compatibility
             prompt: Text prompt for all chunks
             target_duration: Desired total video duration in seconds
             config: Optional generation config (uses defaults if None)
@@ -365,17 +352,15 @@ class CogVideoXModel:
 
         Returns:
             Concatenated video frames tensor [total_frames, C, H, W]
-
-        Example:
-            >>> # Generate 12-second video from a keyframe
-            >>> video = await model.generate_chain(
-            ...     keyframe=image_tensor,
-            ...     prompt="A ham-man giving a speech, animated",
-            ...     target_duration=12.0,
-            ...     seed=42,
-            ... )
-            >>> print(video.shape)  # [96, 3, 480, 720]  # 96 frames at 8fps = 12s
         """
+        warnings.warn(
+            "generate_chain() is deprecated. Use generate_montage() instead. "
+            "The keyframe parameter is ignored as CogVideoX-5b T2V generates "
+            "video directly from text prompts.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if config is None:
             config = VideoGenerationConfig()
 
@@ -394,7 +379,6 @@ class CogVideoXModel:
         )
 
         all_frames: list[torch.Tensor] = []
-        current_frame = keyframe
 
         for chunk_idx in range(num_chunks):
             if progress_callback:
@@ -405,22 +389,18 @@ class CogVideoXModel:
 
             logger.info(f"Generating chunk {chunk_idx + 1}/{num_chunks}...")
 
-            # Generate chunk
+            # Generate chunk (T2V - no keyframe needed)
             chunk_frames = await self.generate_chunk(
-                image=current_frame,
                 prompt=prompt,
                 config=config,
                 seed=chunk_seed,
             )
 
-            # Skip first frame of subsequent chunks (overlap with previous)
+            # Skip first frame of subsequent chunks (for smoother transitions)
             if chunk_idx > 0:
                 chunk_frames = chunk_frames[1:]
 
             all_frames.append(chunk_frames)
-
-            # Extract last frame for next iteration
-            current_frame = chunk_frames[-1]  # [C, H, W]
 
             logger.info(
                 f"Chunk {chunk_idx + 1} complete: {chunk_frames.shape[0]} frames"
@@ -446,20 +426,19 @@ class CogVideoXModel:
 
     async def generate_montage(
         self,
-        keyframes: list[torch.Tensor],
         prompts: list[str],
         config: VideoGenerationConfig | None = None,
         seed: int | None = None,
         trim_frames: int = 40,  # Trim each 49-frame clip to 40 frames (~5s)
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> torch.Tensor:
-        """Generate video montage from multiple independent keyframes.
+        """Generate video montage from multiple text prompts.
 
-        Unlike generate_chain(), this method generates each clip independently
-        from its own keyframe, avoiding autoregressive degradation.
+        Generates each scene independently from its text prompt using
+        CogVideoX-5B text-to-video model. Each scene is generated fresh
+        without autoregressive degradation.
 
         Args:
-            keyframes: List of keyframe tensors [C, H, W] (one per scene)
             prompts: List of text prompts (one per scene)
             config: Optional generation config
             seed: Optional base seed (scene seeds = seed + scene_idx)
@@ -473,7 +452,6 @@ class CogVideoXModel:
 
         Example:
             >>> video = await model.generate_montage(
-            ...     keyframes=[img1, img2, img3],
             ...     prompts=["Scene 1...", "Scene 2...", "Scene 3..."],
             ...     seed=42,
             ... )
@@ -482,19 +460,14 @@ class CogVideoXModel:
         if config is None:
             config = VideoGenerationConfig()
 
-        if len(keyframes) != len(prompts):
-            raise ValueError(
-                f"keyframes ({len(keyframes)}) and prompts ({len(prompts)}) must match"
-            )
+        if len(prompts) == 0:
+            raise ValueError("prompts list cannot be empty")
 
-        if len(keyframes) == 0:
-            raise ValueError("keyframes list cannot be empty")
-
-        num_scenes = len(keyframes)
+        num_scenes = len(prompts)
         logger.info(f"Generating {num_scenes}-scene montage...")
 
         clips = []
-        for i, (keyframe, prompt) in enumerate(zip(keyframes, prompts)):
+        for i, prompt in enumerate(prompts):
             if progress_callback:
                 progress_callback(i, num_scenes)
 
@@ -503,9 +476,8 @@ class CogVideoXModel:
 
             logger.info(f"Generating scene {i+1}/{num_scenes}: {prompt[:50]}...")
 
-            # Generate clip from fresh keyframe
+            # Generate clip from text prompt (T2V)
             clip = await self.generate_chunk(
-                image=keyframe,
                 prompt=prompt,
                 config=config,
                 seed=scene_seed,
@@ -534,7 +506,6 @@ class CogVideoXModel:
 
     def _generate_sync(
         self,
-        image: Image.Image,
         prompt: str,
         config: VideoGenerationConfig,
         generator: torch.Generator | None,
@@ -542,7 +513,6 @@ class CogVideoXModel:
         """Synchronous video generation (called from executor).
 
         Args:
-            image: PIL image input
             prompt: Text prompt
             config: Generation configuration
             generator: Optional random generator for determinism
@@ -552,7 +522,6 @@ class CogVideoXModel:
         """
         result = self._pipe(
             prompt=prompt,
-            image=image,
             num_frames=config.num_frames,
             height=config.height,
             width=config.width,
@@ -564,74 +533,6 @@ class CogVideoXModel:
 
         # CogVideoX returns frames[0] as list of PIL images
         return result.frames[0]
-
-    def _to_pil_image(self, image: torch.Tensor | Image.Image) -> Image.Image:
-        """Convert input image to PIL format.
-
-        Args:
-            image: Input image as tensor [C, H, W] or PIL Image
-
-        Returns:
-            PIL.Image.Image in RGB format
-
-        Raises:
-            ValueError: If image format is invalid
-        """
-        # Import PIL here to avoid import at module level
-        from PIL import Image as PILImage
-
-        if isinstance(image, PILImage.Image):
-            # Ensure RGB mode
-            if image.mode != "RGB":
-                image = image.convert("RGB")
-            return image
-
-        if isinstance(image, torch.Tensor):
-            # Validate tensor shape
-            if image.dim() not in (3, 4):
-                raise ValueError(
-                    f"Image tensor must be 3D [C, H, W] or 4D [B, C, H, W], "
-                    f"got {image.dim()}D"
-                )
-
-            # Handle batch dimension
-            if image.dim() == 4:
-                if image.shape[0] != 1:
-                    raise ValueError(
-                        f"Batch size must be 1, got {image.shape[0]}"
-                    )
-                image = image.squeeze(0)
-
-            # Validate channels
-            if image.shape[0] not in (1, 3, 4):
-                raise ValueError(
-                    f"Image must have 1, 3, or 4 channels, got {image.shape[0]}"
-                )
-
-            # Convert to [H, W, C] for PIL
-            image_np = image.detach().cpu().numpy()
-
-            # Handle value range - normalize if needed
-            if image_np.max() <= 1.0:
-                image_np = (image_np * 255).astype(np.uint8)
-            else:
-                image_np = image_np.astype(np.uint8)
-
-            # Transpose from [C, H, W] to [H, W, C]
-            image_np = np.transpose(image_np, (1, 2, 0))
-
-            # Handle grayscale
-            if image_np.shape[2] == 1:
-                image_np = np.repeat(image_np, 3, axis=2)
-            # Handle RGBA
-            elif image_np.shape[2] == 4:
-                image_np = image_np[:, :, :3]
-
-            return PILImage.fromarray(image_np, mode="RGB")
-
-        raise ValueError(
-            f"Image must be torch.Tensor or PIL.Image, got {type(image).__name__}"
-        )
 
     def _frames_to_tensor(self, frames: list) -> torch.Tensor:
         """Convert list of PIL frames to tensor.
@@ -679,7 +580,7 @@ def load_cogvideox(
 
     Example:
         >>> model = load_cogvideox(enable_cpu_offload=True)
-        >>> frames = await model.generate_chunk(image, "gentle motion")
+        >>> frames = await model.generate_chunk("A cartoon character waving")
         >>> model.unload()
     """
     model = CogVideoXModel(

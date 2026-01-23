@@ -28,9 +28,11 @@ import logging
 import random
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import httpx
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,57 @@ For dialogue, you may use these audio tokens to add expressiveness:
 Example: "[gasps] Oh my GOD... [laughs] That's the most ridiculous thing I've ever seen!"
 """
 
+# Adult Swim / Interdimensional Cable visual style for T2V prompts
+ADULT_SWIM_STYLE = (
+    "2D cel-shaded cartoon, flat colors, rough expressive linework, "
+    "adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+)
+
+
+# Lazy-loaded fallback templates
+_FALLBACK_TEMPLATES: list | None = None
+
+
+def _load_fallback_templates() -> list:
+    """Load fallback script templates from YAML config file."""
+    config_path = Path(__file__).parent / "configs" / "fallback_scripts.yaml"
+
+    if not config_path.exists():
+        logger.warning(f"Fallback scripts config not found at {config_path}")
+        return []
+
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        logger.warning(f"Failed to parse fallback scripts YAML: {e}")
+        return []
+
+    templates: list = []
+
+    for t in data.get("templates", []):
+        try:
+            templates.append(Script(
+                setup=t["setup"],
+                punchline=t["punchline"],
+                subject_visual=t.get("subject_visual", "the main character"),
+                storyboard=t.get("storyboard", []),
+                video_prompts=t.get("video_prompts", []),
+            ))
+        except KeyError as e:
+            logger.warning(f"Skipping malformed fallback template, missing key: {e}")
+            continue
+
+    return templates
+
+
+def _get_fallback_templates() -> list:
+    """Get fallback templates, loading from YAML if needed."""
+    global _FALLBACK_TEMPLATES
+    if _FALLBACK_TEMPLATES is None:
+        _FALLBACK_TEMPLATES = _load_fallback_templates()
+    return _FALLBACK_TEMPLATES
+
 
 class ShowrunnerError(Exception):
     """Base exception for Showrunner errors.
@@ -63,364 +116,74 @@ class ShowrunnerError(Exception):
 
 @dataclass
 class Script:
-    """Generated comedy script with 3-scene storyboard.
+    """Generated comedy script with 3-scene storyboard and T2V prompts.
 
     Attributes:
-        setup: Opening premise (1 sentence)
-        punchline: Absurd conclusion (1 sentence)
-        storyboard: List of 3 visual scene descriptions for montage
+        setup: Opening premise (1 sentence, may include Bark tokens)
+        punchline: Absurd conclusion (1 sentence, may include Bark tokens)
+        subject_visual: Consistent visual description of the main subject
+        storyboard: List of 3 brief scene descriptions (for logging)
+        video_prompts: List of 3 dense T2V prompts (50-100 words each)
     """
 
     setup: str
     punchline: str
+    subject_visual: str
     storyboard: list[str]
+    video_prompts: list[str]  # Dense prompts for CogVideoX T2V
 
     @property
     def visual_prompt(self) -> str:
-        """Return first scene for backward compatibility."""
-        return self.storyboard[0] if self.storyboard else ""
-
-
-# Fallback templates for when Ollama is unavailable
-# Each template follows Interdimensional Cable's absurdist style with 3-scene storyboards
-FALLBACK_TEMPLATES: list[Script] = [
-    # Fake commercials - products that shouldn't exist
-    Script(
-        setup="[clears throat] Are you tired of your... regular teeth?",
-        punchline="Try Teeth-B-Gone! [laughs] Now your mouth is just a SMOOTH hole!",
-        storyboard=[
-            (
-                "Scene 1: A frustrated cartoon man pointing at his normal teeth "
-                "in a bathroom mirror, infomercial lighting, 1990s aesthetic"
-            ),
-            (
-                "Scene 2: The man applies a glowing product to his teeth, "
-                "sparkles and magical effects, bright colors, transformation sequence"
-            ),
-            (
-                "Scene 3: The man smiles revealing a completely smooth toothless mouth, "
-                "thumbs up to camera, surreal body horror, disturbingly happy"
-            ),
-        ],
-    ),
-    Script(
-        setup="Introducing the new Plumbus 2.0.",
-        punchline="It does the same thing, but now it's blue!",
-        storyboard=[
-            (
-                "Scene 1: A pink alien plumbus device on a white pedestal, "
-                "product showcase lighting, mysterious alien technology"
-            ),
-            (
-                "Scene 2: Factory workers dipping the plumbus in blue dye, "
-                "assembly line aesthetic, cartoon style, neon lighting"
-            ),
-            (
-                "Scene 3: The blue plumbus spinning majestically, confetti falling, "
-                "product reveal moment, absurd celebration, same weird shape"
-            ),
-        ],
-    ),
-    Script(
-        setup="[sighs] Do your hands keep falling off?",
-        punchline="Stick-It-Back Hand Glue - because duct tape is for QUITTERS!",
-        storyboard=[
-            (
-                "Scene 1: A cartoon person looking sadly at their detached hand "
-                "on the floor, suburban living room, surreal body horror comedy"
-            ),
-            (
-                "Scene 2: Close-up of glue bottle being applied to wrist stump, "
-                "infomercial demonstration style, bright studio lighting"
-            ),
-            (
-                "Scene 3: Person waving both hands triumphantly at camera, "
-                "one slightly crooked, big smile, product success moment"
-            ),
-        ],
-    ),
-    Script(
-        setup="[gasps] Tired of sleeping horizontally like some kind of FLOOR person?",
-        punchline="The Vertical Sleep Pod - stand up and pass out like NATURE intended!",
-        storyboard=[
-            (
-                "Scene 1: A person lying in bed looking disgusted at themselves, "
-                "black and white footage, infomercial problem setup"
-            ),
-            (
-                "Scene 2: Futuristic vertical pod opening with steam and neon lights, "
-                "sci-fi commercial aesthetic, dramatic reveal"
-            ),
-            (
-                "Scene 3: Happy person sleeping standing up in the pod, "
-                "peaceful expression, city skyline behind, absurd product design"
-            ),
-        ],
-    ),
-    # Talk shows with weird hosts
-    Script(
-        setup=(
-            "[sighs] Welcome back to Cooking with Regret... "
-            "I'm your host, a sentient cloud of disappointment."
-        ),
-        punchline=(
-            "Today we're making my father's approval - "
-            "[laughs] just kidding, that's IMPOSSIBLE!"
-        ),
-        storyboard=[
-            (
-                "Scene 1: A sad gray cloud with eyes floating behind a kitchen counter, "
-                "pastel studio set, cooking show format, surreal cartoon style"
-            ),
-            (
-                "Scene 2: The cloud attempts to mix ingredients but they phase through it, "
-                "bowls and spoons floating, existential sadness, studio lighting"
-            ),
-            (
-                "Scene 3: Empty plate presentation with a single tear drop from the cloud, "
-                "dramatic close-up, cooking show finale lighting, melancholy"
-            ),
-        ],
-    ),
-    Script(
-        setup=(
-            "This is Personal Space, "
-            "the show that explores the boundaries of personal space."
-        ),
-        punchline=(
-            "Step one: stay out of my personal space. "
-            "Step two: stay out of my personal space."
-        ),
-        storyboard=[
-            (
-                "Scene 1: A nervous bald man in a spotlight on empty black stage, "
-                "uncomfortable close-up, sweat visible, talk show format"
-            ),
-            (
-                "Scene 2: The man drawing a chalk circle around himself frantically, "
-                "paranoid expression, dramatic shadows, surreal"
-            ),
-            (
-                "Scene 3: Extreme close-up of the man's face filling entire screen, "
-                "wild eyes, ironic violation of personal space, unsettling"
-            ),
-        ],
-    ),
-    # News broadcasts with absurd topics
-    Script(
-        setup=(
-            "[clears throat] Breaking news: local man discovers "
-            "his reflection has been living a BETTER life."
-        ),
-        punchline=(
-            "[gasps] The reflection reportedly has a nicer apartment "
-            "and remembers birthdays!"
-        ),
-        storyboard=[
-            (
-                "Scene 1: News anchor at desk with breaking news graphics, "
-                "professional broadcast style, dramatic lighting"
-            ),
-            (
-                "Scene 2: Split screen showing sad man vs happy reflection in mirror, "
-                "reflection's side has nicer furniture, surreal comparison"
-            ),
-            (
-                "Scene 3: The reflection waving smugly from inside the mirror, "
-                "holding a birthday cake, man crying outside, news format"
-            ),
-        ],
-    ),
-    Script(
-        setup=(
-            "In other news, scientists confirm "
-            "the moon is just a really committed frisbee."
-        ),
-        punchline=(
-            "The original thrower is expected to catch it "
-            "in approximately four billion years!"
-        ),
-        storyboard=[
-            (
-                "Scene 1: News anchor gesturing at space graphic behind them, "
-                "professional news broadcast, serious expression"
-            ),
-            (
-                "Scene 2: Animation of giant hand throwing frisbee-moon into space, "
-                "cosmic background, trajectory lines, infographic style"
-            ),
-            (
-                "Scene 3: Silhouette of giant figure waiting with mitt in space, "
-                "timer showing billions of years, patient expression, surreal scale"
-            ),
-        ],
-    ),
-    # Public service announcements gone wrong
-    Script(
-        setup="This is a public service announcement: your furniture has feelings too.",
-        punchline="That chair you never sit in? It knows. It knows and it's sad.",
-        storyboard=[
-            (
-                "Scene 1: PSA title card with serious font and warning colors, "
-                "government broadcast aesthetic, dramatic music implied"
-            ),
-            (
-                "Scene 2: Living room with furniture that has cartoon eyes, "
-                "the chair in corner looks lonely, melancholy lighting"
-            ),
-            (
-                "Scene 3: Close-up of the sad chair with a single tear, "
-                "cobwebs forming, family laughing on couch in background, surreal guilt"
-            ),
-        ],
-    ),
-    Script(
-        setup=(
-            "Remember kids, always look both ways "
-            "before crossing into a parallel dimension."
-        ),
-        punchline="You might see yourself, and honestly, that guy is a jerk!",
-        storyboard=[
-            (
-                "Scene 1: Cartoon child at a crosswalk but instead of street "
-                "there is a swirling portal, educational PSA style"
-            ),
-            (
-                "Scene 2: Child looking left and right seeing alternate versions of self, "
-                "one is rude and sticking tongue out, warning colors"
-            ),
-            (
-                "Scene 3: Child and alternate self in fistfight, "
-                "safety mascot shrugging in corner, cartoon violence, PSA gone wrong"
-            ),
-        ],
-    ),
-    # Infomercials for impossible products
-    Script(
-        setup="Have you ever wanted to taste colors?",
-        punchline=(
-            "Introducing Synesthesia Snacks - "
-            "now purple tastes exactly how you'd expect!"
-        ),
-        storyboard=[
-            (
-                "Scene 1: Person staring longingly at a rainbow, "
-                "dramatic lighting, existential yearning, infomercial problem setup"
-            ),
-            (
-                "Scene 2: Package of Synesthesia Snacks glowing with prismatic colors, "
-                "product hero shot, psychedelic background, trippy visuals"
-            ),
-            (
-                "Scene 3: Person eating snacks while colors visibly enter their mouth, "
-                "ecstatic expression, synesthetic explosion, vibrant surreal"
-            ),
-        ],
-    ),
-    Script(
-        setup="Is your gravity getting old and boring?",
-        punchline="Try New Gravity - same direction, but with a fresh pine scent!",
-        storyboard=[
-            (
-                "Scene 1: Bored family standing normally on ground looking disappointed, "
-                "black and white, infomercial problem framing"
-            ),
-            (
-                "Scene 2: Spray bottle labeled New Gravity being sprayed into air, "
-                "green pine-scented particles visible, clean white background"
-            ),
-            (
-                "Scene 3: Same family still standing normally but now smiling and sniffing air, "
-                "pine trees appearing around them, absurd satisfaction"
-            ),
-        ],
-    ),
-    Script(
-        setup="[sighs] Can't stop thinking about that embarrassing thing from eight years ago?",
-        punchline="Memory Hole - just pour it in your ear and forget RESPONSIBLY! [laughs]",
-        storyboard=[
-            (
-                "Scene 1: Person lying awake at 3am with thought bubble showing cringe moment, "
-                "dark bedroom, anxious expression, relatable horror"
-            ),
-            (
-                "Scene 2: Cheerful person pouring glowing liquid into their own ear, "
-                "retro infomercial style, bright colors, unsettling smile"
-            ),
-            (
-                "Scene 3: Person with empty eyes and peaceful smile, thought bubble now blank, "
-                "maybe too peaceful, slightly disturbing satisfaction"
-            ),
-        ],
-    ),
-    Script(
-        setup="Introducing the Procrastinator's Clock - it's always tomorrow!",
-        punchline=(
-            "Why do today what you can do never? "
-            "That's the Procrastinator's promise!"
-        ),
-        storyboard=[
-            (
-                "Scene 1: Stressed person surrounded by tasks and regular clocks, "
-                "overwhelming chaos, deadline panic, black and white"
-            ),
-            (
-                "Scene 2: The Procrastinator's Clock revealed showing only TOMORROW, "
-                "product spotlight, studio lighting, magical glow"
-            ),
-            (
-                "Scene 3: Person relaxing on couch with piled up tasks burning behind them, "
-                "zen expression, flames reflected in eyes, absurd peace"
-            ),
-        ],
-    ),
-    Script(
-        setup="From the makers of Nothing comes Something, but not much.",
-        punchline="Something - because you deserve barely more than nothing!",
-        storyboard=[
-            (
-                "Scene 1: Empty void with the word NOTHING floating, "
-                "minimalist black space, philosophical emptiness"
-            ),
-            (
-                "Scene 2: A tiny speck appears labeled SOMETHING, epic reveal lighting, "
-                "dramatic music implied, ironic grandeur"
-            ),
-            (
-                "Scene 3: Person holding nearly empty box labeled Something, "
-                "forced smile, deadpan commercial style, existential product"
-            ),
-        ],
-    ),
-]
+        """Return first video_prompt for backward compatibility."""
+        return self.video_prompts[0] if self.video_prompts else ""
 
 
 # Prompt template for generating Interdimensional Cable scripts with 3-scene storyboard
-SCRIPT_PROMPT_TEMPLATE = """You are a writer for "Interdimensional Cable" - absurdist commercials.
-Write a SHORT surreal commercial about: {theme}
+SCRIPT_PROMPT_TEMPLATE = """You are a writer for "Interdimensional Cable" - absurdist TV from infinite dimensions.
+Write a SHORT surreal TV clip about: {theme}
 Tone: {tone}
 
-The commercial has 3 QUICK CUTS (5 seconds each):
-- Scene 1: Setup - Introduce the absurd product/situation
+This could be ANY type of interdimensional TV content:
+- Bizarre commercials for impossible products
+- Surreal talk shows with weird hosts
+- Breaking news from absurd realities
+- Movie trailers for films that shouldn't exist
+- Game shows with incomprehensible rules
+- Public service announcements gone wrong
+- Random channel-surfing moments of pure chaos
+
+The clip has 3 QUICK CUTS (5 seconds each):
+- Scene 1: Hook - Grab attention with something weird
 - Scene 2: Escalation - Things get weirder
-- Scene 3: Punchline - Maximum chaos/absurdity
+- Scene 3: Payoff - Maximum absurdity or abrupt cut
+
+IMPORTANT: Define a MAIN SUBJECT that appears in ALL scenes.
 {bark_tokens}
 Format your response ONLY as JSON (no markdown, no explanation):
 {{
-  "setup": "One sentence premise",
-  "punchline": "One sentence absurd conclusion",
+  "setup": "Opening line/premise with optional [laughs], [sighs], [gasps] tokens",
+  "punchline": "Closing line or absurd conclusion with optional tokens",
+  "subject_visual": "Detailed visual description of the MAIN SUBJECT (under 30 words)",
   "storyboard": [
-    "Scene 1: [Visual description - what we SEE in first 5 seconds]",
-    "Scene 2: [Visual description - what we SEE in seconds 5-10]",
-    "Scene 3: [Visual description - what we SEE in seconds 10-15]"
+    "Scene 1: Brief description",
+    "Scene 2: Brief description",
+    "Scene 3: Brief description"
+  ],
+  "video_prompts": [
+    "DENSE 50-100 word prompt for scene 1. Include: the subject, action, camera movement, lighting, environment. End with: {style}",
+    "DENSE 50-100 word prompt for scene 2. Include: the subject, action, camera movement, lighting, environment. End with: {style}",
+    "DENSE 50-100 word prompt for scene 3. Include: the subject, action, camera movement, lighting, environment. End with: {style}"
   ]
 }}
 
-Rules:
-- Keep each scene description under 50 words
-- Focus on VISUALS, not dialogue
-- Include style words like "cartoon", "surreal", "neon colors"
-- Use Bark audio tokens in setup/punchline for expressive speech\
+Rules for video_prompts:
+- Each prompt must be 50-100 words
+- Start with the subject description from subject_visual
+- Describe specific actions and movements
+- Include camera direction (zoom in, pan, static shot, shaky cam)
+- Include lighting and atmosphere
+- ALWAYS end each prompt with: "{style}"
+- Focus on VISUALS only - no dialogue, no sound descriptions
 """
 
 
@@ -547,9 +310,12 @@ class Showrunner:
         if not theme or not theme.strip():
             raise ShowrunnerError("Theme cannot be empty")
 
-        # Build the prompt with Bark TTS token instructions
+        # Build the prompt with Bark TTS token instructions and style
         prompt = SCRIPT_PROMPT_TEMPLATE.format(
-            theme=theme, tone=tone, bark_tokens=BARK_TOKEN_INSTRUCTIONS
+            theme=theme,
+            tone=tone,
+            bark_tokens=BARK_TOKEN_INSTRUCTIONS,
+            style=ADULT_SWIM_STYLE,
         )
 
         logger.debug(
@@ -618,7 +384,7 @@ class Showrunner:
             raw_response: Raw text response from Ollama
 
         Returns:
-            Parsed Script object with 3-scene storyboard
+            Parsed Script object with 3-scene storyboard and video_prompts
 
         Raises:
             ShowrunnerError: If response cannot be parsed as valid JSON
@@ -637,13 +403,14 @@ class Showrunner:
                 f"Invalid JSON response from Ollama: {e}"
             ) from e
 
-        # Validate required fields (storyboard replaces visual_prompt)
+        # Validate required fields
         required_string_fields = ["setup", "punchline"]
         missing_fields = [f for f in required_string_fields if f not in data]
 
         # Check for storyboard (new) or visual_prompt (legacy)
         has_storyboard = "storyboard" in data
         has_visual_prompt = "visual_prompt" in data
+        has_video_prompts = "video_prompts" in data
 
         if not has_storyboard and not has_visual_prompt:
             missing_fields.append("storyboard")
@@ -680,7 +447,6 @@ class Showrunner:
         if len(storyboard) != 3:
             logger.warning(f"Expected 3 scenes, got {len(storyboard)}. Padding/trimming.")
             if len(storyboard) < 3:
-                # Pad with generic scene
                 while len(storyboard) < 3:
                     storyboard.append(f"Scene {len(storyboard)+1}: continuation of the action")
             else:
@@ -698,10 +464,57 @@ class Showrunner:
                 cleaned_scene = f"Scene {i+1}: continuation of the action"
             cleaned_storyboard.append(cleaned_scene)
 
+        # Parse subject_visual (new field for subject anchoring)
+        subject_visual = data.get("subject_visual", "")
+        if not subject_visual or not subject_visual.strip():
+            subject_visual = "the main character"
+            logger.warning("Missing subject_visual, using generic fallback")
+        else:
+            subject_visual = subject_visual.strip()
+
+        # Parse video_prompts (new field for T2V)
+        if has_video_prompts:
+            video_prompts = data["video_prompts"]
+            if not isinstance(video_prompts, list):
+                raise ShowrunnerError(
+                    f"Field 'video_prompts' must be a list, got {type(video_prompts).__name__}"
+                )
+        else:
+            # Generate video_prompts from storyboard + subject + style
+            logger.warning("Missing video_prompts, generating from storyboard")
+            video_prompts = []
+            for scene in cleaned_storyboard:
+                prompt = f"{subject_visual}, {scene}. {ADULT_SWIM_STYLE}"
+                video_prompts.append(prompt)
+
+        # Validate video_prompts has 3 entries
+        if len(video_prompts) != 3:
+            logger.warning(f"Expected 3 video_prompts, got {len(video_prompts)}. Padding/trimming.")
+            if len(video_prompts) < 3:
+                while len(video_prompts) < 3:
+                    prompt = f"{subject_visual}, Scene {len(video_prompts)+1}. {ADULT_SWIM_STYLE}"
+                    video_prompts.append(prompt)
+            else:
+                video_prompts = video_prompts[:3]
+
+        # Validate each video_prompt is a non-empty string
+        cleaned_video_prompts = []
+        for i, prompt in enumerate(video_prompts):
+            if not isinstance(prompt, str):
+                raise ShowrunnerError(
+                    f"video_prompt {i+1} must be a string, got {type(prompt).__name__}"
+                )
+            cleaned_prompt = prompt.strip()
+            if not cleaned_prompt:
+                cleaned_prompt = f"{subject_visual}, Scene {i+1}. {ADULT_SWIM_STYLE}"
+            cleaned_video_prompts.append(cleaned_prompt)
+
         return Script(
             setup=data["setup"].strip(),
             punchline=data["punchline"].strip(),
+            subject_visual=subject_visual,
             storyboard=cleaned_storyboard,
+            video_prompts=cleaned_video_prompts,
         )
 
     def _extract_json(self, text: str) -> str:
@@ -806,32 +619,34 @@ class Showrunner:
     ) -> Script:
         """Get a random pre-written script when Ollama is unavailable.
 
-        This method provides a fallback mechanism when the Ollama LLM service
-        is down or unavailable. It returns a pre-written Script from the
-        FALLBACK_TEMPLATES collection, ensuring the pipeline can continue
-        even without LLM access.
-
         Args:
             theme: Used to seed selection for determinism when no seed provided.
-                   The actual theme content is not used for filtering.
-            tone: Unused, kept for interface consistency with generate_script().
-            seed: Optional seed for deterministic selection. If None, the hash
-                  of the theme string is used as the seed.
+            tone: Unused, kept for interface consistency.
+            seed: Optional seed for deterministic selection.
 
         Returns:
-            Script from the fallback templates with setup, punchline,
-            and 3-scene storyboard fields populated.
-
-        Example:
-            >>> showrunner = Showrunner()
-            >>> # Get deterministic script based on theme
-            >>> script = showrunner.get_fallback_script("bizarre infomercial")
-            >>> print(script.setup)
-            >>> print(script.storyboard)  # List of 3 scene descriptions
-
-            >>> # Get deterministic script with explicit seed
-            >>> script = showrunner.get_fallback_script("any theme", seed=42)
+            Script from the fallback templates.
         """
+        templates = _get_fallback_templates()
+
+        if not templates:
+            # Emergency fallback if YAML fails to load
+            return Script(
+                setup="Welcome to Interdimensional Cable!",
+                punchline="Where anything can happen!",
+                subject_visual="a cartoon TV host",
+                storyboard=[
+                    "Scene 1: Host waves",
+                    "Scene 2: Host talks",
+                    "Scene 3: Host exits",
+                ],
+                video_prompts=[
+                    f"A cartoon TV host waves at the camera. {ADULT_SWIM_STYLE}",
+                    f"A cartoon TV host talks with exaggerated gestures. {ADULT_SWIM_STYLE}",
+                    f"A cartoon TV host exits stage left. {ADULT_SWIM_STYLE}",
+                ],
+            )
+
         # Use theme hash + seed for deterministic selection
         rng = random.Random()
         if seed is not None:
@@ -839,7 +654,7 @@ class Showrunner:
         else:
             rng.seed(hash(theme))
 
-        script = rng.choice(FALLBACK_TEMPLATES)
+        script = rng.choice(templates)
 
         logger.info(
             "Using fallback script template",
