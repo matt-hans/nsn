@@ -57,6 +57,12 @@ fearful:
   fine_temp: 0.6
   description: "Anxious, nervous, high pitch variation"
 
+anxious:
+  text_prefix: ""
+  coarse_temp: 0.85
+  fine_temp: 0.55
+  description: "Nervous, worried, stammering (Morty's signature)"
+
 # Default fallback (same as neutral)
 default:
   text_prefix: ""

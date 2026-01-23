@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from vortex.plugins.errors import PluginExecutionError
 from vortex.plugins.registry import PluginRegistry
@@ -22,7 +23,9 @@ class PluginExecutionResult:
 class PluginExecutor:
     """Execute registered plugins with schema and latency enforcement."""
 
-    def __init__(self, registry: PluginRegistry, sandbox_runner: SandboxRunner | None = None) -> None:
+    def __init__(
+        self, registry: PluginRegistry, sandbox_runner: SandboxRunner | None = None
+    ) -> None:
         self._registry = registry
         self._sandbox_runner = sandbox_runner
 
@@ -62,7 +65,7 @@ class PluginExecutor:
                 plugin = self._registry.get_plugin(name)
                 output = await _run_with_timeout(plugin, payload, budget_ms)
                 duration_ms = (time.monotonic() - start_time) * 1000
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise PluginExecutionError(
                 f"Plugin '{name}' exceeded latency budget of {budget_ms}ms"
             ) from exc

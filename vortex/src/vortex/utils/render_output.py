@@ -157,8 +157,7 @@ def _write_mp4(
     process = subprocess.run(
         cmd,
         input=frames.tobytes(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
     )
     if process.returncode != 0:

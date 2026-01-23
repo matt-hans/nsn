@@ -64,7 +64,7 @@ class PluginRegistry:
     @classmethod
     def from_directory(
         cls, root: Path, policy: PluginPolicy, *, load_plugins: bool = True
-    ) -> "PluginRegistry":
+    ) -> PluginRegistry:
         if load_plugins and policy.allow_untrusted:
             raise PluginLoadError(
                 "Refusing to load plugins in-process when allow_untrusted is enabled"
@@ -94,9 +94,10 @@ class PluginRegistry:
         *,
         policy: PluginPolicy | None = None,
         load_plugins: bool = True,
-    ) -> "PluginRegistry":
+    ) -> PluginRegistry:
         cfg = config or {}
-        policy_value = policy or policy_from_config(cfg.get("policy") if isinstance(cfg, dict) else None)
+        policy_cfg = cfg.get("policy") if isinstance(cfg, dict) else None
+        policy_value = policy or policy_from_config(policy_cfg)
         if isinstance(cfg, dict) and not bool(cfg.get("enabled", False)):
             return cls(policy=policy_value)
         root = cfg.get("directory", "plugins") if isinstance(cfg, dict) else "plugins"

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from vortex.plugins.errors import SchemaValidationError
 from vortex.plugins.types import JsonSchema
@@ -40,7 +41,9 @@ def validate_schema(schema: JsonSchema, payload: Mapping[str, Any], *, context: 
         _validate_field(field_name, value, field_schema, context=context)
 
 
-def _validate_field(field: str, value: Any, field_schema: Mapping[str, Any], *, context: str) -> None:
+def _validate_field(
+    field: str, value: Any, field_schema: Mapping[str, Any], *, context: str
+) -> None:
     field_type = field_schema.get("type")
     if field_type is None:
         return

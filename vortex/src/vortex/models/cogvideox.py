@@ -158,7 +158,11 @@ class CogVideoXModel:
         logger.info(f"Loading CogVideoX from {self.model_id}...")
 
         try:
-            from diffusers import CogVideoXImageToVideoPipeline, PipelineQuantizationConfig, TorchAoConfig
+            from diffusers import (
+                CogVideoXImageToVideoPipeline,
+                PipelineQuantizationConfig,
+                TorchAoConfig,
+            )
         except ImportError as e:
             logger.error(
                 "Failed to import diffusers. Install with: pip install diffusers>=0.30.0",

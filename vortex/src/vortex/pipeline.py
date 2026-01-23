@@ -20,10 +20,10 @@ Example:
 from __future__ import annotations
 
 import logging
+import os
 import random
 import time
 from dataclasses import dataclass
-import os
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +33,6 @@ import yaml
 from vortex.renderers import (
     DeterministicVideoRenderer,
     RendererNotFoundError,
-    RendererPolicy,
     RendererRegistry,
     RenderResult,
     policy_from_config,
@@ -268,7 +267,7 @@ class VortexPipeline:
         recipe["slot_params"]["slot_id"] = slot_id
 
         logger.info(
-            f"Starting slot generation",
+            "Starting slot generation",
             extra={
                 "slot_id": slot_id,
                 "seed": seed,
@@ -301,7 +300,7 @@ class VortexPipeline:
 
         if result.success:
             logger.info(
-                f"Slot generation completed",
+                "Slot generation completed",
                 extra={
                     "slot_id": slot_id,
                     "generation_time_ms": generation_time_ms,
@@ -339,7 +338,7 @@ class VortexPipeline:
                     logger.error("Failed to save render output: %s", exc)
         else:
             logger.error(
-                f"Slot generation failed",
+                "Slot generation failed",
                 extra={
                     "slot_id": slot_id,
                     "error": result.error_msg,

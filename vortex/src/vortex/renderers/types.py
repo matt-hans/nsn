@@ -6,8 +6,9 @@ implementations. Adapted from plugins/types.py with Lane 0-specific constraints.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 import torch
 

@@ -25,7 +25,7 @@ class PluginHost:
     sandbox: SandboxRunner | None
 
     @classmethod
-    def from_config(cls, config_path: str | None = None) -> "PluginHost":
+    def from_config(cls, config_path: str | None = None) -> PluginHost:
         if config_path is None:
             config_path = str(Path(__file__).parent.parent.parent / "config.yaml")
         config = yaml.safe_load(Path(config_path).read_text())

@@ -27,7 +27,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from vortex.renderers.types import RenderResult, RendererManifest
+from vortex.renderers.types import RendererManifest, RenderResult
 
 
 class DeterministicVideoRenderer(ABC):

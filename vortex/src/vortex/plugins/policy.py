@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from vortex.plugins.errors import PolicyViolationError
 from vortex.plugins.types import PluginManifest
@@ -55,7 +55,7 @@ class PluginPolicy:
                 )
 
     @classmethod
-    def from_config(cls, config: dict[str, object]) -> "PluginPolicy":
+    def from_config(cls, config: dict[str, object]) -> PluginPolicy:
         """Create a policy from config dict."""
         max_vram_gb = float(config.get("max_vram_gb", 11.5))
         lane0_max_latency_ms = int(config.get("lane0_max_latency_ms", 15000))

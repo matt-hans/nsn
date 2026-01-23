@@ -17,11 +17,38 @@ parameters.
 """
 
 import logging
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
 import torch
 import yaml
+
+
+def _patch_torch_load_for_bark() -> None:
+    """Patch torch.load to use weights_only=False for Bark compatibility.
+
+    PyTorch 2.6+ changed torch.load default to weights_only=True.
+    Bark's checkpoints contain numpy objects that fail with weights_only=True.
+    This patch makes torch.load default to weights_only=False to maintain
+    compatibility with Bark's model loading.
+
+    This is safe because we trust Bark's official model checkpoints.
+    """
+    original_load = torch.load
+
+    @wraps(original_load)
+    def patched_load(*args, **kwargs):
+        # Default to weights_only=False for Bark compatibility
+        if "weights_only" not in kwargs:
+            kwargs["weights_only"] = False
+        return original_load(*args, **kwargs)
+
+    torch.load = patched_load
+
+
+# Apply patch before importing bark
+_patch_torch_load_for_bark()
 
 # Import bark functions - these will be mocked in tests
 try:

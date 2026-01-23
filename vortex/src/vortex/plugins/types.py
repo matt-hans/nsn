@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
-
+from typing import Any
 
 JsonSchema = Mapping[str, Any]
 
@@ -41,7 +41,7 @@ class PluginManifest:
         return value
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "PluginManifest":
+    def from_dict(cls, data: Mapping[str, Any]) -> PluginManifest:
         """Create PluginManifest from dict with validation."""
         schema_version = cls._require_str(data, "schema_version")
         name = cls._require_str(data, "name")

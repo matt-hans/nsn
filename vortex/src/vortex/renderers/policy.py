@@ -9,8 +9,9 @@ on renderers. Lane 0 has strict requirements:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from vortex.renderers.errors import RendererPolicyError
 from vortex.renderers.types import LANE0_MAX_LATENCY_MS, LANE0_MAX_VRAM_GB, RendererManifest

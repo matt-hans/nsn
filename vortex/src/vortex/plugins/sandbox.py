@@ -11,9 +11,10 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from vortex.plugins.errors import PluginExecutionError
 from vortex.plugins.types import PluginManifest
@@ -95,7 +96,7 @@ class SandboxConfig:
     seccomp_profile: str | None
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, object] | None) -> "SandboxConfig":
+    def from_dict(cls, raw: Mapping[str, object] | None) -> SandboxConfig:
         data = raw or {}
         enabled = bool(data.get("enabled", True))
         engine = str(data.get("engine", "docker")).lower()
@@ -174,7 +175,7 @@ class ProcessSandboxRunner:
         self._python_bin = python_bin or sys.executable
 
     @classmethod
-    def from_config(cls, config: Mapping[str, object] | None) -> "ProcessSandboxRunner":
+    def from_config(cls, config: Mapping[str, object] | None) -> ProcessSandboxRunner:
         data = config or {}
         python_bin = str(data.get("python_bin", sys.executable))
         return cls(python_bin=python_bin)
@@ -233,7 +234,7 @@ class ProcessSandboxRunner:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
                 proc.communicate(), timeout=(budget_ms / 1000) + 1
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             proc.kill()
             if SANDBOX_FAILURES is not None:
                 SANDBOX_FAILURES.labels(engine=self.engine, reason="timeout").inc()
@@ -374,7 +375,7 @@ class DockerSandboxRunner:
         timeout = (budget_ms + self._config.timeout_grace_ms) / 1000
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             await self._kill_container(container_name)
             if SANDBOX_FAILURES is not None:
                 SANDBOX_FAILURES.labels(engine=self.engine, reason="timeout").inc()
@@ -399,7 +400,8 @@ class DockerSandboxRunner:
         return result
 
     async def _kill_container(self, name: str) -> None:
-        for cmd in ([self._config.docker_bin, "kill", name], [self._config.docker_bin, "rm", "-f", name]):
+        docker = self._config.docker_bin
+        for cmd in ([docker, "kill", name], [docker, "rm", "-f", name]):
             proc = await asyncio.create_subprocess_exec(*cmd)
             await proc.wait()
 
