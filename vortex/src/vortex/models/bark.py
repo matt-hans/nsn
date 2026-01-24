@@ -62,33 +62,62 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Official Bark tokens that actually work (per suno-ai/bark README)
+VALID_BARK_TOKENS = frozenset({
+    "[laughter]", "[laughs]", "[sighs]", "[music]",
+    "[gasps]", "[clears throat]", "—", "..."
+})
+
 
 def _clean_text_for_bark(text: str) -> str:
-    """Sanitize text for Bark TTS to prevent stuttering and literal reading.
+    """Sanitize text for Bark TTS using strict token whitelist.
 
-    Bark is a literal reader - it will try to pronounce file extensions,
-    URLs, and special characters. This function scrubs problematic patterns.
+    Bark will try to pronounce anything in brackets or asterisks literally.
+    This function:
+    1. Protects valid Bark tokens (e.g., [laughs], [gasps])
+    2. Strips all other bracketed content (e.g., [excited], [fast])
+    3. Strips asterisk stage directions (e.g., *looks around*)
+    4. Removes file extensions, URLs, paths, special characters
 
     Args:
         text: Raw text from script
 
     Returns:
-        Cleaned text safe for Bark synthesis
+        Cleaned text with only valid Bark tokens preserved
     """
-    # Remove file extensions (causes "dot S-S-D" stuttering)
+    # 1. Protect valid tokens by temporarily replacing them
+    # Use alphanumeric placeholders to survive the special character stripping
+    protected_map = {}
+    for i, token in enumerate(VALID_BARK_TOKENS):
+        placeholder = f"BARKPLACEHOLDER{i}ENDTOKEN"
+        if token in text:
+            text = text.replace(token, placeholder)
+            protected_map[placeholder] = token
+
+    # 2. Remove ALL other bracketed content (invalid tokens like [excited], [fast])
+    text = re.sub(r'\[.*?\]', '', text)
+
+    # 3. Remove asterisk stage directions (e.g., *looks around*, *gasps*)
+    text = re.sub(r'\*[^*]+\*', '', text)
+
+    # 4. Remove file extensions (causes "dot S-S-D" stuttering)
     text = re.sub(r'\.\w{2,4}\b', '', text)
 
-    # Remove URLs and paths
+    # 5. Remove URLs and paths
     text = re.sub(r'https?://\S+', '', text)
     text = re.sub(r'/[\w/.-]+', '', text)
 
-    # Replace remaining dots with spaces (except ellipsis)
+    # 6. Replace remaining dots with spaces (except ellipsis already protected)
     text = re.sub(r'(?<!\.)\.(?!\.)', ' ', text)
 
-    # Remove special characters that cause pronunciation issues
-    text = re.sub(r'[*_~`#@$%^&+=|\\<>{}[\]]', '', text)
+    # 7. Remove remaining special characters (but NOT brackets - already handled)
+    text = re.sub(r'[*_~`#@$%^&+=|\\<>{}]', '', text)
 
-    # Normalize multiple spaces
+    # 8. Restore valid tokens
+    for placeholder, token in protected_map.items():
+        text = text.replace(placeholder, token)
+
+    # 9. Normalize whitespace
     text = ' '.join(text.split())
 
     return text.strip()

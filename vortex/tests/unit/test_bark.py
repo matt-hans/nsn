@@ -319,3 +319,117 @@ class TestBarkUnload:
                 engine.unload()
 
                 mock_cache.assert_called_once()
+
+
+class TestBarkTokenWhitelist:
+    """Test suite for Bark token whitelist sanitization."""
+
+    def test_preserves_valid_laughs_token(self):
+        """Valid [laughs] token should be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "That's hilarious [laughs] indeed"
+        cleaned = _clean_text_for_bark(text)
+        assert "[laughs]" in cleaned
+
+    def test_preserves_valid_gasps_token(self):
+        """Valid [gasps] token should be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Oh no [gasps] what happened"
+        cleaned = _clean_text_for_bark(text)
+        assert "[gasps]" in cleaned
+
+    def test_preserves_valid_sighs_token(self):
+        """Valid [sighs] token should be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "I'm so tired [sighs] of this"
+        cleaned = _clean_text_for_bark(text)
+        assert "[sighs]" in cleaned
+
+    def test_preserves_valid_laughter_token(self):
+        """Valid [laughter] token should be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "That was funny [laughter]"
+        cleaned = _clean_text_for_bark(text)
+        assert "[laughter]" in cleaned
+
+    def test_preserves_valid_music_token(self):
+        """Valid [music] token should be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "[music] Here comes the song"
+        cleaned = _clean_text_for_bark(text)
+        assert "[music]" in cleaned
+
+    def test_preserves_valid_clears_throat_token(self):
+        """Valid [clears throat] token should be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Ahem [clears throat] attention please"
+        cleaned = _clean_text_for_bark(text)
+        assert "[clears throat]" in cleaned
+
+    def test_strips_invalid_excited_token(self):
+        """Invalid [excited] token should be removed."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "I'm so [excited] about this"
+        cleaned = _clean_text_for_bark(text)
+        assert "[excited]" not in cleaned
+        assert "excited" not in cleaned  # Entire token removed
+
+    def test_strips_invalid_fast_token(self):
+        """Invalid [fast] token should be removed."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "We need to go [fast] right now"
+        cleaned = _clean_text_for_bark(text)
+        assert "[fast]" not in cleaned
+        assert "fast" not in cleaned
+
+    def test_strips_asterisk_stage_directions(self):
+        """Asterisk stage directions like *looks around* should be removed."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Hello *looks around nervously* how are you"
+        cleaned = _clean_text_for_bark(text)
+        assert "*" not in cleaned
+        assert "looks around" not in cleaned
+        assert "Hello" in cleaned
+        assert "how are you" in cleaned
+
+    def test_strips_asterisk_gasps_direction(self):
+        """Asterisk *gasps* should be removed (use [gasps] instead)."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Oh my *gasps* what is that"
+        cleaned = _clean_text_for_bark(text)
+        assert "*gasps*" not in cleaned
+        assert "gasps" not in cleaned
+
+    def test_multiple_valid_tokens_preserved(self):
+        """Multiple valid tokens in one string should all be preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "[sighs] I can't believe [laughs] this is happening [gasps]"
+        cleaned = _clean_text_for_bark(text)
+        assert "[sighs]" in cleaned
+        assert "[laughs]" in cleaned
+        assert "[gasps]" in cleaned
+
+    def test_mixed_valid_and_invalid_tokens(self):
+        """Valid tokens preserved while invalid tokens removed."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "I'm [excited] to see you [laughs] let's go [fast]"
+        cleaned = _clean_text_for_bark(text)
+        assert "[laughs]" in cleaned
+        assert "[excited]" not in cleaned
+        assert "[fast]" not in cleaned
+        assert "excited" not in cleaned
+        assert "fast" not in cleaned
+
+    def test_preserves_ellipsis(self):
+        """Ellipsis should be preserved as valid token."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Wait... what?"
+        cleaned = _clean_text_for_bark(text)
+        assert "..." in cleaned
+
+    def test_preserves_em_dash(self):
+        """Em dash should be preserved as valid token."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "I think—no wait—yes that's right"
+        cleaned = _clean_text_for_bark(text)
+        assert "—" in cleaned
