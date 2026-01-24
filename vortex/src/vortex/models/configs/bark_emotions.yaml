@@ -14,6 +14,20 @@
 # For "Interdimensional Cable" aesthetic:
 #   - Higher coarse_temp = more chaotic prosody (good)
 #   - Moderate fine_temp = some texture without too much hiss
+#
+# Valid Bark Paralinguistic Tokens (per suno-ai/bark README):
+#   [laughter] or [laughs] - character laughs
+#   [sighs] - character sighs
+#   [gasps] - character gasps in surprise
+#   [clears throat] - clears throat
+#   ... (ellipsis) - hesitation or trailing off
+#   CAPITALIZED WORDS - shouting or emphasis
+#   ♪ - singing/musical notation (use sparingly)
+#
+# WARNING: These tokens WILL cause hallucination/gibberish:
+#   [fast], [slow], [excited], [angry], [sad], [happy]
+#   Any bracketed emotion name that isn't in the valid list above
+#   Use temperature settings (coarse_temp, fine_temp) for emotion instead
 
 neutral:
   text_prefix: ""
