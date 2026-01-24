@@ -57,11 +57,12 @@ ModelName = str
 
 logger = logging.getLogger(__name__)
 
-# Visual style prompt for keyframe generation
-# 1990s cartoon style with halftone texture anchoring for CogVideoX VAE compatibility
+# VAE-safe style: solid colors and clean edges prevent aliasing artifacts
+# REMOVED: "halftone texture" (causes swirling during VAE downsampling)
+# ADDED: "vector art, solid colors" (mathematically stable for 8x downsampling)
 VISUAL_STYLE_PROMPT = (
-    "1990s Saturday morning cartoon, thick black outlines, cel shaded, "
-    "flat vibrant colors, halftone texture, high contrast, clean linework"
+    "1990s cartoon style, thick clean outlines, flat solid colors, vector art, "
+    "cel shaded, high definition, saturday morning cartoon, no gradients"
 )
 
 # Motion style suffix appended to video prompts for CogVideoX I2V
