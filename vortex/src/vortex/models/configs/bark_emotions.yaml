@@ -31,9 +31,9 @@
 
 neutral:
   text_prefix: ""
-  coarse_temp: 0.6    # CHANGED: was 0.7, lower for more consistent prosody
-  fine_temp: 0.4      # CHANGED: was 0.5, lower to reduce stuttering/hissing
-  description: "Standard delivery, stable and clear"
+  coarse_temp: 0.8    # CHANGED: raised from 0.6 for more natural pitch variation
+  fine_temp: 0.4      # Keep low for audio clarity (prevents hissing)
+  description: "Standard delivery with natural pitch variation"
 
 excited:
   text_prefix: ""
@@ -80,6 +80,6 @@ anxious:
 # Default fallback (same as neutral)
 default:
   text_prefix: ""
-  coarse_temp: 0.6
+  coarse_temp: 0.8
   fine_temp: 0.4
   description: "Fallback emotion settings"

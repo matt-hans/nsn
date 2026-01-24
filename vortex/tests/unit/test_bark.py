@@ -65,8 +65,8 @@ class TestBarkVoiceEngine:
             engine = BarkVoiceEngine(device="cpu")
 
         params = engine._get_emotion_params("unknown_emotion")
-        assert params["coarse_temp"] == 0.6  # Neutral default
-        assert params["fine_temp"] == 0.4  # Lower for clarity
+        assert params["coarse_temp"] == 0.8  # UPDATED: was 0.6, now 0.8 for natural pitch variation
+        assert params["fine_temp"] == 0.4  # Keep low for clarity
 
 
 class TestBarkSynthesis:
