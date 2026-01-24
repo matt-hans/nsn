@@ -164,6 +164,18 @@ The clip has 3 QUICK CUTS (5 seconds each):
 
 IMPORTANT: Define a MAIN SUBJECT that appears in ALL scenes.
 {bark_tokens}
+VOCABULARY RULE: Use ONLY simple, existing English words for product names and descriptions.
+NO made-up sci-fi names, alien languages, or neologisms - the TTS system cannot pronounce them.
+BAD: "Flug", "Zorblax", "Quantumify", "Glorpnax"
+GOOD: "blob", "sphere", "crystal", "machine", "goo", "cube"
+
+TRANSFORMATION RULE: The MAIN SUBJECT must maintain its physical form/shape across ALL scenes.
+NO transforming, morphing, shapeshifting, or becoming other objects.
+The subject CAN: move, rotate, bounce, grow/shrink slightly, change color, interact with objects.
+The subject CANNOT: become a different object, melt into something else, split into pieces.
+BAD: "The blob transforms into pancakes" or "The sphere becomes a cube"
+GOOD: "The blob bounces higher" or "The sphere spins faster"
+
 Format your response ONLY as JSON (no markdown, no explanation):
 {{
   "setup": "Opening line/premise with optional [laughs], [sighs], [gasps] tokens",

@@ -15,11 +15,12 @@ import httpx
 import pytest
 
 from vortex.models.showrunner import (
+    ADULT_SWIM_STYLE,
+    SCRIPT_PROMPT_TEMPLATE,
     Script,
     Showrunner,
     ShowrunnerError,
     _get_fallback_templates,
-    ADULT_SWIM_STYLE,
 )
 
 
@@ -796,3 +797,31 @@ class TestShowrunnerError:
             raise ShowrunnerError("Wrapped error") from original
         except ShowrunnerError as e:
             assert e.__cause__ is original
+
+
+class TestShowrunnerPromptConstraints:
+    """Test suite for vocabulary and transformation constraints in prompts."""
+
+    def test_prompt_contains_vocabulary_rule(self):
+        """SCRIPT_PROMPT_TEMPLATE should contain vocabulary constraints."""
+        assert "VOCABULARY RULE" in SCRIPT_PROMPT_TEMPLATE
+        assert "neologism" in SCRIPT_PROMPT_TEMPLATE.lower()
+
+    def test_prompt_contains_transformation_rule(self):
+        """SCRIPT_PROMPT_TEMPLATE should prohibit shape transformation."""
+        assert "TRANSFORMATION RULE" in SCRIPT_PROMPT_TEMPLATE
+        assert "maintain" in SCRIPT_PROMPT_TEMPLATE.lower()
+
+    def test_prompt_has_bad_examples(self):
+        """SCRIPT_PROMPT_TEMPLATE should include BAD examples to avoid."""
+        # Check for neologism bad examples
+        assert "Flug" in SCRIPT_PROMPT_TEMPLATE or "Zorblax" in SCRIPT_PROMPT_TEMPLATE
+        # Check for transformation bad examples
+        assert "transforms into" in SCRIPT_PROMPT_TEMPLATE.lower()
+
+    def test_prompt_has_good_examples(self):
+        """SCRIPT_PROMPT_TEMPLATE should include GOOD examples."""
+        # Check for vocabulary good examples
+        assert "blob" in SCRIPT_PROMPT_TEMPLATE.lower()
+        # Check for transformation good examples
+        assert "bounce" in SCRIPT_PROMPT_TEMPLATE.lower()
