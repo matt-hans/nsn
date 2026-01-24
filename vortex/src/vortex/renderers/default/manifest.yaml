@@ -1,14 +1,15 @@
 schema_version: "1.0"
 name: "default-narrative-chain"
-version: "3.0.0"
+version: "4.0.0"
 entrypoint: "renderer.py:DefaultRenderer"
-description: "NSN Lane 0 T2V Montage renderer using Showrunner (Ollama) for scripts with video_prompts, Bark for TTS, CogVideoX T2V for video, and dual CLIP for verification."
+description: "NSN Lane 0 I2V Montage renderer using Showrunner (Ollama) for scripts, Bark for TTS, Flux-Schnell for 720x480 keyframes, CogVideoX I2V for video, and dual CLIP for verification."
 deterministic: true
 resources:
   vram_gb: 11.0
   max_latency_ms: 150000
 model_dependencies:
-  - cogvideox-5b-int8
+  - flux-schnell-nf4
+  - cogvideox-5b-i2v-int8
   - bark-tts
   - clip-vit-b-32-fp16
   - clip-vit-l-14-fp16
