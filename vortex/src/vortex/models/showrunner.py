@@ -189,7 +189,8 @@ Rules for video_prompts:
 - Include lighting and atmosphere
 - ALWAYS end each prompt with: "{style}"
 - Focus on VISUALS only - no dialogue, no sound descriptions
-- DO NOT describe any text, signs, billboards, logos, or readable elements (video models cannot render text)
+- DO NOT describe text, signs, billboards, logos, or readable elements
+  (video models cannot render text)
 """
 
 
