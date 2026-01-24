@@ -524,7 +524,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             audio_duration_s = audio_result.shape[0] / audio_sample_rate
             total_video_frames = int(audio_duration_s * video_fps)
             num_scenes = len(script.storyboard)
-            frames_per_scene = total_video_frames // num_scenes if num_scenes > 0 else 40
+            frames_per_scene = max(40, total_video_frames // num_scenes) if num_scenes > 0 else 40  # Ensure minimum 40 frames per scene
 
             logger.info(
                 "Audio-first calculation",
