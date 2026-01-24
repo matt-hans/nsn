@@ -1,27 +1,31 @@
-"""Default Lane 0 renderer implementation with T2V Montage architecture.
+"""Default Lane 0 renderer implementation with I2V (Image-to-Video) Montage architecture.
 
-This renderer implements the T2V Montage pipeline for Lane 0 video generation:
-1. Showrunner (LLM) generates comedic script with 3-scene storyboard and video_prompts
-2. Bark synthesizes script to audio (sets duration)
-3. CogVideoX generates 3 independent video clips from video_prompts (T2V)
-4. Clips concatenated with hard cuts for 15s montage
-5. CLIP verifies semantic consistency
+This renderer implements the I2V Montage pipeline for Lane 0 video generation:
+1. Showrunner (LLM) generates comedic script with 3-scene storyboard
+2. Bark synthesizes script to audio FIRST (sets exact duration)
+3. Flux generates 3 keyframe images from storyboard scenes
+4. CogVideoX I2V animates each keyframe into a video clip
+5. Clips concatenated with hard cuts
+6. CLIP verifies semantic consistency
 
 Architecture:
-    - Showrunner (external Ollama): Generates script with storyboard[3]/video_prompts[3]
+    - Showrunner (external Ollama): Generates script with storyboard[3]
     - Bark (FP16, ~1.5GB): Text-to-speech synthesis at 24kHz with emotion support
-    - CogVideoX-5B (INT8, ~10-11GB): Generates 3 video clips from text prompts (T2V)
+    - Flux-Schnell (NF4, ~6GB): Generates 3 keyframe images at 720x480
+    - CogVideoX-5B-I2V (INT8, ~10-11GB): Animates keyframes to video (I2V)
     - CLIP ViT-B-32 + ViT-L-14 (FP16, 0.6GB): Dual ensemble semantic verification
 
-Pipeline Flow (T2V Montage):
-    Recipe -> Showrunner (script with video_prompts) -> Bark (TTS) -> Audio
+Pipeline Flow (I2V Audio-First):
+    Recipe -> Showrunner (script) -> Bark (TTS) -> Audio (defines duration)
 
-    video_prompts[3] -> CogVideoX T2V (3 clips) -> concatenate -> Video
+    storyboard[3] -> Flux (keyframes) -> unload Flux
+
+    keyframes[3] + motion_prompts -> CogVideoX I2V -> concatenate -> Video
 
     Video -> CLIP (verify) -> Embedding
 
-VRAM Budget: ~11GB peak during CogVideoX phase
-Target Duration: 15 seconds (3 scenes × 5s each) at 8fps = 120 frames
+VRAM Budget: ~11GB peak during CogVideoX phase (Flux unloaded before CogVideoX)
+Target Duration: Audio-driven (e.g., 14.2s audio = 114 frames @ 8fps)
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ import yaml
 from vortex.models.bark import load_bark
 from vortex.models.clip_ensemble import ClipEnsemble, DualClipResult
 from vortex.models.cogvideox import CogVideoXModel, VideoGenerationConfig
+from vortex.models.flux import FluxModel
 from vortex.models.showrunner import Script, Showrunner
 from vortex.renderers.base import DeterministicVideoRenderer
 from vortex.renderers.recipe_schema import merge_with_defaults, validate_recipe
@@ -52,8 +57,17 @@ ModelName = str
 
 logger = logging.getLogger(__name__)
 
-# Clean style prompt for stable video generation
-# Removed "surreal", "vibrant" which cause CogVideoX artifacts
+# Visual style prompt for keyframe generation
+# 2D cel-shaded cartoon style with texture anchoring for CogVideoX VAE compatibility
+VISUAL_STYLE_PROMPT = (
+    "2D cel-shaded cartoon, flat colors, expressive linework, "
+    "detailed texture, film grain, 4k, high definition"
+)
+
+# Motion style suffix appended to video prompts for CogVideoX I2V
+MOTION_STYLE_SUFFIX = ", smooth animation, continuous motion, fluid movement"
+
+# Legacy clean style prompt (kept for backward compatibility)
 CLEAN_STYLE_PROMPT = "cartoon style, 2d animation, flat colors, high definition, 4k"
 
 
@@ -70,15 +84,16 @@ class MemoryPressureError(Exception):
 
 
 class _ModelRegistry:
-    """Registry for loaded models with sequential loading for T2V Montage.
+    """Registry for loaded models with sequential loading for I2V Montage.
 
-    The T2V Montage pipeline requires sequential model loading due to
+    The I2V Montage pipeline requires sequential model loading due to
     CogVideoX's large VRAM footprint (~10-11GB with INT8 quantization).
     Models are loaded to CPU and moved to GPU only when needed.
 
     Models:
     - bark: TTS audio synthesis with emotion support (~1.5GB)
-    - cogvideox: Video generation from text prompts (10-11GB with INT8)
+    - flux: Keyframe image generation (NF4, ~6GB) - unloaded before CogVideoX
+    - cogvideox: Video generation from keyframes (I2V, 10-11GB with INT8)
     - clip_ensemble: Semantic verification (0.6GB)
     """
 
@@ -92,13 +107,14 @@ class _ModelRegistry:
     ):
         self.device = device
         self.precision_overrides = precision_overrides or {}
-        self._models: dict[str, nn.Module | CogVideoXModel] = {}
+        self._models: dict[str, nn.Module | CogVideoXModel | FluxModel] = {}
         self._offloading_mode = offloading_mode
         self._cache_dir = cache_dir
         self._local_only = local_only
 
-        # CogVideoX is handled separately (not an nn.Module)
+        # CogVideoX and Flux are handled separately (not nn.Module)
         self._cogvideox: CogVideoXModel | None = None
+        self._flux: FluxModel | None = None
 
         # Determine if offloading should be enabled
         self._offloading_enabled = self._should_enable_offloading()
@@ -134,10 +150,11 @@ class _ModelRegistry:
     def load_all_models(self) -> None:
         """Load all models into registry.
 
-        For T2V Montage, we load:
+        For I2V Montage, we load:
         - bark (TTS with emotion support)
+        - flux (keyframe generation) - lazy-loaded, unloaded before CogVideoX
         - clip_ensemble (semantic verification)
-        - cogvideox (T2V video generation) - handled separately
+        - cogvideox (I2V video generation) - handled separately
         """
         try:
             # Load Bark TTS
@@ -146,6 +163,17 @@ class _ModelRegistry:
             bark = load_bark(device=target_device)
             self._models["bark"] = bark
             log_vram_snapshot("after_bark_load")
+
+            # Initialize Flux (lazy-loaded, doesn't load weights yet)
+            logger.info("Initializing Flux model wrapper")
+            self._flux = FluxModel(
+                device=self.device,
+                cache_dir=self._cache_dir,
+                quantization="nf4",  # NF4 quantization for memory efficiency
+            )
+            # Note: Flux.load() is called lazily when needed
+            self._models["flux"] = self._flux
+            log_vram_snapshot("after_flux_init")
 
             # CLIP ensemble placeholder - will be implemented in Phase 4.4
             logger.info("Initializing CLIP ensemble placeholder (not yet implemented)")
@@ -197,6 +225,12 @@ class _ModelRegistry:
             raise RuntimeError("CogVideoX not initialized")
         return self._cogvideox
 
+    def get_flux(self) -> FluxModel:
+        """Get the Flux model instance."""
+        if self._flux is None:
+            raise RuntimeError("Flux not initialized")
+        return self._flux
+
     def prepare_for_stage(self, stage: str) -> None:
         """Prepare models for a pipeline stage.
 
@@ -204,7 +238,7 @@ class _ModelRegistry:
         Currently, this method just logs the stage transition.
 
         Args:
-            stage: Stage name ("audio", "video", "clip")
+            stage: Stage name ("audio", "keyframe", "video", "clip")
         """
         if not self._offloading_enabled:
             return
@@ -212,6 +246,7 @@ class _ModelRegistry:
         # Map stages to required models
         stage_models = {
             "audio": "bark",
+            "keyframe": "flux",  # Flux for keyframe generation
             "video": None,  # CogVideoX handles its own offloading
             "clip": "clip_ensemble",
         }
@@ -297,6 +332,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
         # Pre-allocated buffers (set during initialize)
         self._audio_buffer: torch.Tensor | None = None
+        self._actor_buffer: torch.Tensor | None = None
 
     def _load_manifest(self) -> RendererManifest:
         """Load manifest from default/manifest.yaml."""
@@ -373,10 +409,22 @@ class DefaultRenderer(DeterministicVideoRenderer):
             dtype=torch.float32,
         )
 
+        # Actor buffer for keyframe images (720x480 at CogVideoX native resolution)
+        actor_cfg = buf_cfg.get("actor", {})
+        self._actor_buffer = torch.zeros(
+            1,
+            actor_cfg.get("channels", 3),
+            actor_cfg.get("height", 480),   # CogVideoX native height
+            actor_cfg.get("width", 720),    # CogVideoX native width
+            device=self._device,
+            dtype=torch.float32,
+        )
+
         logger.info(
             "Output buffers pre-allocated",
             extra={
                 "audio_shape": tuple(self._audio_buffer.shape),
+                "actor_shape": tuple(self._actor_buffer.shape),
             },
         )
 
@@ -387,13 +435,16 @@ class DefaultRenderer(DeterministicVideoRenderer):
         seed: int,
         deadline: float,
     ) -> RenderResult:
-        """Render a single slot from recipe using T2V Montage pipeline.
+        """Render a single slot from recipe using I2V Audio-First pipeline.
 
-        Pipeline Flow:
-        1. Script Generation: Showrunner (LLM) generates script with video_prompts
-        2. Audio Generation: Bark TTS synthesizes speech with emotion
-        3. Video Generation: CogVideoX generates 3 clips from video_prompts (T2V)
-        4. CLIP Verification: Dual ensemble semantic check
+        Pipeline Flow (Audio-First):
+        1. Script Generation: Showrunner (LLM) generates script with storyboard
+        2. Audio Generation FIRST: Bark TTS - defines exact video duration
+        3. Calculate video frames: audio_duration * fps = target_frames
+        4. Keyframe Generation: Flux generates 3 keyframe images
+        5. Unload Flux: Free VRAM for CogVideoX
+        6. Video Generation: CogVideoX I2V animates keyframes
+        7. CLIP Verification: Dual ensemble semantic check
 
         Args:
             recipe: Standardized recipe dict (see recipe_schema.py)
@@ -457,7 +508,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                     f"Deadline would be exceeded: {time_remaining:.1f}s remaining"
                 )
 
-            # Phase 2: Audio Generation (Bark ~1.5GB)
+            # Phase 2: Audio Generation FIRST (Bark ~1.5GB) - defines video duration
             self._model_registry.prepare_for_stage("audio")
             full_script = f"{script.setup} {script.punchline}"
             audio_result = await self._generate_audio(full_script, recipe, seed)
@@ -466,13 +517,41 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 extra={"audio_samples": audio_result.shape[0]},
             )
 
-            # Phase 3: Video Montage Generation (CogVideoX T2V)
-            # The _generate_video method handles:
-            # - Generating 3 CogVideoX clips from video_prompts (T2V)
-            # - Concatenating with hard cuts for 15s montage
+            # Calculate video frames from audio duration
+            # Audio is at 24kHz, video is at 8fps
+            audio_sample_rate = 24000
+            video_fps = 8
+            audio_duration_s = audio_result.shape[0] / audio_sample_rate
+            total_video_frames = int(audio_duration_s * video_fps)
+            num_scenes = len(script.storyboard)
+            frames_per_scene = total_video_frames // num_scenes if num_scenes > 0 else 40
+
+            logger.info(
+                "Audio-first calculation",
+                extra={
+                    "audio_duration_s": f"{audio_duration_s:.2f}",
+                    "total_video_frames": total_video_frames,
+                    "frames_per_scene": frames_per_scene,
+                },
+            )
+
+            # Phase 3: Keyframe Generation (Flux ~6GB)
+            keyframes = await self._generate_keyframes(script, seed)
+            logger.info(
+                "Keyframes generated",
+                extra={"num_keyframes": len(keyframes)},
+            )
+
+            # Phase 4: Unload Flux to free VRAM for CogVideoX
+            self._unload_flux()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+            # Phase 5: Video Generation from Keyframes (CogVideoX I2V ~10-11GB)
             video_result = await self._generate_video(
                 script=script,
-                recipe=recipe,
+                keyframes=keyframes,
+                frames_per_scene=frames_per_scene,
                 seed=seed,
             )
             logger.info(
@@ -489,11 +568,11 @@ class DefaultRenderer(DeterministicVideoRenderer):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-            # Phase 4: CLIP Verification (~0.6GB)
-            # Uses first scene prompt for semantic verification of the montage
+            # Phase 6: CLIP Verification (~0.6GB)
+            # Uses subject_visual for semantic verification of the montage
             self._model_registry.prepare_for_stage("clip")
             clip_embedding = await self._verify_semantic(
-                video_result, script.visual_prompt, recipe
+                video_result, script.subject_visual, recipe
             )
 
             # Compute generation time
@@ -657,23 +736,101 @@ class DefaultRenderer(DeterministicVideoRenderer):
             self._audio_buffer.zero_()
             return self._audio_buffer
 
+    async def _generate_keyframes(
+        self,
+        script: Script,
+        seed: int,
+    ) -> list[torch.Tensor]:
+        """Generate 3 keyframes with texture anchoring and fixed seed.
+
+        Generates one keyframe per storyboard scene using Flux-Schnell.
+        All keyframes use the SAME seed for subject consistency across scenes.
+
+        Args:
+            script: Script with storyboard scenes
+            seed: Deterministic seed (used for ALL keyframes, not varied)
+
+        Returns:
+            List of keyframe tensors, each [C, H, W] in 0-1 range
+        """
+        assert self._model_registry is not None
+        assert self._actor_buffer is not None
+
+        self._model_registry.prepare_for_stage("keyframe")
+        flux = self._model_registry.get_flux()
+
+        keyframes = []
+
+        for i, scene in enumerate(script.storyboard):
+            # FIXED SEED for subject consistency - NOT seed + i
+            scene_seed = seed
+
+            # Build visual prompt with style
+            visual_prompt = f"{script.subject_visual}, {scene}, {VISUAL_STYLE_PROMPT}"
+
+            logger.info(
+                f"Generating keyframe {i+1}/{len(script.storyboard)}",
+                extra={"prompt_preview": visual_prompt[:80], "seed": scene_seed},
+            )
+
+            # Generate keyframe using pre-allocated actor buffer
+            keyframe = flux.generate(
+                prompt=visual_prompt,
+                seed=scene_seed,
+                output=self._actor_buffer[0],  # Use first slot of buffer
+            )
+
+            # Clone to avoid buffer reuse issues
+            keyframes.append(keyframe.clone())
+
+        logger.info(f"Generated {len(keyframes)} keyframes at 720x480")
+        return keyframes
+
+    def _unload_flux(self) -> None:
+        """Unload Flux to free VRAM before CogVideoX."""
+        assert self._model_registry is not None
+
+        flux = self._model_registry.get_flux()
+        if flux.is_loaded:
+            flux.unload()
+            logger.info("Flux unloaded to free VRAM for CogVideoX")
+
     async def _generate_video(
         self,
         script: Script,
-        recipe: dict[str, Any],
+        keyframes: list[torch.Tensor],
+        frames_per_scene: int,
         seed: int,
     ) -> torch.Tensor:
-        """Generate video montage from script video_prompts using T2V."""
+        """Generate video from keyframes using I2V.
+
+        Animates each keyframe into a video clip using CogVideoX-5B-I2V,
+        then concatenates clips with hard cuts.
+
+        Args:
+            script: Script with storyboard scenes
+            keyframes: List of keyframe tensors from Flux
+            frames_per_scene: Target frames per scene (from audio duration)
+            seed: Deterministic seed
+
+        Returns:
+            Concatenated video tensor [total_frames, C, H, W]
+        """
         assert self._model_registry is not None
 
-        video_prompts = script.video_prompts
-        if not video_prompts or len(video_prompts) < 3:
+        if len(keyframes) != len(script.storyboard):
             raise ValueError(
-                f"Script must have 3 video_prompts, got "
-                f"{len(video_prompts) if video_prompts else 0}"
+                f"Keyframes and storyboard length mismatch: "
+                f"{len(keyframes)} keyframes vs {len(script.storyboard)} scenes"
             )
 
-        logger.info(f"Generating {len(video_prompts)}-scene T2V montage...")
+        # Build motion prompts from storyboard with motion style suffix
+        motion_prompts = [
+            f"{scene}{MOTION_STYLE_SUFFIX}"
+            for scene in script.storyboard
+        ]
+
+        logger.info(f"Generating {len(keyframes)}-scene I2V montage...")
         self._model_registry.prepare_for_stage("video")
         cogvideox = self._model_registry.get_cogvideox()
 
@@ -685,15 +842,19 @@ class DefaultRenderer(DeterministicVideoRenderer):
             fps=8,
         )
 
+        # Trim frames: min of requested and 40 (to avoid tail degradation)
+        trim_frames = min(frames_per_scene, 40)
+
         video = await cogvideox.generate_montage(
-            prompts=video_prompts,
+            keyframes=keyframes,
+            prompts=motion_prompts,
             config=config,
             seed=seed,
-            trim_frames=40,  # 5s per scene @ 8fps = 15s total
+            trim_frames=trim_frames,
         )
 
         logger.info(
-            f"T2V Montage complete: {video.shape[0]} frames ({video.shape[0]/8:.1f}s)"
+            f"I2V Montage complete: {video.shape[0]} frames ({video.shape[0]/8:.1f}s)"
         )
         return video
 
@@ -843,7 +1004,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             return False
 
         # Check all required models are loaded
-        required_models = ["bark", "cogvideox", "clip_ensemble"]  # Removed "flux"
+        required_models = ["bark", "flux", "cogvideox", "clip_ensemble"]
         for model_name in required_models:
             if model_name not in self._model_registry:
                 logger.warning(f"Health check failed: model '{model_name}' not loaded")
@@ -867,8 +1028,16 @@ class DefaultRenderer(DeterministicVideoRenderer):
         """
         logger.info("Shutting down DefaultRenderer...")
 
-        # Unload CogVideoX if loaded
+        # Unload models if loaded
         if self._model_registry is not None:
+            # Unload Flux
+            try:
+                flux = self._model_registry.get_flux()
+                flux.unload()
+            except Exception as e:
+                logger.warning(f"Error unloading Flux: {e}")
+
+            # Unload CogVideoX
             try:
                 cogvideox = self._model_registry.get_cogvideox()
                 cogvideox.unload()
@@ -880,6 +1049,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
 
         # Clear pre-allocated buffers
         self._audio_buffer = None
+        self._actor_buffer = None
 
         # Clear GPU cache
         if torch.cuda.is_available():
