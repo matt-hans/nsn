@@ -765,8 +765,13 @@ class DefaultRenderer(DeterministicVideoRenderer):
             # FIXED SEED for subject consistency - NOT seed + i
             scene_seed = seed
 
-            # Build visual prompt with style
-            visual_prompt = f"{script.subject_visual}, {scene}, {VISUAL_STYLE_PROMPT}"
+            # Build visual prompt with REINFORCED subject
+            # Repeating subject_visual ensures Flux prioritizes character identity
+            visual_prompt = (
+                f"{script.subject_visual}. "  # First mention
+                f"{script.subject_visual}, {scene}. "  # Second mention with scene
+                f"{VISUAL_STYLE_PROMPT}"
+            )
 
             logger.info(
                 f"Generating keyframe {i+1}/{len(script.storyboard)}",

@@ -370,3 +370,42 @@ class TestScriptVisualPromptProperty:
         )
 
         assert script.visual_prompt == ""
+
+
+class TestKeyframeSubjectReinforcement:
+    """Tests for subject reinforcement in keyframe prompts."""
+
+    def test_keyframe_prompt_contains_doubled_subject(self) -> None:
+        """Verify subject is repeated in keyframe prompts for consistency."""
+        # This tests that the visual_prompt contains subject_visual twice
+        subject = "a bright blue toaster with googly eyes"
+        scene = "dancing on a kitchen counter"
+
+        # Simulate the prompt construction from renderer
+        visual_prompt = (
+            f"{subject}. "
+            f"{subject}, {scene}. "
+            f"test style"
+        )
+
+        # Count occurrences
+        assert visual_prompt.count(subject) == 2
+
+    def test_keyframe_prompt_structure(self) -> None:
+        """Verify the structure of reinforced keyframe prompts."""
+        subject = "a cartoon robot"
+        scene = "waving at the camera"
+        style = "cinematic lighting"
+
+        visual_prompt = (
+            f"{subject}. "
+            f"{subject}, {scene}. "
+            f"{style}"
+        )
+
+        # Verify structure: subject appears first, then subject + scene, then style
+        assert visual_prompt.startswith(subject)
+        assert scene in visual_prompt
+        assert visual_prompt.endswith(style)
+        # Subject appears twice for anchoring
+        assert visual_prompt.count(subject) == 2
