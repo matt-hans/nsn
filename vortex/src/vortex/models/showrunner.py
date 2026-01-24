@@ -163,7 +163,7 @@ Format your response ONLY as JSON (no markdown, no explanation):
 {{
   "setup": "Opening line/premise with optional [laughs], [sighs], [gasps] tokens",
   "punchline": "Closing line or absurd conclusion with optional tokens",
-  "subject_visual": "MAIN SUBJECT: specific COLOR, exact SHAPE, TYPE. Under 30 words.",
+  "subject_visual": "Detailed visual description of the MAIN SUBJECT including: specific COLOR (e.g., bright blue), exact SHAPE (e.g., rectangular with rounded corners), and TYPE (e.g., anthropomorphic toaster). Under 30 words.",
   "storyboard": [
     "Scene 1: Brief description",
     "Scene 2: Brief description",
