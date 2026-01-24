@@ -262,6 +262,49 @@ class TestTextNormalization:
         cleaned = _clean_text_for_bark(text)
         assert cleaned == text
 
+    def test_clean_text_that_normalizes_to_empty(self):
+        """Verify text that normalizes to empty triggers error.
+
+        Text that is only special chars/paths/URLs should raise
+        after normalization.
+        """
+        from vortex.models.bark import _clean_text_for_bark
+
+        # File path only -> normalizes to empty
+        assert _clean_text_for_bark("/path/to/file.txt") == ""
+
+        # URL only -> normalizes to empty
+        assert _clean_text_for_bark("https://example.com/page") == ""
+
+        # Special characters only -> normalizes to empty
+        assert _clean_text_for_bark("***") == ""
+
+        # Mixed paths and special chars -> normalizes to empty
+        assert _clean_text_for_bark("/foo/bar.json ***") == ""
+
+
+class TestSynthesizeEmptyAfterNormalization:
+    """Test suite for empty text after normalization handling."""
+
+    def test_synthesize_raises_when_text_normalizes_to_empty(self):
+        """Test that synthesize raises ValueError when text normalizes to empty."""
+        with patch('vortex.models.bark.preload_models'):
+            from vortex.models.bark import BarkVoiceEngine
+
+            engine = BarkVoiceEngine(device="cpu")
+
+            # File path only should raise after normalization
+            with pytest.raises(ValueError, match="empty after normalization"):
+                engine.synthesize(text="/path/to/file.txt", voice_id="rick_c137")
+
+            # URL only should raise after normalization
+            with pytest.raises(ValueError, match="empty after normalization"):
+                engine.synthesize(text="https://example.com/page", voice_id="rick_c137")
+
+            # Special characters only should raise after normalization
+            with pytest.raises(ValueError, match="empty after normalization"):
+                engine.synthesize(text="***", voice_id="rick_c137")
+
 
 class TestBarkUnload:
     """Test suite for VRAM cleanup."""

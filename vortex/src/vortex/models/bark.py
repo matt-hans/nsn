@@ -365,6 +365,10 @@ class BarkVoiceEngine:
         # Clean text for Bark to prevent stuttering and literal reading
         text = _clean_text_for_bark(text)
 
+        # Check if text is empty after normalization
+        if not text:
+            raise ValueError("Text is empty after normalization")
+
         # Set seed for determinism
         if seed is not None:
             np.random.seed(seed)
