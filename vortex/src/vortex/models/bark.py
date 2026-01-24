@@ -68,12 +68,23 @@ VALID_BARK_TOKENS = frozenset({
     "[gasps]", "[clears throat]", "—", "..."
 })
 
+# Regex patterns to convert unbracketed stage directions to Bark tokens
+# Must run BEFORE protection step so newly created tokens get protected
+# Uses negative lookbehind (?<!\[) to avoid matching words already in brackets
+STAGE_DIRECTION_PATTERNS = [
+    (r'(?<!\[)\b[Ss]ighs?\b(?!\])', '[sighs]'),       # Sigh, sigh, Sighs, sighs
+    (r'(?<!\[)\b[Ll]aughs?\b(?!\])', '[laughs]'),     # Laugh, laugh, Laughs, laughs
+    (r'(?<!\[)\b[Ll]aughter\b(?!\])', '[laughs]'),    # Laughter -> [laughs]
+    (r'(?<!\[)\b[Gg]asps?\b(?!\])', '[gasps]'),       # Gasp, gasp, Gasps, gasps
+]
+
 
 def _clean_text_for_bark(text: str) -> str:
     """Sanitize text for Bark TTS using strict token whitelist.
 
     Bark will try to pronounce anything in brackets or asterisks literally.
     This function:
+    0. Converts unbracketed stage directions to valid Bark tokens
     1. Protects valid Bark tokens (e.g., [laughs], [gasps])
     2. Strips all other bracketed content (e.g., [excited], [fast])
     3. Strips asterisk stage directions (e.g., *looks around*)
@@ -85,6 +96,11 @@ def _clean_text_for_bark(text: str) -> str:
     Returns:
         Cleaned text with only valid Bark tokens preserved
     """
+    # 0. Convert unbracketed stage direction words to valid Bark tokens
+    # Must run BEFORE protection step so these newly created tokens get protected
+    for pattern, replacement in STAGE_DIRECTION_PATTERNS:
+        text = re.sub(pattern, replacement, text)
+
     # 1. Protect valid tokens by temporarily replacing them
     # Use alphanumeric placeholders to survive the special character stripping
     protected_map = {}

@@ -433,3 +433,60 @@ class TestBarkTokenWhitelist:
         text = "I think—no wait—yes that's right"
         cleaned = _clean_text_for_bark(text)
         assert "—" in cleaned
+
+
+class TestUnbracketedStageDirectionConversion:
+    """Test suite for converting unbracketed stage directions to Bark tokens."""
+
+    def test_converts_sigh_to_sighs_token(self):
+        """Unbracketed 'Sigh' should become [sighs]."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Sigh. I'm so tired of this."
+        cleaned = _clean_text_for_bark(text)
+        assert "[sighs]" in cleaned
+
+    def test_converts_lowercase_sighs(self):
+        """Lowercase 'sighs' should become [sighs]."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "He sighs and walks away."
+        cleaned = _clean_text_for_bark(text)
+        assert "[sighs]" in cleaned
+
+    def test_converts_laughs_to_laughs_token(self):
+        """Unbracketed 'Laughs' should become [laughs]."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Laughs uncontrollably at the joke."
+        cleaned = _clean_text_for_bark(text)
+        assert "[laughs]" in cleaned
+
+    def test_converts_laughter_to_laughs_token(self):
+        """Unbracketed 'Laughter' should become [laughs]."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Laughter echoes through the room."
+        cleaned = _clean_text_for_bark(text)
+        assert "[laughs]" in cleaned
+
+    def test_converts_gasps_to_gasps_token(self):
+        """Unbracketed 'Gasps' should become [gasps]."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Gasps in surprise at the reveal."
+        cleaned = _clean_text_for_bark(text)
+        assert "[gasps]" in cleaned
+
+    def test_word_boundary_prevents_partial_match(self):
+        """Should not match 'sigh' within words like 'sight'."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "The sight was laughable at first glance."
+        cleaned = _clean_text_for_bark(text)
+        assert "[sighs]" not in cleaned  # 'sight' should NOT match
+        assert "[laughs]" not in cleaned  # 'laughable' should NOT match
+        assert "sight" in cleaned
+        assert "laughable" in cleaned
+
+    def test_preserves_already_bracketed_tokens(self):
+        """Already correct [sighs] tokens should remain unchanged."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "[sighs] I'm so tired [laughs] but happy."
+        cleaned = _clean_text_for_bark(text)
+        assert "[sighs]" in cleaned
+        assert "[laughs]" in cleaned
