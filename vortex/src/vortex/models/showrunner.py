@@ -41,15 +41,20 @@ ToneType = Literal["absurd", "deadpan", "manic"]
 
 # Bark TTS paralinguistic token instructions for script generation
 BARK_TOKEN_INSTRUCTIONS = """
-For dialogue, you may use these audio tokens to add expressiveness:
-- [laughter] or [laughs] - character laughs
+For dialogue, you may ONLY use these exact audio tokens:
+- [laughs] - character laughs (NOT [laughter])
 - [sighs] - character sighs
 - [gasps] - character gasps in surprise
-- [clears throat] - character clears throat
 - ... (ellipsis) - hesitation or trailing off
 - CAPITALIZED WORDS - shouting or emphasis
 
-Example: "[gasps] Oh my GOD... [laughs] That's the most ridiculous thing I've ever seen!"
+DO NOT use these tokens (they cause audio gibberish):
+- [excited], [angry], [sad], [happy], [fast], [slow]
+- [clears throat] (unreliable)
+- *stage directions* like *looks around*
+- Any bracketed text not in the valid list above
+
+Example: "[gasps] Oh my GOD... [laughs] That's ridiculous!"
 """
 
 # Adult Swim / Interdimensional Cable visual style for T2V prompts
@@ -184,6 +189,7 @@ Rules for video_prompts:
 - Include lighting and atmosphere
 - ALWAYS end each prompt with: "{style}"
 - Focus on VISUALS only - no dialogue, no sound descriptions
+- DO NOT describe any text, signs, billboards, logos, or readable elements (video models cannot render text)
 """
 
 
