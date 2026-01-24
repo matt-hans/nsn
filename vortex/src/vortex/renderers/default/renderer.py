@@ -58,10 +58,10 @@ ModelName = str
 logger = logging.getLogger(__name__)
 
 # Visual style prompt for keyframe generation
-# 2D cel-shaded cartoon style with texture anchoring for CogVideoX VAE compatibility
+# 1990s cartoon style with halftone texture anchoring for CogVideoX VAE compatibility
 VISUAL_STYLE_PROMPT = (
-    "2D cel-shaded cartoon, flat colors, expressive linework, "
-    "detailed texture, film grain, 4k, high definition"
+    "1990s Saturday morning cartoon, thick black outlines, cel shaded, "
+    "flat vibrant colors, halftone texture, high contrast, clean linework"
 )
 
 # Motion style suffix appended to video prompts for CogVideoX I2V
