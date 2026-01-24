@@ -54,8 +54,8 @@ class TestBarkVoiceEngine:
             engine = BarkVoiceEngine(device="cpu")
 
         params = engine._get_emotion_params("manic")
-        assert params["coarse_temp"] == 0.95
-        assert params["fine_temp"] == 0.7
+        assert params["coarse_temp"] == 0.8  # Lowered for clarity
+        assert params["fine_temp"] == 0.5  # Lowered to reduce artifacts
 
     def test_get_emotion_params_unknown_returns_neutral(self):
         """Test unknown emotion returns neutral settings."""
@@ -185,6 +185,82 @@ class TestLoadBark:
             load_bark(device="cpu")
 
             mock_preload.assert_called_once()
+
+
+class TestTextNormalization:
+    """Test suite for text normalization function."""
+
+    def test_clean_text_for_bark_removes_file_extensions(self):
+        """Verify text cleaning removes file extensions that cause stuttering."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        # File extensions cause "dot S-S-D" stuttering
+        text = "Check out desc.ssd and data.json files"
+        cleaned = _clean_text_for_bark(text)
+        assert ".ssd" not in cleaned
+        assert ".json" not in cleaned
+        assert "desc" in cleaned  # Keep the word, just not the extension
+
+    def test_clean_text_for_bark_removes_special_chars(self):
+        """Verify special characters are removed."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        text = "This *weird* product costs $99.99!"
+        cleaned = _clean_text_for_bark(text)
+        assert "*" not in cleaned
+        assert "$" not in cleaned
+        assert "99" in cleaned  # Numbers are fine
+
+    def test_clean_text_for_bark_removes_urls(self):
+        """Verify URLs are removed."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        text = "Visit https://example.com/path for more info"
+        cleaned = _clean_text_for_bark(text)
+        assert "https://" not in cleaned
+        assert "example.com" not in cleaned
+        assert "Visit" in cleaned
+        assert "for more info" in cleaned
+
+    def test_clean_text_for_bark_removes_paths(self):
+        """Verify file paths are removed."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        text = "Open the file at /home/user/data.txt"
+        cleaned = _clean_text_for_bark(text)
+        assert "/home/user" not in cleaned
+        assert "Open the file at" in cleaned
+
+    def test_clean_text_for_bark_preserves_ellipsis(self):
+        """Verify ellipsis is preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        text = "Wait... what happened?"
+        cleaned = _clean_text_for_bark(text)
+        assert "..." in cleaned
+
+    def test_clean_text_for_bark_normalizes_whitespace(self):
+        """Verify multiple spaces are normalized."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        text = "Too   many    spaces   here"
+        cleaned = _clean_text_for_bark(text)
+        assert "  " not in cleaned
+        assert "Too many spaces here" == cleaned
+
+    def test_clean_text_for_bark_handles_empty_string(self):
+        """Verify empty string returns empty string."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        assert _clean_text_for_bark("") == ""
+
+    def test_clean_text_for_bark_handles_plain_text(self):
+        """Verify plain text passes through unchanged."""
+        from vortex.models.bark import _clean_text_for_bark
+
+        text = "Hello world, how are you today?"
+        cleaned = _clean_text_for_bark(text)
+        assert cleaned == text
 
 
 class TestBarkUnload:

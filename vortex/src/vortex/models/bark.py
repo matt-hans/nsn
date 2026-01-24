@@ -17,6 +17,7 @@ parameters.
 """
 
 import logging
+import re
 from functools import wraps
 from pathlib import Path
 
@@ -60,6 +61,37 @@ except ImportError:
     SAMPLE_RATE = 24000
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_text_for_bark(text: str) -> str:
+    """Sanitize text for Bark TTS to prevent stuttering and literal reading.
+
+    Bark is a literal reader - it will try to pronounce file extensions,
+    URLs, and special characters. This function scrubs problematic patterns.
+
+    Args:
+        text: Raw text from script
+
+    Returns:
+        Cleaned text safe for Bark synthesis
+    """
+    # Remove file extensions (causes "dot S-S-D" stuttering)
+    text = re.sub(r'\.\w{2,4}\b', '', text)
+
+    # Remove URLs and paths
+    text = re.sub(r'https?://\S+', '', text)
+    text = re.sub(r'/[\w/.-]+', '', text)
+
+    # Replace remaining dots with spaces (except ellipsis)
+    text = re.sub(r'(?<!\.)\.(?!\.)', ' ', text)
+
+    # Remove special characters that cause pronunciation issues
+    text = re.sub(r'[*_~`#@$%^&+=|\\<>{}[\]]', '', text)
+
+    # Normalize multiple spaces
+    text = ' '.join(text.split())
+
+    return text.strip()
 
 
 class BarkVoiceEngine:
@@ -329,6 +361,9 @@ class BarkVoiceEngine:
         # Validate inputs
         if not text or text.strip() == "":
             raise ValueError("Text cannot be empty")
+
+        # Clean text for Bark to prevent stuttering and literal reading
+        text = _clean_text_for_bark(text)
 
         # Set seed for determinism
         if seed is not None:
