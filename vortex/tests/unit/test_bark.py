@@ -54,8 +54,8 @@ class TestBarkVoiceEngine:
             engine = BarkVoiceEngine(device="cpu")
 
         params = engine._get_emotion_params("manic")
-        assert params["coarse_temp"] == 0.8  # Lowered for clarity
-        assert params["fine_temp"] == 0.5  # Lowered to reduce artifacts
+        assert params["coarse_temp"] == 0.75  # Lowered for stability
+        assert params["fine_temp"] == 0.4  # Lowered to reduce artifacts
 
     def test_get_emotion_params_unknown_returns_neutral(self):
         """Test unknown emotion returns neutral settings."""
@@ -65,8 +65,8 @@ class TestBarkVoiceEngine:
             engine = BarkVoiceEngine(device="cpu")
 
         params = engine._get_emotion_params("unknown_emotion")
-        assert params["coarse_temp"] == 0.7
-        assert params["fine_temp"] == 0.5
+        assert params["coarse_temp"] == 0.6  # Neutral default
+        assert params["fine_temp"] == 0.4  # Lower for clarity
 
 
 class TestBarkSynthesis:

@@ -17,15 +17,15 @@
 
 neutral:
   text_prefix: ""
-  coarse_temp: 0.7
-  fine_temp: 0.5
-  description: "Standard delivery, balanced chaos"
+  coarse_temp: 0.6    # CHANGED: was 0.7, lower for more consistent prosody
+  fine_temp: 0.4      # CHANGED: was 0.5, lower to reduce stuttering/hissing
+  description: "Standard delivery, stable and clear"
 
 excited:
   text_prefix: ""
-  coarse_temp: 0.85
-  fine_temp: 0.55
-  description: "Enthusiastic, upbeat, more prosodic variation"
+  coarse_temp: 0.7    # CHANGED: was 0.75, slight reduction
+  fine_temp: 0.4      # CHANGED: was 0.45, reduction for clarity
+  description: "Enthusiastic, upbeat, clear delivery"
 
 sad:
   text_prefix: ""
@@ -41,9 +41,9 @@ angry:
 
 manic:
   text_prefix: ""
-  coarse_temp: 0.95
-  fine_temp: 0.7
-  description: "Frenzied, erratic, maximum chaos (Rick's signature)"
+  coarse_temp: 0.75   # CHANGED: was 0.8, slightly lower for stability
+  fine_temp: 0.4      # CHANGED: was 0.5, lower to reduce acoustic artifacts
+  description: "Fast-paced Rick-style energy, optimized for clarity"
 
 calm:
   text_prefix: ""
@@ -53,19 +53,19 @@ calm:
 
 fearful:
   text_prefix: ""
-  coarse_temp: 0.9
-  fine_temp: 0.6
-  description: "Anxious, nervous, high pitch variation"
+  coarse_temp: 0.8
+  fine_temp: 0.5
+  description: "Anxious, nervous, stabilized pitch variation"
 
 anxious:
   text_prefix: ""
-  coarse_temp: 0.85
-  fine_temp: 0.55
-  description: "Nervous, worried, stammering (Morty's signature)"
+  coarse_temp: 0.75
+  fine_temp: 0.45
+  description: "Nervous, worried, clearer Morty-style"
 
 # Default fallback (same as neutral)
 default:
   text_prefix: ""
-  coarse_temp: 0.7
-  fine_temp: 0.5
+  coarse_temp: 0.6
+  fine_temp: 0.4
   description: "Fallback emotion settings"
