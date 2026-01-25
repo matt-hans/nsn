@@ -848,3 +848,10 @@ class TestShowrunnerPromptConstraints:
         assert "blob" in SCRIPT_PROMPT_TEMPLATE.lower()
         # Check for transformation good examples
         assert "bounce" in SCRIPT_PROMPT_TEMPLATE.lower()
+
+    def test_prompt_contains_geometry_rule(self):
+        """SCRIPT_PROMPT_TEMPLATE should require consistent geometry."""
+        from vortex.models.showrunner import SCRIPT_PROMPT_TEMPLATE
+
+        assert "GEOMETRY RULE" in SCRIPT_PROMPT_TEMPLATE
+        assert "IDENTICAL" in SCRIPT_PROMPT_TEMPLATE

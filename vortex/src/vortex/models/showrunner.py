@@ -176,6 +176,12 @@ The subject CANNOT: become a different object, melt into something else, split i
 BAD: "The blob transforms into pancakes" or "The sphere becomes a cube"
 GOOD: "The blob bounces higher" or "The sphere spins faster"
 
+GEOMETRY RULE: The subject's SHAPE must be explicitly stated and IDENTICAL in all video_prompts.
+Pick ONE geometric descriptor (sphere, cube, cylinder, blob, etc.) and repeat it exactly.
+The shape must not change, warp, or become ambiguous between scenes.
+BAD: Scene 1 "a cube", Scene 2 "a rounded shape", Scene 3 "the object"
+GOOD: Scene 1 "a blue cube", Scene 2 "the blue cube", Scene 3 "the blue cube"
+
 Format your response ONLY as JSON (no markdown, no explanation):
 {{
   "setup": "Opening line/premise with optional [laughs], [sighs], [gasps] tokens",
