@@ -62,7 +62,8 @@ logger = logging.getLogger(__name__)
 # ADDED: "vector art, solid colors" (mathematically stable for 8x downsampling)
 VISUAL_STYLE_PROMPT = (
     "1990s cartoon style, thick clean outlines, flat solid colors, vector art, "
-    "cel shaded, high definition, saturday morning cartoon, no gradients"
+    "cel shaded, high definition, saturday morning cartoon, no gradients, "
+    "grounded on floor, consistent perspective, stable background"
 )
 
 # Motion style suffix appended to video prompts for CogVideoX I2V
