@@ -25,7 +25,7 @@ Pipeline Flow (I2V Audio-First):
     Video -> CLIP (verify) -> Embedding
 
 VRAM Budget: ~11GB peak during CogVideoX phase (Flux unloaded before CogVideoX)
-Target Duration: Audio-driven (e.g., 14.2s audio = 114 frames @ 8fps)
+Target Duration: Audio-driven (e.g., 14.2s audio = 227 frames @ 16fps)
 """
 
 from __future__ import annotations
@@ -520,13 +520,16 @@ class DefaultRenderer(DeterministicVideoRenderer):
             )
 
             # Calculate video frames from audio duration
-            # Audio is at 24kHz, video is at 8fps
+            # Audio is at 24kHz, video is at 16fps
             audio_sample_rate = 24000
-            video_fps = 8
+            video_fps = 16
             audio_duration_s = audio_result.shape[0] / audio_sample_rate
             total_video_frames = int(audio_duration_s * video_fps)
             num_scenes = len(script.storyboard)
-            frames_per_scene = max(40, total_video_frames // num_scenes) if num_scenes > 0 else 40  # Ensure minimum 40 frames per scene
+            # Ensure minimum 65 frames per scene (~4s at 16fps)
+            frames_per_scene = (
+                max(65, total_video_frames // num_scenes) if num_scenes > 0 else 65
+            )
 
             logger.info(
                 "Audio-first calculation",
@@ -841,16 +844,16 @@ class DefaultRenderer(DeterministicVideoRenderer):
         self._model_registry.prepare_for_stage("video")
         cogvideox = self._model_registry.get_cogvideox()
 
-        # Configure for montage
+        # Configure for montage (81 frames at 16fps per CogVideoX docs)
         config = VideoGenerationConfig(
-            num_frames=49,
+            num_frames=81,
             guidance_scale=5.5,  # Higher for temporal stability (CogVideoX docs: 6.0 default)
             use_dynamic_cfg=True,
-            fps=8,
+            fps=16,
         )
 
-        # Trim frames: min of requested and 40 (to avoid tail degradation)
-        trim_frames = min(frames_per_scene, 40)
+        # Trim frames: min of requested and 65 (to avoid tail degradation, ~4s at 16fps)
+        trim_frames = min(frames_per_scene, 65)
 
         video = await cogvideox.generate_montage(
             keyframes=keyframes,
@@ -861,7 +864,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
         )
 
         logger.info(
-            f"I2V Montage complete: {video.shape[0]} frames ({video.shape[0]/8:.1f}s)"
+            f"I2V Montage complete: {video.shape[0]} frames ({video.shape[0]/16:.1f}s)"
         )
         return video
 

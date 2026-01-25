@@ -11,7 +11,7 @@ The CogVideoX model is part of the Narrative Chain pipeline (Phase 3) and:
 - Returns video frames as torch tensors for downstream processing
 
 VRAM Budget: ~10-11 GB (INT8 quantized with CPU offload)
-Output: 49 frames at 720x480 at 8fps (~6 seconds)
+Output: 81 frames at 720x480 at 16fps (~5 seconds)
 
 Example:
     >>> model = CogVideoXModel()
@@ -22,7 +22,7 @@ Example:
     ...     prompt="A cartoon man waving at the camera in a colorful studio",
     ...     seed=42
     ... )
-    >>> print(frames.shape)  # [49, 3, 480, 720]
+    >>> print(frames.shape)  # [81, 3, 480, 720]
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class VideoGenerationConfig:
     """Configuration for video generation.
 
     Attributes:
-        num_frames: Number of frames to generate (default 49, ~6 seconds at 8fps)
+        num_frames: Number of frames to generate (default 81, ~5 seconds at 16fps)
         guidance_scale: Classifier-free guidance scale (default 4.5 for temporal stability)
         use_dynamic_cfg: Enable dynamic CFG scheduling for better motion (default True)
         num_inference_steps: Denoising steps (more = better quality, slower)
@@ -69,11 +69,11 @@ class VideoGenerationConfig:
         negative_prompt: Text describing what to avoid in generation (suppresses artifacts)
     """
 
-    num_frames: int = 49  # CogVideoX default (~6 seconds at 8fps)
+    num_frames: int = 81  # CogVideoX recommended for temporal stability (~5 seconds at 16fps)
     guidance_scale: float = 5.5  # CFG scale for temporal stability (CogVideoX docs: 6.0 default)
     use_dynamic_cfg: bool = True  # Enable dynamic CFG scheduling for better motion
     num_inference_steps: int = 50
-    fps: int = 8  # Output frame rate
+    fps: int = 16  # Output frame rate (16fps for smoother motion per CogVideoX docs)
     height: int = 480  # CogVideoX native resolution
     width: int = 720  # CogVideoX native resolution (3:2 aspect)
     negative_prompt: str = (
@@ -288,7 +288,7 @@ class CogVideoXModel:
             ...     config=VideoGenerationConfig(num_frames=49),
             ...     seed=42
             ... )
-            >>> print(frames.shape)  # [49, 3, 480, 720]
+            >>> print(frames.shape)  # [81, 3, 480, 720]
         """
         # Ensure model is loaded
         if not self.is_loaded:
@@ -462,7 +462,7 @@ class CogVideoXModel:
         prompts: list[str],
         config: VideoGenerationConfig | None = None,
         seed: int | None = None,
-        trim_frames: int = 40,  # Trim each 49-frame clip to 40 frames (~5s)
+        trim_frames: int = 65,  # Trim each 81-frame clip to 65 frames (~4s at 16fps)
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> torch.Tensor:
         """Generate video montage from keyframe images and text prompts.
@@ -476,7 +476,7 @@ class CogVideoXModel:
             prompts: List of text prompts (one per scene)
             config: Optional generation config
             seed: Optional base seed (scene seeds = seed + scene_idx)
-            trim_frames: Frames to keep per clip (default 40 = 5s @ 8fps).
+            trim_frames: Frames to keep per clip (default 65 = ~4s @ 16fps).
                         Set to 0 to disable trimming and keep all frames.
             progress_callback: Optional callback(scene_num, total_scenes) called
                               before each scene and after completion

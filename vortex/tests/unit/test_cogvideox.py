@@ -23,13 +23,13 @@ class TestVideoGenerationConfig:
     """Tests for VideoGenerationConfig dataclass."""
 
     def test_default_config(self) -> None:
-        """Test default configuration values."""
+        """Test default configuration values (81 frames at 16fps per CogVideoX docs)."""
         config = VideoGenerationConfig()
-        assert config.num_frames == 49
-        assert config.guidance_scale == 5.5  # Higher for temporal stability (CogVideoX docs: 6.0 default)
+        assert config.num_frames == 81  # CogVideoX recommended for temporal stability
+        assert config.guidance_scale == 5.5  # Higher for temporal stability
         assert config.use_dynamic_cfg is True  # Dynamic CFG for better motion
         assert config.num_inference_steps == 50
-        assert config.fps == 8
+        assert config.fps == 16  # 16fps for smoother motion per CogVideoX docs
         assert config.height == 480
         assert config.width == 720
 
@@ -80,6 +80,17 @@ class TestVideoGenerationConfig:
         config = VideoGenerationConfig()
         assert config.guidance_scale != 3.5, "guidance_scale must not be legacy 3.5 value"
         assert config.guidance_scale == 5.5, "guidance_scale should be 5.5 per CogVideoX docs"
+
+    def test_default_frame_config(self) -> None:
+        """Default should be 81 frames at 16fps per CogVideoX docs.
+
+        This test guards against regression to the legacy 49 frames at 8fps
+        which caused temporal instability. CogVideoX documentation recommends
+        81 frames at 16fps for better temporal consistency.
+        """
+        config = VideoGenerationConfig()
+        assert config.num_frames == 81, "num_frames must be 81 per CogVideoX docs"
+        assert config.fps == 16, "fps must be 16 per CogVideoX docs"
 
     def test_invalid_num_inference_steps(self) -> None:
         """Test that num_inference_steps must be >= 1."""
@@ -242,8 +253,8 @@ class TestGenerateChainLogic:
         """Test generate_chain with a short duration (single chunk)."""
         import warnings
 
-        # Create mock chunk output (49 frames)
-        mock_frames = torch.rand(49, 3, 480, 720)
+        # Create mock chunk output (81 frames at 16fps per CogVideoX docs)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -255,7 +266,7 @@ class TestGenerateChainLogic:
                 result = await mock_model.generate_chain(
                     keyframe=keyframe,
                     prompt="test prompt",
-                    target_duration=6.0,  # 6s = 1 chunk at 49 frames, 8fps
+                    target_duration=5.0,  # 5s = 1 chunk at 81 frames, 16fps (~5.06s)
                     seed=42,
                 )
                 assert len(w) == 1
@@ -265,17 +276,17 @@ class TestGenerateChainLogic:
             # Should have called generate_chunk once
             assert mock_gen.call_count == 1
 
-            # Result should be trimmed to 48 frames (6.0 * 8 fps)
-            assert result.shape[0] == 48
+            # Result should be trimmed to 80 frames (5.0 * 16 fps)
+            assert result.shape[0] == 80
 
     @pytest.mark.asyncio
     async def test_generate_chain_multiple_chunks(self, mock_model: CogVideoXModel) -> None:
         """Test generate_chain with multiple chunks."""
         import warnings
 
-        # Create mock chunk outputs
-        chunk1 = torch.rand(49, 3, 480, 720)
-        chunk2 = torch.rand(49, 3, 480, 720)
+        # Create mock chunk outputs (81 frames at 16fps per CogVideoX docs)
+        chunk1 = torch.rand(81, 3, 480, 720)
+        chunk2 = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.side_effect = [chunk1, chunk2]
@@ -286,7 +297,7 @@ class TestGenerateChainLogic:
                 await mock_model.generate_chain(
                     keyframe=keyframe,
                     prompt="test prompt",
-                    target_duration=12.0,  # 12s = 2 chunks
+                    target_duration=10.0,  # 10s = 2 chunks at 81 frames, 16fps (~5.06s each)
                     seed=42,
                 )
 
@@ -308,11 +319,11 @@ class TestGenerateChainLogic:
         """Test that subsequent chunks skip their first frame."""
         import warnings
 
-        # First chunk: 49 frames, second chunk: 49 frames (but skip 1st)
-        # So total frames = 49 + 48 = 97 frames
-        # At 8fps, this gives us 97/8 = 12.125 seconds
-        chunk1 = torch.rand(49, 3, 480, 720)
-        chunk2 = torch.rand(49, 3, 480, 720)
+        # First chunk: 81 frames, second chunk: 81 frames (but skip 1st)
+        # So total frames = 81 + 80 = 161 frames
+        # At 16fps, this gives us 161/16 = 10.0625 seconds
+        chunk1 = torch.rand(81, 3, 480, 720)
+        chunk2 = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.side_effect = [chunk1, chunk2]
@@ -320,26 +331,26 @@ class TestGenerateChainLogic:
             keyframe = torch.rand(3, 480, 720)
             with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
-                # chunk_duration = 49/8 = 6.125s
-                # target 10.0s needs ceil(10.0/6.125) = 2 chunks
+                # chunk_duration = 81/16 = 5.0625s
+                # target 8.0s needs ceil(8.0/5.0625) = 2 chunks
                 result = await mock_model.generate_chain(
                     keyframe=keyframe,
                     prompt="test prompt",
-                    target_duration=10.0,  # 2 chunks: 10/6.125 = 1.63, ceil to 2
+                    target_duration=8.0,  # 2 chunks: 8/5.0625 = 1.58, ceil to 2
                     seed=42,
                 )
 
-            # Total before trimming: 49 + 48 = 97 frames
-            # Target: 10 * 8 = 80 frames
-            # Result should be trimmed to 80 frames
-            assert result.shape[0] == 80
+            # Total before trimming: 81 + 80 = 161 frames
+            # Target: 8 * 16 = 128 frames
+            # Result should be trimmed to 128 frames
+            assert result.shape[0] == 128
 
     @pytest.mark.asyncio
     async def test_generate_chain_progress_callback(self, mock_model: CogVideoXModel) -> None:
         """Test that progress callback is called correctly."""
         import warnings
 
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
         callback_calls: list[tuple[int, int]] = []
 
         def progress_callback(chunk_num: int, total_chunks: int) -> None:
@@ -354,7 +365,7 @@ class TestGenerateChainLogic:
                 await mock_model.generate_chain(
                     keyframe=keyframe,
                     prompt="test prompt",
-                    target_duration=6.0,
+                    target_duration=5.0,  # ~5s = 1 chunk at 81 frames, 16fps
                     progress_callback=progress_callback,
                 )
 
@@ -367,7 +378,7 @@ class TestGenerateChainLogic:
         """Test generate_chain with no seed (non-deterministic)."""
         import warnings
 
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -378,7 +389,7 @@ class TestGenerateChainLogic:
                 await mock_model.generate_chain(
                     keyframe=keyframe,
                     prompt="test prompt",
-                    target_duration=6.0,
+                    target_duration=5.0,  # ~5s = 1 chunk at 81 frames, 16fps
                     seed=None,  # No seed
                 )
 
@@ -424,7 +435,7 @@ class TestGenerateMontageSignature:
         # Optional params have defaults
         assert sig.parameters["config"].default is None
         assert sig.parameters["seed"].default is None
-        assert sig.parameters["trim_frames"].default == 40
+        assert sig.parameters["trim_frames"].default == 65  # ~4s at 16fps
         assert sig.parameters["progress_callback"].default is None
 
     def test_generate_montage_annotations(self) -> None:
@@ -455,8 +466,8 @@ class TestGenerateMontageLogic:
     @pytest.mark.asyncio
     async def test_generate_montage_single_scene(self, mock_model: CogVideoXModel) -> None:
         """Test generate_montage with a single scene."""
-        # Create mock chunk output (49 frames)
-        mock_frames = torch.rand(49, 3, 480, 720)
+        # Create mock chunk output (81 frames per CogVideoX docs)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -472,14 +483,14 @@ class TestGenerateMontageLogic:
             # Should have called generate_chunk once
             assert mock_gen.call_count == 1
 
-            # Result should be trimmed to 40 frames (default trim_frames)
-            assert result.shape[0] == 40
+            # Result should be trimmed to 65 frames (default trim_frames, ~4s at 16fps)
+            assert result.shape[0] == 65
 
     @pytest.mark.asyncio
     async def test_generate_montage_multiple_scenes(self, mock_model: CogVideoXModel) -> None:
         """Test generate_montage with multiple scenes."""
-        # Create mock chunk outputs
-        mock_frames = torch.rand(49, 3, 480, 720)
+        # Create mock chunk outputs (81 frames per CogVideoX docs)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -495,13 +506,13 @@ class TestGenerateMontageLogic:
             # Should have called generate_chunk three times
             assert mock_gen.call_count == 3
 
-            # Result should be 3 * 40 = 120 frames
-            assert result.shape[0] == 120
+            # Result should be 3 * 65 = 195 frames
+            assert result.shape[0] == 195
 
     @pytest.mark.asyncio
     async def test_generate_montage_derived_seeds(self, mock_model: CogVideoXModel) -> None:
         """Test that each scene gets a derived seed."""
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -521,7 +532,7 @@ class TestGenerateMontageLogic:
     @pytest.mark.asyncio
     async def test_generate_montage_no_seed(self, mock_model: CogVideoXModel) -> None:
         """Test generate_montage without seed (non-deterministic)."""
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -541,7 +552,7 @@ class TestGenerateMontageLogic:
     @pytest.mark.asyncio
     async def test_generate_montage_custom_trim_frames(self, mock_model: CogVideoXModel) -> None:
         """Test generate_montage with custom trim_frames."""
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -560,7 +571,7 @@ class TestGenerateMontageLogic:
     @pytest.mark.asyncio
     async def test_generate_montage_no_trim(self, mock_model: CogVideoXModel) -> None:
         """Test generate_montage without trimming (trim_frames=0)."""
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -573,8 +584,8 @@ class TestGenerateMontageLogic:
                 trim_frames=0,  # No trimming
             )
 
-            # Result should keep all 49 frames
-            assert result.shape[0] == 49
+            # Result should keep all 81 frames
+            assert result.shape[0] == 81
 
     @pytest.mark.asyncio
     async def test_generate_montage_empty_prompts(
@@ -603,7 +614,7 @@ class TestGenerateMontageLogic:
         self, mock_model: CogVideoXModel
     ) -> None:
         """Test that each scene uses its own keyframe and prompt (I2V generation)."""
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
 
         with patch.object(mock_model, "generate_chunk", new_callable=AsyncMock) as mock_gen:
             mock_gen.return_value = mock_frames
@@ -628,7 +639,7 @@ class TestGenerateMontageLogic:
         self, mock_model: CogVideoXModel
     ) -> None:
         """Test that progress callback is called correctly for montage."""
-        mock_frames = torch.rand(49, 3, 480, 720)
+        mock_frames = torch.rand(81, 3, 480, 720)
         callback_calls: list[tuple[int, int]] = []
 
         def progress_callback(scene_num: int, total_scenes: int) -> None:
