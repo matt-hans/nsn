@@ -66,6 +66,7 @@ class VideoGenerationConfig:
         fps: Output frame rate
         height: Video height in pixels (must be divisible by 16)
         width: Video width in pixels (must be divisible by 16)
+        negative_prompt: Text describing what to avoid in generation (suppresses artifacts)
     """
 
     num_frames: int = 49  # CogVideoX default (~6 seconds at 8fps)
@@ -75,6 +76,11 @@ class VideoGenerationConfig:
     fps: int = 8  # Output frame rate
     height: int = 480  # CogVideoX native resolution
     width: int = 720  # CogVideoX native resolution (3:2 aspect)
+    negative_prompt: str = (
+        "blurry, distorted, deformed, morphing, warping, flickering, "
+        "low quality, artifacts, noise, grainy, pixelated, "
+        "inconsistent lighting, changing colors, unstable background"
+    )
 
     def __post_init__(self) -> None:
         """Validate configuration values."""
@@ -583,6 +589,7 @@ class CogVideoXModel:
         result = self._pipe(
             image=image,
             prompt=prompt,
+            negative_prompt=config.negative_prompt,
             num_frames=config.num_frames,
             height=config.height,
             width=config.width,

@@ -86,6 +86,13 @@ class TestVideoGenerationConfig:
         with pytest.raises(ValueError, match="num_inference_steps must be >= 1"):
             VideoGenerationConfig(num_inference_steps=0)
 
+    def test_config_has_negative_prompt(self) -> None:
+        """VideoGenerationConfig should include default negative prompt."""
+        config = VideoGenerationConfig()
+        assert hasattr(config, "negative_prompt")
+        assert "blurry" in config.negative_prompt
+        assert "morphing" in config.negative_prompt
+
 
 class TestCogVideoXModel:
     """Tests for CogVideoXModel class."""
