@@ -105,8 +105,9 @@ def _clean_text_for_bark(text: str) -> str:
     0. Converts unbracketed stage directions to valid Bark tokens
     1. Protects valid Bark tokens (e.g., [laughs], [gasps])
     2. Strips all other bracketed content (e.g., [excited], [fast])
-    3. Strips asterisk stage directions (e.g., *looks around*)
-    4. Removes file extensions, URLs, paths, special characters
+    3. Removes malformed/orphan brackets (e.g., [ without ])
+    4. Strips asterisk stage directions (e.g., *looks around*)
+    5. Removes file extensions, URLs, paths, special characters
 
     Args:
         text: Raw text from script
@@ -131,30 +132,72 @@ def _clean_text_for_bark(text: str) -> str:
     # 2. Remove ALL other bracketed content (invalid tokens like [excited], [fast])
     text = re.sub(r'\[.*?\]', '', text)
 
-    # 3. Remove asterisk stage directions (e.g., *looks around*, *gasps*)
+    # 3. Remove malformed/orphan brackets (unmatched [ or ])
+    # After step 2, any remaining [ or ] are orphans (protected tokens use placeholders)
+    text = re.sub(r'[\[\]]', '', text)
+
+    # 4. Remove asterisk stage directions (e.g., *looks around*, *gasps*)
     text = re.sub(r'\*[^*]+\*', '', text)
 
-    # 4. Remove file extensions (causes "dot S-S-D" stuttering)
+    # 5. Remove file extensions (causes "dot S-S-D" stuttering)
     text = re.sub(r'\.\w{2,4}\b', '', text)
 
-    # 5. Remove URLs and paths
+    # 6. Remove URLs and paths
     text = re.sub(r'https?://\S+', '', text)
     text = re.sub(r'/[\w/.-]+', '', text)
 
-    # 6. Replace remaining dots with spaces (except ellipsis already protected)
+    # 7. Replace remaining dots with spaces (except ellipsis already protected)
     text = re.sub(r'(?<!\.)\.(?!\.)', ' ', text)
 
-    # 7. Remove remaining special characters (but NOT brackets - already handled)
+    # 8. Remove remaining special characters (but NOT brackets - already handled)
     text = re.sub(r'[*_~`#@$%^&+=|\\<>{}]', '', text)
 
-    # 8. Restore valid tokens
+    # 9. Restore valid tokens
     for placeholder, token in protected_map.items():
         text = text.replace(placeholder, token)
 
-    # 9. Normalize whitespace
+    # 10. Normalize whitespace
     text = ' '.join(text.split())
 
     return text.strip()
+
+
+def validate_bark_text(text: str) -> str:
+    """Validate and sanitize text for Bark TTS.
+
+    This is the public API for text validation. It wraps _clean_text_for_bark()
+    and provides additional validation:
+    - Ensures text is not empty
+    - Validates that all Bark tokens are properly formatted
+    - Removes invalid tokens while preserving valid ones
+    - Handles malformed brackets
+
+    Valid Bark tokens (from suno-ai/bark README):
+    - [laughter], [laughs], [sighs], [music], [gasps], [clears throat]
+    - Punctuation: —, ...
+
+    Args:
+        text: Input text to validate
+
+    Returns:
+        Validated and sanitized text ready for Bark TTS
+
+    Raises:
+        ValueError: If text is empty or None
+
+    Example:
+        >>> validate_bark_text("Hello [invalid] world [laughs]")
+        'Hello world [laughs]'
+        >>> validate_bark_text("Hello [ world")  # Malformed bracket
+        'Hello world'
+    """
+    if text is None:
+        raise ValueError("Text cannot be None")
+
+    if not text.strip():
+        raise ValueError("Text cannot be empty")
+
+    return _clean_text_for_bark(text)
 
 
 class BarkVoiceEngine:

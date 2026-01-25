@@ -642,3 +642,156 @@ class TestUnbracketedStageDirectionConversion:
         cleaned = _clean_text_for_bark(text)
         assert "[sighs]" in cleaned
         assert "[laughs]" in cleaned
+
+
+class TestMalformedBracketHandling:
+    """Test suite for malformed bracket handling in text validation."""
+
+    def test_handles_orphan_opening_bracket(self):
+        """Should remove orphan opening bracket [ without closing ]."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Hello [ world"
+        cleaned = _clean_text_for_bark(text)
+        assert "[" not in cleaned
+        assert "Hello" in cleaned
+        assert "world" in cleaned
+
+    def test_handles_orphan_closing_bracket(self):
+        """Should remove orphan closing bracket ] without opening [."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Hello ] world"
+        cleaned = _clean_text_for_bark(text)
+        assert "]" not in cleaned
+        assert "Hello" in cleaned
+        assert "world" in cleaned
+
+    def test_handles_multiple_orphan_brackets(self):
+        """Should remove orphan brackets and content between matched brackets.
+
+        The regex removes everything between [ and ] (non-greedy), then
+        orphan brackets are cleaned up separately.
+        """
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Hello [ world ] test [ again"
+        cleaned = _clean_text_for_bark(text)
+        # The [ world ] gets matched as bracketed content and removed
+        # The orphan [ is then cleaned up
+        assert "[" not in cleaned
+        assert "]" not in cleaned
+        assert "Hello" in cleaned
+        assert "test" in cleaned
+        assert "again" in cleaned
+
+    def test_malformed_brackets_consumes_content_to_nearest_close(self):
+        """Malformed brackets match to nearest ] consuming intermediate content.
+
+        When text has unbalanced brackets, the regex removes from [ to the
+        nearest ], which may include valid tokens. This is by design to
+        prevent any malformed text from reaching Bark.
+        """
+        from vortex.models.bark import _clean_text_for_bark
+        text = "Hello [ world [laughs] test ]"
+        cleaned = _clean_text_for_bark(text)
+        # [ world [laughs] gets matched and removed
+        # Then orphan ] is cleaned up
+        assert "[" not in cleaned or cleaned.count("[") == cleaned.count("]")
+        assert "Hello" in cleaned
+
+    def test_balanced_brackets_preserved_for_valid_tokens(self):
+        """Valid tokens should have balanced brackets preserved."""
+        from vortex.models.bark import _clean_text_for_bark
+        text = "[laughs] I'm [gasps] so [sighs] tired"
+        cleaned = _clean_text_for_bark(text)
+        assert "[laughs]" in cleaned
+        assert "[gasps]" in cleaned
+        assert "[sighs]" in cleaned
+        assert cleaned.count("[") == cleaned.count("]")
+        assert cleaned.count("[") == 3
+
+
+class TestValidateBarkTextFunction:
+    """Test suite for validate_bark_text() public API function."""
+
+    def test_validate_bark_text_basic(self):
+        """Should validate and clean basic text."""
+        from vortex.models.bark import validate_bark_text
+        text = "Hello world"
+        result = validate_bark_text(text)
+        assert result == "Hello world"
+
+    def test_validate_bark_text_removes_invalid_tokens(self):
+        """Should remove invalid Bark tokens."""
+        from vortex.models.bark import validate_bark_text
+        text = "Hello [invalid_token] world [laughs]"
+        result = validate_bark_text(text)
+        assert "[invalid_token]" not in result
+        assert "[laughs]" in result
+        assert "Hello" in result
+        assert "world" in result
+
+    def test_validate_bark_text_handles_malformed_brackets(self):
+        """Should handle malformed brackets."""
+        from vortex.models.bark import validate_bark_text
+        text = "Hello [ world"
+        result = validate_bark_text(text)
+        assert "[" not in result or result.count("[") == result.count("]")
+
+    def test_validate_bark_text_raises_on_none(self):
+        """Should raise ValueError on None input."""
+        from vortex.models.bark import validate_bark_text
+        with pytest.raises(ValueError, match="cannot be None"):
+            validate_bark_text(None)
+
+    def test_validate_bark_text_raises_on_empty(self):
+        """Should raise ValueError on empty input."""
+        from vortex.models.bark import validate_bark_text
+        with pytest.raises(ValueError, match="cannot be empty"):
+            validate_bark_text("")
+
+    def test_validate_bark_text_raises_on_whitespace_only(self):
+        """Should raise ValueError on whitespace-only input."""
+        from vortex.models.bark import validate_bark_text
+        with pytest.raises(ValueError, match="cannot be empty"):
+            validate_bark_text("   ")
+
+    def test_validate_bark_text_preserves_all_valid_tokens(self):
+        """Should preserve all valid Bark tokens."""
+        from vortex.models.bark import validate_bark_text
+        text = "[laughs] [sighs] [gasps] [music] [laughter] [clears throat] ... —"
+        result = validate_bark_text(text)
+        assert "[laughs]" in result
+        assert "[sighs]" in result
+        assert "[gasps]" in result
+        assert "[music]" in result
+        assert "[laughter]" in result
+        assert "[clears throat]" in result
+        assert "..." in result
+        assert "—" in result
+
+    def test_validate_bark_text_strips_asterisk_directions(self):
+        """Should strip asterisk stage directions."""
+        from vortex.models.bark import validate_bark_text
+        text = "Hello *looks around* world"
+        result = validate_bark_text(text)
+        assert "*" not in result
+        assert "looks around" not in result
+        assert "Hello" in result
+        assert "world" in result
+
+    def test_validate_bark_text_removes_urls(self):
+        """Should remove URLs."""
+        from vortex.models.bark import validate_bark_text
+        text = "Check https://example.com for more"
+        result = validate_bark_text(text)
+        assert "https://" not in result
+        assert "example.com" not in result
+        assert "Check" in result
+        assert "for more" in result
+
+    def test_validate_bark_text_removes_file_extensions(self):
+        """Should remove file extensions."""
+        from vortex.models.bark import validate_bark_text
+        text = "Open the file.txt now"
+        result = validate_bark_text(text)
+        assert ".txt" not in result
+        assert "file" in result
