@@ -69,7 +69,7 @@ class VideoGenerationConfig:
     """
 
     num_frames: int = 49  # CogVideoX default (~6 seconds at 8fps)
-    guidance_scale: float = 4.5  # CFG scale for temporal stability (was 3.5)
+    guidance_scale: float = 5.5  # CFG scale for temporal stability (CogVideoX docs: 6.0 default)
     use_dynamic_cfg: bool = True  # Enable dynamic CFG scheduling for better motion
     num_inference_steps: int = 50
     fps: int = 8  # Output frame rate

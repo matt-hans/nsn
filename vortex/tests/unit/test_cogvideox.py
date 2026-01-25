@@ -26,7 +26,7 @@ class TestVideoGenerationConfig:
         """Test default configuration values."""
         config = VideoGenerationConfig()
         assert config.num_frames == 49
-        assert config.guidance_scale == 4.5  # Increased for temporal stability
+        assert config.guidance_scale == 5.5  # Higher for temporal stability (CogVideoX docs: 6.0 default)
         assert config.use_dynamic_cfg is True  # Dynamic CFG for better motion
         assert config.num_inference_steps == 50
         assert config.fps == 8
@@ -69,6 +69,17 @@ class TestVideoGenerationConfig:
         """Test that guidance_scale must be >= 1.0."""
         with pytest.raises(ValueError, match="guidance_scale must be >= 1.0"):
             VideoGenerationConfig(guidance_scale=0.5)
+
+    def test_guidance_scale_not_legacy_value(self) -> None:
+        """Verify guidance_scale is 5.5, not the legacy 3.5 that caused degradation.
+
+        This test guards against regression where hardcoded values in renderer.py
+        overrode the config default. The legacy value of 3.5 caused severe quality
+        degradation in the I2V pipeline.
+        """
+        config = VideoGenerationConfig()
+        assert config.guidance_scale != 3.5, "guidance_scale must not be legacy 3.5 value"
+        assert config.guidance_scale == 5.5, "guidance_scale should be 5.5 per CogVideoX docs"
 
     def test_invalid_num_inference_steps(self) -> None:
         """Test that num_inference_steps must be >= 1."""

@@ -844,7 +844,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
         # Configure for montage
         config = VideoGenerationConfig(
             num_frames=49,
-            guidance_scale=3.5,
+            guidance_scale=5.5,  # Higher for temporal stability (CogVideoX docs: 6.0 default)
             use_dynamic_cfg=True,
             fps=8,
         )
