@@ -651,6 +651,29 @@ Hope you like it!"""
 
         assert "missing" in str(exc_info.value).lower()
 
+    @pytest.mark.asyncio
+    @patch("vortex.models.showrunner.httpx.AsyncClient")
+    async def test_generate_script_uses_moderate_temperature(self, mock_client_class):
+        """Should use temperature 0.7 for balanced creativity/coherence."""
+        mock_client = AsyncMock()
+        mock_client_class.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_class.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "response": '{"setup": "S", "punchline": "P", "storyboard": ["S1", "S2", "S3"]}'
+        }
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        sr = Showrunner()
+        await sr.generate_script("test theme")
+
+        call_args = mock_client.post.call_args
+        options = call_args[1]["json"]["options"]
+        assert options["temperature"] == 0.7
+        assert options["top_p"] == 0.9
+
 
 class TestShowrunnerJsonParsing:
     """Test JSON extraction edge cases via _extract_json and _parse_script_response."""

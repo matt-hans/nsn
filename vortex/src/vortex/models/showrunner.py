@@ -351,8 +351,8 @@ class Showrunner:
                         "prompt": prompt,
                         "stream": False,
                         "options": {
-                            "temperature": 0.9,  # Higher creativity for absurdist content
-                            "top_p": 0.95,
+                            "temperature": 0.7,  # Balanced: creative but coherent (was 0.9)
+                            "top_p": 0.9,        # Slightly tighter sampling (was 0.95)
                         },
                     },
                 )
