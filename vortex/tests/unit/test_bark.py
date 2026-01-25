@@ -321,6 +321,61 @@ class TestBarkUnload:
                 mock_cache.assert_called_once()
 
 
+class TestBarkMinEosP:
+    """Test suite for min_eos_p parameter that prevents semantic drift."""
+
+    def test_bark_uses_min_eos_p(self):
+        """Bark should use min_eos_p=0.05 to prevent gibberish/semantic drift.
+
+        Without min_eos_p, Bark can continue generating past logical sentence
+        boundaries, producing semantic gibberish like "laves are allegations".
+        The min_eos_p=0.05 parameter helps Bark recognize when to stop.
+        """
+        with patch('vortex.models.bark.preload_models'):
+            with patch('vortex.models.bark.generate_audio') as mock_gen:
+                from vortex.models.bark import BarkVoiceEngine
+
+                # Mock returns valid audio
+                mock_gen.return_value = np.random.randn(24000).astype(np.float32)
+
+                engine = BarkVoiceEngine(device="cpu")
+                engine.synthesize(text="Hello world", voice_id="rick_c137")
+
+                # Verify generate_audio was called with min_eos_p=0.05
+                mock_gen.assert_called_once()
+                call_kwargs = mock_gen.call_args.kwargs
+                assert "min_eos_p" in call_kwargs, (
+                    "min_eos_p parameter not passed to generate_audio"
+                )
+                assert call_kwargs["min_eos_p"] == 0.05, (
+                    f"Expected min_eos_p=0.05, got {call_kwargs['min_eos_p']}"
+                )
+
+    def test_bark_min_eos_p_value_is_correct(self):
+        """Verify the specific min_eos_p value of 0.05 is used consistently."""
+        with patch('vortex.models.bark.preload_models'):
+            with patch('vortex.models.bark.generate_audio') as mock_gen:
+                from vortex.models.bark import BarkVoiceEngine
+
+                mock_gen.return_value = np.random.randn(24000).astype(np.float32)
+
+                engine = BarkVoiceEngine(device="cpu")
+
+                # Test with different emotions to ensure min_eos_p is always 0.05
+                for emotion in ["neutral", "manic", "excited", "sad", "angry"]:
+                    mock_gen.reset_mock()
+                    engine.synthesize(
+                        text="Test sentence",
+                        voice_id="rick_c137",
+                        emotion=emotion
+                    )
+                    call_kwargs = mock_gen.call_args.kwargs
+                    assert call_kwargs.get("min_eos_p") == 0.05, (
+                        f"min_eos_p should be 0.05 for emotion '{emotion}', "
+                        f"got {call_kwargs.get('min_eos_p')}"
+                    )
+
+
 class TestBarkTokenWhitelist:
     """Test suite for Bark token whitelist sanitization."""
 
