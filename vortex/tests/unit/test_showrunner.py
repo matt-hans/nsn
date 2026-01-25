@@ -855,3 +855,10 @@ class TestShowrunnerPromptConstraints:
 
         assert "GEOMETRY RULE" in SCRIPT_PROMPT_TEMPLATE
         assert "IDENTICAL" in SCRIPT_PROMPT_TEMPLATE
+
+    def test_prompt_contains_emotion_intensity_rule(self):
+        """SCRIPT_PROMPT_TEMPLATE should limit extreme emotions."""
+        from vortex.models.showrunner import SCRIPT_PROMPT_TEMPLATE
+
+        assert "EMOTION INTENSITY RULE" in SCRIPT_PROMPT_TEMPLATE
+        assert "ACTION" in SCRIPT_PROMPT_TEMPLATE

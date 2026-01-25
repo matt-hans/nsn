@@ -182,6 +182,11 @@ The shape must not change, warp, or become ambiguous between scenes.
 BAD: Scene 1 "a cube", Scene 2 "a rounded shape", Scene 3 "the object"
 GOOD: Scene 1 "a blue cube", Scene 2 "the blue cube", Scene 3 "the blue cube"
 
+EMOTION INTENSITY RULE: Avoid EXTREME emotional states that cause visual distortion.
+The subject should express emotions through ACTION, not dramatic facial/body transformation.
+BAD: "turns bright red with rage", "face contorts in fury", "body shakes violently"
+GOOD: "waves arms excitedly", "bounces with joy", "slumps disappointedly"
+
 Format your response ONLY as JSON (no markdown, no explanation):
 {{
   "setup": "Opening line/premise with optional [laughs], [sighs], [gasps] tokens",
