@@ -62,6 +62,24 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def split_into_sentences(text: str) -> list[str]:
+    """Split text into sentences for Bark processing.
+
+    Bark has ~13 second max duration per generation, so long text
+    must be split into sentences and generated separately.
+
+    Args:
+        text: Input text to split
+
+    Returns:
+        List of sentences (preserves Bark tokens like [laughs])
+    """
+    # Split on sentence boundaries while preserving Bark tokens
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    return [s.strip() for s in sentences if s.strip()]
+
+
 # Official Bark tokens that actually work (per suno-ai/bark README)
 VALID_BARK_TOKENS = frozenset({
     "[laughter]", "[laughs]", "[sighs]", "[music]",
@@ -407,11 +425,18 @@ class BarkVoiceEngine:
         if not text or text.strip() == "":
             raise ValueError("Text cannot be empty")
 
-        # Clean text for Bark to prevent stuttering and literal reading
-        text = _clean_text_for_bark(text)
+        # Split into sentences BEFORE cleaning (cleaning removes periods)
+        sentences = split_into_sentences(text)
 
-        # Check if text is empty after normalization
-        if not text:
+        # Clean each sentence individually and filter out empty ones
+        cleaned_sentences = []
+        for sentence in sentences:
+            cleaned = _clean_text_for_bark(sentence)
+            if cleaned:  # Only keep non-empty sentences
+                cleaned_sentences.append(cleaned)
+
+        # Check if all sentences normalized to empty
+        if not cleaned_sentences:
             raise ValueError("Text is empty after normalization")
 
         # Set seed for determinism
@@ -423,12 +448,61 @@ class BarkVoiceEngine:
         speaker = self._get_bark_speaker(voice_id)
         emotion_params = self._get_emotion_params(emotion)
 
-        # Attempt generation with retry logic
+        if len(cleaned_sentences) <= 1:
+            # Short text - generate directly with retry logic
+            audio = self._generate_with_retry(
+                cleaned_sentences[0], speaker, emotion_params, seed
+            )
+        else:
+            # Long text - generate each sentence and concatenate
+            audio_segments = []
+            for i, sentence in enumerate(cleaned_sentences):
+                segment_seed = seed + i if seed is not None else None
+                if segment_seed is not None:
+                    np.random.seed(segment_seed)
+                    torch.manual_seed(segment_seed)
+                segment = self._generate_with_retry(
+                    sentence, speaker, emotion_params, segment_seed
+                )
+                audio_segments.append(segment)
+            audio = np.concatenate(audio_segments)
+
+        # Convert to tensor and normalize
+        waveform = self._process_waveform(audio)
+
+        # Write to output buffer if provided
+        return self._write_to_buffer(waveform, output)
+
+    def _generate_with_retry(
+        self,
+        text: str,
+        speaker: str,
+        emotion_params: dict,
+        seed: int | None = None,
+    ) -> np.ndarray:
+        """Generate audio with retry logic and fallback.
+
+        Attempts generation up to max_retries times before falling back
+        to pre-loaded fallback audio.
+
+        Args:
+            text: Input text to synthesize
+            speaker: Bark speaker preset
+            emotion_params: Temperature settings
+            seed: Random seed for determinism (optional)
+
+        Returns:
+            np.ndarray: Generated audio waveform
+        """
         audio = None
         last_error = None
 
         for attempt in range(self.max_retries):
             try:
+                # Reset seed for each retry attempt to ensure reproducibility
+                if seed is not None:
+                    np.random.seed(seed)
+                    torch.manual_seed(seed)
                 audio = self._generate_bark(text, speaker, emotion_params)
                 break
             except Exception as e:
@@ -446,11 +520,7 @@ class BarkVoiceEngine:
             )
             audio = self.fallback_audio.copy()
 
-        # Convert to tensor and normalize
-        waveform = self._process_waveform(audio)
-
-        # Write to output buffer if provided
-        return self._write_to_buffer(waveform, output)
+        return audio
 
     def _generate_bark(
         self, text: str, speaker: str, emotion_params: dict

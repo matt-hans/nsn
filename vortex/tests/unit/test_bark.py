@@ -490,6 +490,103 @@ class TestBarkTokenWhitelist:
         assert "—" in cleaned
 
 
+class TestSentenceSplitting:
+    """Test suite for sentence splitting functionality."""
+
+    def test_sentence_splitting(self):
+        """Should split long text into sentences."""
+        from vortex.models.bark import split_into_sentences
+
+        text = "Hello world. This is a test. It works!"
+        sentences = split_into_sentences(text)
+        assert len(sentences) == 3
+        assert sentences[0] == "Hello world."
+        assert sentences[1] == "This is a test."
+        assert sentences[2] == "It works!"
+
+    def test_sentence_splitting_preserves_bark_tokens(self):
+        """Should preserve Bark tokens when splitting."""
+        from vortex.models.bark import split_into_sentences
+
+        text = "Hello [laughs]. This is fun! Really [sighs]."
+        sentences = split_into_sentences(text)
+        assert "[laughs]" in sentences[0]
+        assert "[sighs]" in sentences[2]
+
+    def test_sentence_splitting_single_sentence(self):
+        """Should return single sentence in list."""
+        from vortex.models.bark import split_into_sentences
+
+        text = "Hello world"
+        sentences = split_into_sentences(text)
+        assert len(sentences) == 1
+        assert sentences[0] == "Hello world"
+
+    def test_sentence_splitting_empty_string(self):
+        """Should return empty list for empty string."""
+        from vortex.models.bark import split_into_sentences
+
+        text = ""
+        sentences = split_into_sentences(text)
+        assert len(sentences) == 0
+
+    def test_sentence_splitting_multiple_punctuation(self):
+        """Should handle multiple sentence-ending punctuation."""
+        from vortex.models.bark import split_into_sentences
+
+        text = "What? Really! Yes."
+        sentences = split_into_sentences(text)
+        assert len(sentences) == 3
+        assert sentences[0] == "What?"
+        assert sentences[1] == "Really!"
+        assert sentences[2] == "Yes."
+
+
+class TestSynthesizeWithSentenceSplitting:
+    """Test suite for synthesize with sentence splitting."""
+
+    def test_synthesize_concatenates_long_text(self):
+        """Test that long text is split and audio segments are concatenated."""
+        with patch('vortex.models.bark.preload_models'):
+            with patch('vortex.models.bark.generate_audio') as mock_gen:
+                from vortex.models.bark import BarkVoiceEngine
+
+                # Mock returns different length audio for each call
+                mock_gen.side_effect = [
+                    np.random.randn(12000).astype(np.float32),  # First sentence
+                    np.random.randn(10000).astype(np.float32),  # Second sentence
+                    np.random.randn(8000).astype(np.float32),   # Third sentence
+                ]
+
+                engine = BarkVoiceEngine(device="cpu")
+                result = engine.synthesize(
+                    text="Hello world. This is a test. It works!",
+                    voice_id="rick_c137"
+                )
+
+                # Should have called generate_audio 3 times (once per sentence)
+                assert mock_gen.call_count == 3
+                assert isinstance(result, torch.Tensor)
+
+    def test_synthesize_short_text_no_split(self):
+        """Test that short text (single sentence) is not split."""
+        with patch('vortex.models.bark.preload_models'):
+            with patch('vortex.models.bark.generate_audio') as mock_gen:
+                from vortex.models.bark import BarkVoiceEngine
+
+                mock_gen.return_value = np.random.randn(24000).astype(np.float32)
+
+                engine = BarkVoiceEngine(device="cpu")
+                result = engine.synthesize(
+                    text="Hello world",
+                    voice_id="rick_c137"
+                )
+
+                # Should have called generate_audio only once
+                assert mock_gen.call_count == 1
+                assert isinstance(result, torch.Tensor)
+
+
 class TestUnbracketedStageDirectionConversion:
     """Test suite for converting unbracketed stage directions to Bark tokens."""
 
