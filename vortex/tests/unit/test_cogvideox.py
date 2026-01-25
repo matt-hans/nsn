@@ -26,7 +26,7 @@ class TestVideoGenerationConfig:
         """Test default configuration values."""
         config = VideoGenerationConfig()
         assert config.num_frames == 49
-        assert config.guidance_scale == 3.5  # Lowered from 5.0 to reduce artifacts
+        assert config.guidance_scale == 4.5  # Increased for temporal stability
         assert config.use_dynamic_cfg is True  # Dynamic CFG for better motion
         assert config.num_inference_steps == 50
         assert config.fps == 8

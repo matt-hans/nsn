@@ -60,7 +60,7 @@ class VideoGenerationConfig:
 
     Attributes:
         num_frames: Number of frames to generate (default 49, ~6 seconds at 8fps)
-        guidance_scale: Classifier-free guidance scale (default 5.0 for artifact-free output)
+        guidance_scale: Classifier-free guidance scale (default 4.5 for temporal stability)
         use_dynamic_cfg: Enable dynamic CFG scheduling for better motion (default True)
         num_inference_steps: Denoising steps (more = better quality, slower)
         fps: Output frame rate
@@ -69,7 +69,7 @@ class VideoGenerationConfig:
     """
 
     num_frames: int = 49  # CogVideoX default (~6 seconds at 8fps)
-    guidance_scale: float = 3.5  # CFG scale (lowered from 5.0 to reduce "deep fry" artifacts)
+    guidance_scale: float = 4.5  # CFG scale for temporal stability (was 3.5)
     use_dynamic_cfg: bool = True  # Enable dynamic CFG scheduling for better motion
     num_inference_steps: int = 50
     fps: int = 8  # Output frame rate
