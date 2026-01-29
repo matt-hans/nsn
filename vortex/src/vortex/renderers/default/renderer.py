@@ -25,7 +25,7 @@ Pipeline Flow (I2V Audio-First):
     Video -> CLIP (verify) -> Embedding
 
 VRAM Budget: ~11GB peak during CogVideoX phase (Flux unloaded before CogVideoX)
-Target Duration: Audio-driven (e.g., 14.2s audio = 227 frames @ 16fps)
+Target Duration: Audio-driven (e.g., 14.2s audio = 114 frames @ 8fps)
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ import yaml
 from vortex.models.bark import load_bark
 from vortex.models.clip_ensemble import ClipEnsemble, DualClipResult
 from vortex.models.cogvideox import CogVideoXModel, VideoGenerationConfig
-from vortex.models.flux import FluxModel
+from vortex.models.flux import FluxModel, TEXTURE_ANCHOR_SUFFIX
 from vortex.models.showrunner import Script, Showrunner
 from vortex.renderers.base import DeterministicVideoRenderer
 from vortex.renderers.recipe_schema import merge_with_defaults, validate_recipe
@@ -61,8 +61,9 @@ logger = logging.getLogger(__name__)
 # REMOVED: "halftone texture" (causes swirling during VAE downsampling)
 # ADDED: "vector art, solid colors" (mathematically stable for 8x downsampling)
 VISUAL_STYLE_PROMPT = (
-    "1990s cartoon style, thick clean outlines, flat solid colors, vector art, "
-    "cel shaded, high definition, saturday morning cartoon, no gradients, "
+    "adult swim 2d cartoon style, rough expressive linework, "
+    "thick clean outlines, flat muted colors, vector art, "
+    "cel shaded, high definition, no gradients, "
     "grounded on floor, consistent perspective, stable background"
 )
 
@@ -106,6 +107,7 @@ class _ModelRegistry:
         offloading_mode: str = "auto",
         cache_dir: str | None = None,
         local_only: bool = False,
+        cogvideox_options: dict[str, Any] | None = None,
     ):
         self.device = device
         self.precision_overrides = precision_overrides or {}
@@ -113,6 +115,7 @@ class _ModelRegistry:
         self._offloading_mode = offloading_mode
         self._cache_dir = cache_dir
         self._local_only = local_only
+        self._cogvideox_options = cogvideox_options or {}
 
         # CogVideoX and Flux are handled separately (not nn.Module)
         self._cogvideox: CogVideoXModel | None = None
@@ -188,6 +191,8 @@ class _ModelRegistry:
                 device=self.device,
                 enable_cpu_offload=True,  # Always use CPU offload for CogVideoX
                 cache_dir=self._cache_dir,
+                enable_vae_tiling=self._cogvideox_options.get("enable_vae_tiling", True),
+                enable_vae_slicing=self._cogvideox_options.get("enable_vae_slicing", False),
             )
             # Note: CogVideoX.load() is called lazily when needed
             self._models["cogvideox"] = self._cogvideox
@@ -336,6 +341,38 @@ class DefaultRenderer(DeterministicVideoRenderer):
         self._audio_buffer: torch.Tensor | None = None
         self._actor_buffer: torch.Tensor | None = None
 
+    def _get_prompt_steering(self) -> dict[str, Any]:
+        """Return prompt steering config (if enabled)."""
+        quality_cfg = self._config.get("quality", {})
+        return quality_cfg.get("prompt_steering", {})
+
+    def _apply_prompt_steering(self, prompt: str) -> str:
+        """Apply positive prompt prefix when enabled."""
+        steering = self._get_prompt_steering()
+        if not steering.get("enabled", False):
+            return prompt
+        prefix = steering.get("positive_prefix", "").strip()
+        if not prefix:
+            return prompt
+        return f"{prefix}{prompt}"
+
+    def _get_negative_prompt_prefix(self) -> str:
+        """Return negative prompt prefix when enabled."""
+        steering = self._get_prompt_steering()
+        if not steering.get("enabled", False):
+            return ""
+        return steering.get("negative_prefix", "").strip()
+
+    def _truncate_prompt(self, prompt: str, max_words: int = 60) -> str:
+        """Trim long prompts to reduce tokenizer truncation."""
+        words = prompt.split()
+        if len(words) <= max_words:
+            return prompt
+        head_count = max_words - 12
+        head = words[:head_count]
+        tail = words[-12:]
+        return " ".join(head + tail)
+
     def _load_manifest(self) -> RendererManifest:
         """Load manifest from default/manifest.yaml."""
         manifest_path = Path(__file__).parent / "manifest.yaml"
@@ -375,6 +412,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
         cache_dir_path = Path(cache_dir).expanduser() if cache_dir else None
         cache_dir_str = str(cache_dir_path) if cache_dir_path else None
         local_only = bool(models_config.get("local_only", False))
+        cogvideox_options = models_config.get("cogvideox", {})
 
         self._model_registry = _ModelRegistry(
             device,
@@ -382,6 +420,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
             offloading_mode=offloading_mode,
             cache_dir=cache_dir_str,
             local_only=local_only,
+            cogvideox_options=cogvideox_options,
         )
         self._model_registry.load_all_models()
 
@@ -520,15 +559,15 @@ class DefaultRenderer(DeterministicVideoRenderer):
             )
 
             # Calculate video frames from audio duration
-            # Audio is at 24kHz, video is at 16fps
+            # Audio is at 24kHz, video is at 8fps
             audio_sample_rate = 24000
-            video_fps = 16
+            video_fps = 8
             audio_duration_s = audio_result.shape[0] / audio_sample_rate
             total_video_frames = int(audio_duration_s * video_fps)
             num_scenes = len(script.storyboard)
-            # Ensure minimum 65 frames per scene (~4s at 16fps)
+            # Derive frames per scene from audio duration to keep A/V aligned
             frames_per_scene = (
-                max(65, total_video_frames // num_scenes) if num_scenes > 0 else 65
+                max(1, total_video_frames // num_scenes) if num_scenes > 0 else 1
             )
 
             logger.info(
@@ -591,6 +630,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 generation_time_ms=generation_time_ms,
                 determinism_proof=b"",  # Computed below
                 success=True,
+                script=script,
             )
 
             # Compute determinism proof
@@ -610,6 +650,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 determinism_proof=b"",
                 success=False,
                 error_msg=str(e),
+                script=None,
             )
 
     async def _generate_script(
@@ -775,8 +816,10 @@ class DefaultRenderer(DeterministicVideoRenderer):
             visual_prompt = (
                 f"{script.subject_visual}. "  # First mention
                 f"{script.subject_visual}, {scene}. "  # Second mention with scene
-                f"{VISUAL_STYLE_PROMPT}"
+                f"{VISUAL_STYLE_PROMPT}{TEXTURE_ANCHOR_SUFFIX}"
             )
+            visual_prompt = self._apply_prompt_steering(visual_prompt)
+            visual_prompt = self._truncate_prompt(visual_prompt)
 
             logger.info(
                 f"Generating keyframe {i+1}/{len(script.storyboard)}",
@@ -834,26 +877,34 @@ class DefaultRenderer(DeterministicVideoRenderer):
                 f"{len(keyframes)} keyframes vs {len(script.storyboard)} scenes"
             )
 
-        # Build motion prompts from storyboard with motion style suffix
+        # Prefer dense video prompts (with style) when available, fallback to storyboard.
+        base_prompts = script.video_prompts if script.video_prompts else [
+            f"{scene}, {VISUAL_STYLE_PROMPT}" for scene in script.storyboard
+        ]
+        base_prompts = [self._apply_prompt_steering(prompt) for prompt in base_prompts]
+        base_prompts = [self._truncate_prompt(prompt) for prompt in base_prompts]
         motion_prompts = [
-            f"{scene}{MOTION_STYLE_SUFFIX}"
-            for scene in script.storyboard
+            prompt if prompt.endswith(MOTION_STYLE_SUFFIX) else f"{prompt}{MOTION_STYLE_SUFFIX}"
+            for prompt in base_prompts
         ]
 
         logger.info(f"Generating {len(keyframes)}-scene I2V montage...")
         self._model_registry.prepare_for_stage("video")
         cogvideox = self._model_registry.get_cogvideox()
 
-        # Configure for montage (81 frames at 16fps per CogVideoX docs)
+        # Configure for montage (48 frames at 8fps, must be divisible by 4 for VAE)
         config = VideoGenerationConfig(
-            num_frames=81,
-            guidance_scale=5.5,  # Higher for temporal stability (CogVideoX docs: 6.0 default)
+            num_frames=48,
+            guidance_scale=4.0,  # Reduced from 5.5 for stability
             use_dynamic_cfg=True,
-            fps=16,
+            fps=8,
         )
+        negative_prefix = self._get_negative_prompt_prefix()
+        if negative_prefix:
+            config.negative_prompt = f"{negative_prefix}, {config.negative_prompt}"
 
-        # Trim frames: min of requested and 65 (to avoid tail degradation, ~4s at 16fps)
-        trim_frames = min(frames_per_scene, 65)
+        # Trim frames: min of requested and 40 (to avoid tail degradation, ~5s at 8fps)
+        trim_frames = min(frames_per_scene, 40)
 
         video = await cogvideox.generate_montage(
             keyframes=keyframes,
@@ -864,7 +915,7 @@ class DefaultRenderer(DeterministicVideoRenderer):
         )
 
         logger.info(
-            f"I2V Montage complete: {video.shape[0]} frames ({video.shape[0]/16:.1f}s)"
+            f"I2V Montage complete: {video.shape[0]} frames ({video.shape[0]/8:.1f}s)"
         )
         return video
 

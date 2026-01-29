@@ -1,0 +1,21 @@
+{
+  "slot_id": 9999,
+  "seed": 683464760,
+  "fps": 8,
+  "sample_rate": 24000,
+  "script": {
+    "setup": "[gasps] This is the cube that will change your life!",
+    "punchline": "... [laughs] That's right - it even floats in mid-air without any help!",
+    "subject_visual": "A bright red cube with rounded corners, anthropomorphic toaster",
+    "storyboard": [
+      "Scene 1: The cube toasts bread effortlessly.",
+      "Scene 2: The cube starts to levitate off the countertop.",
+      "Scene 3: The floating cube sings a jingle while doing backflips."
+    ],
+    "video_prompts": [
+      "A bright red cube with rounded corners, anthropomorphic toaster is shown on a kitchen counter. It opens its lid and toasts bread in seconds. The camera zooms in on the toaster's satisfied smile as it closes the lid again. Warm lighting highlights the toaster's sleek design. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, muted palette, messy ink lines, asterisk pupils, exaggerated proportions, squash and stretch animation",
+      "The bright red cube with rounded corners, anthropomorphic toaster starts to slowly lift off the countertop. The camera pans up as the cube levitates higher, hovering in mid-air. A soft glow emanates from the cube's surface, casting a gentle light on its surroundings. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, muted palette, messy ink lines, asterisk pupils, exaggerated proportions, squash and stretch animation",
+      "The bright red cube with rounded corners, anthropomorphic toaster is now floating in the air, singing a catchy jingle while doing backflips. The camera follows its movements, capturing each twist and turn. The environment is a surreal kitchen with abstract shapes and colors blending into the background. 2D cel-shaded cartoon, flat colors, rough expressive linework, adult swim aesthetic, muted palette, messy ink lines, asterisk pupils, exaggerated proportions, squash and stretch animation"
+    ]
+  }
+}

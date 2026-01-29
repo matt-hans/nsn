@@ -137,6 +137,7 @@ class RenderResult:
     determinism_proof: bytes
     success: bool = True
     error_msg: str | None = None
+    script: Any | None = None
 
 
 # Lane 0 constraints

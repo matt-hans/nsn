@@ -36,6 +36,32 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+_WORD_RE = re.compile(r"[A-Za-z']+")
+
+
+def _is_text_coherent(text: str) -> bool:
+    """Lightweight sanity check to filter obvious TTS-gibberish inputs."""
+    if not text or not text.strip():
+        return False
+    if len(text) < 8:
+        return False
+    words = _WORD_RE.findall(text)
+    if len(words) < 4:
+        return False
+    long_words = [w for w in words if len(w) > 18]
+    if len(long_words) / len(words) > 0.08:
+        return False
+    non_alpha = sum(
+        1
+        for ch in text
+        if not (ch.isalpha() or ch.isspace() or ch in ".,!?'-[]")
+    )
+    if non_alpha / len(text) > 0.08:
+        return False
+    if re.search(r"(.)\1{3,}", text):
+        return False
+    return True
+
 # Valid tone options for script generation
 ToneType = Literal["absurd", "deadpan", "manic"]
 
@@ -60,7 +86,8 @@ Example: "[gasps] Oh my GOD... [laughs] That's ridiculous!"
 # Adult Swim / Interdimensional Cable visual style for T2V prompts
 ADULT_SWIM_STYLE = (
     "2D cel-shaded cartoon, flat colors, rough expressive linework, "
-    "adult swim aesthetic, exaggerated proportions, squash and stretch animation"
+    "adult swim aesthetic, muted palette, messy ink lines, asterisk pupils, "
+    "exaggerated proportions, squash and stretch animation"
 )
 
 
@@ -459,6 +486,10 @@ class Showrunner:
                 )
             if not value.strip():
                 raise ShowrunnerError(f"Field '{field}' cannot be empty")
+            if not _is_text_coherent(value):
+                raise ShowrunnerError(
+                    f"Field '{field}' failed coherence check; falling back to templates"
+                )
 
         # Parse storyboard (or convert from legacy visual_prompt)
         if has_storyboard:

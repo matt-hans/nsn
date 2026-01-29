@@ -90,7 +90,7 @@ class VideoOrchestrator:
         theme: str = "bizarre infomercial",
         tone: str = "absurd",
         target_duration: float = 12.0,
-        voice_id: str = "af_heart",
+        voice_id: str = "rick_c137",
         deadline_sec: float = 150.0,
     ) -> GenerationResult:
         """Generate a video clip using the Narrative Chain pipeline.
@@ -101,7 +101,7 @@ class VideoOrchestrator:
             theme: Topic for LLM script generation
             tone: Comedic tone ("absurd", "deadpan", "manic")
             target_duration: Target video duration in seconds
-            voice_id: Kokoro voice ID
+            voice_id: Bark voice ID
             deadline_sec: Maximum time allowed for generation
 
         Returns:

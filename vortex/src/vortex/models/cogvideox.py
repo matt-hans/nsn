@@ -11,7 +11,10 @@ The CogVideoX model is part of the Narrative Chain pipeline (Phase 3) and:
 - Returns video frames as torch tensors for downstream processing
 
 VRAM Budget: ~10-11 GB (INT8 quantized with CPU offload)
-Output: 81 frames at 720x480 at 16fps (~5 seconds)
+Output: 48 frames at 720x480 at 8fps (~6 seconds)
+
+Note: num_frames must be divisible by 4 due to CogVideoX VAE temporal
+downsampling constraint. Using 48 frames (48 % 4 == 0) for stability.
 
 Example:
     >>> model = CogVideoXModel()
@@ -22,7 +25,7 @@ Example:
     ...     prompt="A cartoon man waving at the camera in a colorful studio",
     ...     seed=42
     ... )
-    >>> print(frames.shape)  # [81, 3, 480, 720]
+    >>> print(frames.shape)  # [48, 3, 480, 720]
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ import gc
 import logging
 import warnings
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -59,27 +62,30 @@ class VideoGenerationConfig:
     """Configuration for video generation.
 
     Attributes:
-        num_frames: Number of frames to generate (default 81, ~5 seconds at 16fps)
-        guidance_scale: Classifier-free guidance scale (default 4.5 for temporal stability)
+        num_frames: Number of frames to generate (default 48, ~6 seconds at 8fps).
+            Must be divisible by 4 due to CogVideoX VAE temporal downsampling.
+        guidance_scale: Classifier-free guidance scale (default 4.0 for stability)
         use_dynamic_cfg: Enable dynamic CFG scheduling for better motion (default True)
         num_inference_steps: Denoising steps (more = better quality, slower)
-        fps: Output frame rate
+        fps: Output frame rate (default 8fps for stability)
         height: Video height in pixels (must be divisible by 16)
         width: Video width in pixels (must be divisible by 16)
         negative_prompt: Text describing what to avoid in generation (suppresses artifacts)
     """
 
-    num_frames: int = 81  # CogVideoX recommended for temporal stability (~5 seconds at 16fps)
-    guidance_scale: float = 5.5  # CFG scale for temporal stability (CogVideoX docs: 6.0 default)
+    num_frames: int = 48  # Must be divisible by 4 (VAE constraint), ~6 seconds at 8fps
+    guidance_scale: float = 4.0  # Reduced from 5.5 for stability
     use_dynamic_cfg: bool = True  # Enable dynamic CFG scheduling for better motion
     num_inference_steps: int = 50
-    fps: int = 16  # Output frame rate (16fps for smoother motion per CogVideoX docs)
+    fps: int = 8  # Reverted to 8fps for stability
     height: int = 480  # CogVideoX native resolution
     width: int = 720  # CogVideoX native resolution (3:2 aspect)
     negative_prompt: str = (
         "blurry, distorted, deformed, morphing, warping, flickering, "
         "low quality, artifacts, noise, grainy, pixelated, "
-        "inconsistent lighting, changing colors, unstable background"
+        "inconsistent lighting, changing colors, unstable background, "
+        "text, watermark, logo, subtitles, captions, envato, stock footage, "
+        "checkerboard, checkered pattern, grid, moire, halftone, scanlines"
     )
 
     def __post_init__(self) -> None:
@@ -90,6 +96,10 @@ class VideoGenerationConfig:
             raise ValueError(f"width must be divisible by 16, got {self.width}")
         if self.num_frames < 1:
             raise ValueError(f"num_frames must be >= 1, got {self.num_frames}")
+        if self.num_frames % 4 != 0:
+            raise ValueError(
+                f"num_frames must be divisible by 4 (VAE constraint), got {self.num_frames}"
+            )
         if self.guidance_scale < 1.0:
             raise ValueError(f"guidance_scale must be >= 1.0, got {self.guidance_scale}")
         if self.num_inference_steps < 1:
@@ -131,6 +141,8 @@ class CogVideoXModel:
     device: str = "cuda"
     enable_cpu_offload: bool = True
     cache_dir: str | None = None
+    enable_vae_tiling: bool = True
+    enable_vae_slicing: bool = False
 
     # Internal state (not part of constructor)
     _pipe: object = field(default=None, init=False, repr=False)
@@ -211,9 +223,20 @@ class CogVideoXModel:
             # Enable VAE tiling to reduce VRAM during decode
             # This processes video in spatial tiles instead of all at once
             # Critical for avoiding OOM during VAE decode (44GB -> ~7GB)
-            if hasattr(self._pipe, "vae") and hasattr(self._pipe.vae, "enable_tiling"):
+            if (
+                self.enable_vae_tiling
+                and hasattr(self._pipe, "vae")
+                and hasattr(self._pipe.vae, "enable_tiling")
+            ):
                 self._pipe.vae.enable_tiling()
                 logger.info("CogVideoX VAE tiling enabled")
+            if (
+                self.enable_vae_slicing
+                and hasattr(self._pipe, "vae")
+                and hasattr(self._pipe.vae, "enable_slicing")
+            ):
+                self._pipe.vae.enable_slicing()
+                logger.info("CogVideoX VAE slicing enabled")
 
             logger.info(
                 "CogVideoX model loaded successfully",
@@ -288,7 +311,7 @@ class CogVideoXModel:
             ...     config=VideoGenerationConfig(num_frames=49),
             ...     seed=42
             ... )
-            >>> print(frames.shape)  # [81, 3, 480, 720]
+            >>> print(frames.shape)  # [48, 3, 480, 720]
         """
         # Ensure model is loaded
         if not self.is_loaded:
@@ -350,6 +373,15 @@ class CogVideoXModel:
             return frames_tensor
 
         except Exception as e:
+            if self._is_oom_error(e):
+                logger.warning("CogVideoX OOM detected; attempting fallback settings")
+                frames_tensor = await self._retry_after_oom(
+                    pil_image=pil_image,
+                    prompt=prompt,
+                    config=config,
+                    generator=generator,
+                )
+                return frames_tensor
             logger.error(f"Video generation failed: {e}", exc_info=True)
             raise CogVideoXError(f"Video generation failed: {e}") from e
 
@@ -462,7 +494,7 @@ class CogVideoXModel:
         prompts: list[str],
         config: VideoGenerationConfig | None = None,
         seed: int | None = None,
-        trim_frames: int = 65,  # Trim each 81-frame clip to 65 frames (~4s at 16fps)
+        trim_frames: int = 40,  # Trim each 48-frame clip to 40 frames (~5s at 8fps)
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> torch.Tensor:
         """Generate video montage from keyframe images and text prompts.
@@ -476,7 +508,7 @@ class CogVideoXModel:
             prompts: List of text prompts (one per scene)
             config: Optional generation config
             seed: Optional base seed (scene seeds = seed + scene_idx)
-            trim_frames: Frames to keep per clip (default 65 = ~4s @ 16fps).
+            trim_frames: Frames to keep per clip (default 40 = ~5s @ 8fps).
                         Set to 0 to disable trimming and keep all frames.
             progress_callback: Optional callback(scene_num, total_scenes) called
                               before each scene and after completion
@@ -533,6 +565,21 @@ class CogVideoXModel:
             if trim_frames and clip.shape[0] > trim_frames:
                 clip = clip[:trim_frames]
                 logger.debug(f"Trimmed scene {i+1} to {trim_frames} frames")
+            # Pad short clips to ensure consistent montage length
+            if trim_frames and clip.shape[0] < trim_frames:
+                if clip.shape[0] == 0:
+                    raise CogVideoXError(
+                        f"Scene {i+1} returned 0 frames; cannot pad montage"
+                    )
+                pad_count = trim_frames - clip.shape[0]
+                last_frame = clip[-1:].repeat(pad_count, 1, 1, 1)
+                clip = torch.cat([clip, last_frame], dim=0)
+                logger.warning(
+                    "Scene %d short (%d frames); padded to %d",
+                    i + 1,
+                    clip.shape[0] - pad_count,
+                    clip.shape[0],
+                )
 
             clips.append(clip)
             logger.info(f"Scene {i+1} complete: {clip.shape[0]} frames")
@@ -626,6 +673,86 @@ class CogVideoXModel:
 
         # Stack to [T, C, H, W]
         return torch.stack(frame_tensors, dim=0)
+
+    def _is_oom_error(self, exc: Exception) -> bool:
+        """Check whether an exception is a CUDA OOM."""
+        if isinstance(exc, torch.OutOfMemoryError):
+            return True
+        return "out of memory" in str(exc).lower()
+
+    def _enable_vae_tiling(self) -> bool:
+        if (
+            self._pipe is not None
+            and hasattr(self._pipe, "vae")
+            and hasattr(self._pipe.vae, "enable_tiling")
+            and not self.enable_vae_tiling
+        ):
+            self._pipe.vae.enable_tiling()
+            self.enable_vae_tiling = True
+            logger.info("CogVideoX VAE tiling enabled (fallback)")
+            return True
+        return False
+
+    def _enable_vae_slicing(self) -> bool:
+        if (
+            self._pipe is not None
+            and hasattr(self._pipe, "vae")
+            and hasattr(self._pipe.vae, "enable_slicing")
+            and not self.enable_vae_slicing
+        ):
+            self._pipe.vae.enable_slicing()
+            self.enable_vae_slicing = True
+            logger.info("CogVideoX VAE slicing enabled (fallback)")
+            return True
+        return False
+
+    async def _retry_after_oom(
+        self,
+        pil_image: Image.Image,
+        prompt: str,
+        config: VideoGenerationConfig,
+        generator: torch.Generator | None,
+    ) -> torch.Tensor:
+        """Retry generation with memory-saving fallbacks after OOM."""
+        loop = asyncio.get_event_loop()
+        attempts: list[VideoGenerationConfig] = []
+
+        # Try enabling VAE tiling/slicing if they are currently disabled.
+        if self._enable_vae_tiling():
+            attempts.append(config)
+        if self._enable_vae_slicing():
+            attempts.append(config)
+
+        # Final fallback: reduce frames and steps to lower decode memory pressure.
+        reduced_frames = max(16, (config.num_frames // 2) // 4 * 4)
+        if reduced_frames != config.num_frames:
+            reduced_config = replace(
+                config,
+                num_frames=reduced_frames,
+                num_inference_steps=max(30, config.num_inference_steps - 15),
+            )
+            attempts.append(reduced_config)
+
+        last_error: Exception | None = None
+        for attempt_config in attempts:
+            try:
+                torch.cuda.empty_cache()
+                gc.collect()
+                video_frames = await loop.run_in_executor(
+                    None,
+                    self._generate_sync,
+                    pil_image,
+                    prompt,
+                    attempt_config,
+                    generator,
+                )
+                return self._frames_to_tensor(video_frames)
+            except Exception as exc:
+                last_error = exc
+                if not self._is_oom_error(exc):
+                    raise
+
+        raise CogVideoXError(f"Video generation failed after OOM retries: {last_error}")
 
 
 def load_cogvideox(

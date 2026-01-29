@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import time
@@ -60,7 +61,54 @@ def save_render_result(
         logger.warning("Failed to write mp4 with audio: %s", exc)
         _write_mp4(video_path, result.video_frames, fps=fps, audio_waveform=None)
 
+    _write_metadata(
+        output_dir=output_dir,
+        base=base,
+        result=result,
+        slot_id=slot_id,
+        seed=seed,
+        fps=fps,
+        sample_rate=sample_rate,
+    )
+
     return {"video_path": video_path, "audio_path": audio_path}
+
+
+def _write_metadata(
+    output_dir: Path,
+    base: str,
+    result: Any,
+    slot_id: int | None,
+    seed: int | None,
+    fps: int,
+    sample_rate: int,
+) -> None:
+    metadata: dict[str, Any] = {
+        "slot_id": slot_id,
+        "seed": seed,
+        "fps": fps,
+        "sample_rate": sample_rate,
+    }
+
+    script = getattr(result, "script", None)
+    if script is not None:
+        metadata["script"] = {
+            "setup": getattr(script, "setup", ""),
+            "punchline": getattr(script, "punchline", ""),
+            "subject_visual": getattr(script, "subject_visual", ""),
+            "storyboard": list(getattr(script, "storyboard", [])),
+            "video_prompts": list(getattr(script, "video_prompts", [])),
+        }
+
+    if len(metadata) == 4:
+        return
+
+    metadata_path = output_dir / f"{base}.json"
+    try:
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+    except Exception as exc:
+        logger.warning("Failed to write render metadata: %s", exc)
 
 
 def _tensor_to_uint8_video(video_frames: torch.Tensor) -> np.ndarray:

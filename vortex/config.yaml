@@ -38,6 +38,11 @@ models:
   # Reduces peak VRAM from ~11.8GB to ~6.5GB (enables GPUs with <12GB)
   # Options: "auto" (enable if VRAM < 12GB), "always" (force), "never" (disable)
   offloading: "always"
+  cogvideox:
+    # Enable/disable VAE tiling/slicing during decode.
+    # Tiling saves VRAM but can introduce grid artifacts on some GPUs.
+    enable_vae_tiling: true
+    enable_vae_slicing: true
 
 # LLM configuration for Showrunner script generation
 llm:
@@ -53,15 +58,15 @@ buffers:
   # Pre-allocated output buffers (prevents fragmentation during generation)
   # Sizes in pixels/samples - buffers allocated at pipeline initialization
   actor:
-    height: 512
-    width: 512
+    height: 480           # CogVideoX I2V native height
+    width: 720            # CogVideoX I2V native width (3:2 aspect)
     channels: 3
   video:
     # Reduced from 1080 (45s) to 360 (15s) to save ~2.2GB VRAM
     # Most TTS scripts are <15s; longer videos can allocate dynamically
     frames: 360           # 15 seconds * 24 fps (~1.0GB vs 3.2GB)
-    height: 512
-    width: 512
+    height: 480           # CogVideoX I2V native height
+    width: 720            # CogVideoX I2V native width (3:2 aspect)
     channels: 3
   audio:
     sample_rate: 24000

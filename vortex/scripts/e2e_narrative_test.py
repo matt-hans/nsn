@@ -762,6 +762,14 @@ async def run_e2e_test(
                 for t in tests
             ],
         }
+        if hasattr(result, "script") and result.script is not None:
+            report["script"] = {
+                "setup": getattr(result.script, "setup", ""),
+                "punchline": getattr(result.script, "punchline", ""),
+                "subject_visual": getattr(result.script, "subject_visual", ""),
+                "storyboard": list(getattr(result.script, "storyboard", [])),
+                "video_prompts": list(getattr(result.script, "video_prompts", [])),
+            }
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
         print(f"\nTest report saved to: {report_path}")

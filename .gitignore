@@ -76,3 +76,4 @@ secrets/
 
 # Worktrees
 .worktrees/
+.ralph_knowledge/

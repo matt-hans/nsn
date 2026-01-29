@@ -586,16 +586,26 @@ class BarkVoiceEngine:
         # Map our emotion parameters to Bark's API:
         # - text_temp (coarse_temp): Controls semantic token generation variability
         # - waveform_temp (fine_temp): Controls acoustic detail generation variability
-        # - min_eos_p: Minimum probability threshold for end-of-sentence detection
-        #              Prevents semantic drift/gibberish by helping Bark recognize
-        #              when to stop generating (e.g., "laves are allegations" nonsense)
-        audio = generate_audio(
-            text,
-            history_prompt=speaker,
-            text_temp=emotion_params.get("coarse_temp", 0.7),
-            waveform_temp=emotion_params.get("fine_temp", 0.5),
-            min_eos_p=0.05,
-        )
+        try:
+            audio = generate_audio(
+                text,
+                history_prompt=speaker,
+                text_temp=emotion_params.get("coarse_temp", 0.7),
+                waveform_temp=emotion_params.get("fine_temp", 0.5),
+                min_eos_p=0.05,
+            )
+        except TypeError as exc:
+            if "min_eos_p" not in str(exc):
+                raise
+            logger.warning(
+                "Bark generate_audio does not support min_eos_p; retrying without it"
+            )
+            audio = generate_audio(
+                text,
+                history_prompt=speaker,
+                text_temp=emotion_params.get("coarse_temp", 0.7),
+                waveform_temp=emotion_params.get("fine_temp", 0.5),
+            )
 
         return audio
 
